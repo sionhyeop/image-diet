@@ -441,8 +441,7 @@ textarea {
   </div>
   <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
     <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
-    <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경 제거</button>
-    <button class="tab" id="tabExtract" role="tab" aria-selected="false" aria-controls="panel-extract" type="button">요소 추출</button>
+    <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경·요소</button>
     <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
     <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
     <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">메타데이터</button>
@@ -537,7 +536,13 @@ textarea {
 
   <section id="panel-bg" role="tabpanel" aria-labelledby="tabBg" hidden>
     <div class="card b64-card">
-      <h2>배경 제거</h2>
+      <h2>배경 제거 · 요소 추출</h2>
+      <div class="field" style="margin-bottom:12px">
+        <div class="chips" id="cutModeChips">
+          <button type="button" class="chip on" data-cutmode="bg">🪄 배경 제거</button>
+          <button type="button" class="chip" data-cutmode="extract">✂️ 요소 추출 (물체 꾹 눌러 뽑기)</button>
+        </div>
+      </div>
       <div class="dropzone dropzone-sm" id="bgDropzone" role="button" tabindex="0" aria-label="배경을 제거할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
         <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
@@ -604,17 +609,6 @@ textarea {
           <button class="btn primary" id="bgSavePng" type="button">PNG 다운로드 (최대 화질)</button>
           <button class="btn" id="bgSaveOpt" type="button">압축해서 다운로드</button>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="panel-extract" role="tabpanel" aria-labelledby="tabExtract" hidden>
-    <div class="card b64-card">
-      <h2>요소 추출</h2>
-      <div class="dropzone dropzone-sm" id="exDropzone" role="button" tabindex="0" aria-label="요소를 추출할 이미지 선택 또는 드래그하여 추가">
-        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · 깔끔한 배경일수록 잘 잡혀요</p>
-        <input type="file" id="exFile" accept="image/*" hidden>
       </div>
       <div id="exBody" hidden>
         <div class="field svg-opts">
@@ -886,7 +880,6 @@ textarea {
   var tabs = [
     { btn: $('#tabCompress'), panel: $('#panel-compress') },
     { btn: $('#tabBg'), panel: $('#panel-bg') },
-    { btn: $('#tabExtract'), panel: $('#panel-extract') },
     { btn: $('#tabSvg'), panel: $('#panel-svg') },
     { btn: $('#tabBase64'), panel: $('#panel-base64') },
     { btn: $('#tabMeta'), panel: $('#panel-meta') }
@@ -1934,11 +1927,8 @@ textarea {
     if (!$('#panel-meta').hidden) {
       loadMetaFile(files[0]);
     } else if (!$('#panel-bg').hidden) {
-      loadBgFile(files[0]);
-      if (files.length > 1) toast('첫 번째 이미지만 배경을 제거해요.');
-    } else if (!$('#panel-extract').hidden) {
-      loadExFile(files[0]);
-      if (files.length > 1) toast('첫 번째 이미지에서 요소를 추출해요.');
+      loadCutFile(files[0]);
+      if (files.length > 1) toast('첫 번째 이미지만 사용해요.');
     } else if (!$('#panel-svg').hidden) {
       vectorizeFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
@@ -2511,6 +2501,7 @@ textarea {
       bgState.divider = 50;
       bgState.mask = null;
       $('#bgBody').hidden = false;
+      $('#exBody').hidden = true;
       bgSetupDisplay();
       bgRender();
       bgRecompute();
@@ -3013,7 +3004,7 @@ textarea {
   bgFileInput.addEventListener('change', function () {
     var f = bgFileInput.files && bgFileInput.files[0];
     bgFileInput.value = '';
-    if (f) loadBgFile(f);
+    if (f) loadCutFile(f);
   });
   var bgDropzone = $('#bgDropzone');
   bgDropzone.addEventListener('click', function () { bgFileInput.click(); });
@@ -3056,6 +3047,7 @@ textarea {
       exState.file = f;
       exState.W = w; exState.H = h;
       $('#exBody').hidden = false;
+      $('#bgBody').hidden = true;
       exComputeWork();
       exSetupDisplay();
       exRender(null);
@@ -3382,22 +3374,43 @@ textarea {
       if (exState.srcCanvas) exComputeWork();
     }, 250);
   });
-  var exFileInput = $('#exFile');
-  exFileInput.addEventListener('change', function () {
-    var f = exFileInput.files && exFileInput.files[0];
-    exFileInput.value = '';
-    if (f) loadExFile(f);
-  });
-  var exDropzone = $('#exDropzone');
-  exDropzone.addEventListener('click', function () { exFileInput.click(); });
-  exDropzone.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); exFileInput.click(); }
-  });
   window.addEventListener('resize', function () {
-    if (exState.dispImg && !$('#panel-extract').hidden) {
+    if (exState.dispImg && !$('#panel-bg').hidden && cutMode === 'extract') {
       exSetupDisplay();
       exRender(null);
     }
+  });
+
+  /* ---------- 배경제거/요소추출 모드 통합 ---------- */
+  var cutMode = 'bg';
+  var cutFile = null;
+  function loadCutFile(f) {
+    cutFile = f;
+    if (cutMode === 'bg') loadBgFile(f);
+    else loadExFile(f);
+  }
+  function syncCutMode() {
+    document.querySelectorAll('#cutModeChips .chip').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.cutmode === cutMode);
+    });
+    $('#bgBody').hidden = !(cutMode === 'bg' && bgState.srcCanvas);
+    $('#exBody').hidden = !(cutMode === 'extract' && exState.srcCanvas);
+  }
+  document.querySelectorAll('#cutModeChips .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (cutMode === b.dataset.cutmode) return;
+      cutMode = b.dataset.cutmode;
+      syncCutMode();
+      if (cutFile) {
+        if (cutMode === 'bg') {
+          if (bgState.file !== cutFile) loadBgFile(cutFile);
+          else { bgSetupDisplay(); bgRender(); }
+        } else {
+          if (exState.file !== cutFile) loadExFile(cutFile);
+          else { exSetupDisplay(); exRender(null); }
+        }
+      }
+    });
   });
 
   /* ================= metadata: JPEG EXIF + PNG text chunks ================= */
