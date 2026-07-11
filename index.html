@@ -552,7 +552,8 @@ textarea {
         <div class="field svg-opts">
           <span class="field-label">인식 엔진</span>
           <div class="chips" id="bgEngineChips">
-            <button type="button" class="chip on" data-engine="ai">🤖 AI 인식 (권장)</button>
+            <button type="button" class="chip on" data-engine="precise">🎯 정밀 AI (권장)</button>
+            <button type="button" class="chip" data-engine="fast">⚡ 빠른 AI</button>
             <button type="button" class="chip" data-engine="classic">🎨 색상 기반 (단색 배경)</button>
           </div>
         </div>
@@ -2508,18 +2509,23 @@ textarea {
     }).catch(function () { toast('이미지를 열지 못했어요.'); });
   }
 
-  /* ---------- AI 엔진 (U²-Net-p, 온디바이스 ONNX) ---------- */
-  var bgEngine = 'ai';
-  var ortSession = null, ortLoadPromise = null;
+  /* ---------- AI 엔진 (온디바이스 ONNX: IS-Net 정밀 / U²-Net 빠름) ---------- */
+  var AI_MODELS = {
+    precise: { file: 'models/isnet-quant.onnx', S: 1024, mean: [0.5, 0.5, 0.5], std: [1, 1, 1], label: 'IS-Net', mb: 44 },
+    fast: { file: 'models/u2netp.onnx', S: 320, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225], label: 'U²-Net', mb: 4 }
+  };
+  var bgEngine = 'precise'; /* 'precise' | 'fast' | 'classic' */
+  function aiModelKey() { return bgEngine === 'fast' ? 'fast' : 'precise'; }
   function syncBgEngineChips() {
     document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
       b.classList.toggle('on', b.dataset.engine === bgEngine);
     });
   }
-  function loadOrtSession() {
-    if (ortSession) return Promise.resolve(ortSession);
-    if (ortLoadPromise) return ortLoadPromise;
-    ortLoadPromise = new Promise(function (resolve, reject) {
+
+  var ortReady = null, aiSessions = {}, aiLoadPromises = {};
+  function loadOrt() {
+    if (ortReady) return ortReady;
+    ortReady = new Promise(function (resolve, reject) {
       if (window.ort) return resolve();
       var s = document.createElement('script');
       s.src = 'vendor/ort.min.js';
@@ -2529,69 +2535,172 @@ textarea {
     }).then(function () {
       ort.env.wasm.wasmPaths = new URL('vendor/', location.href).href;
       ort.env.wasm.numThreads = 1;
-      return ort.InferenceSession.create('models/u2netp.onnx', { executionProviders: ['wasm'] });
-    }).then(function (sess) {
-      ortSession = sess;
-      return sess;
     });
-    ortLoadPromise.catch(function () { ortLoadPromise = null; });
-    return ortLoadPromise;
+    ortReady.catch(function () { ortReady = null; });
+    return ortReady;
   }
-  /* U²-Net 추론 공용부: 320² saliency를 0..1로 정규화해 돌려준다 */
-  function runU2Net(srcCanvas) {
-    return loadOrtSession().then(function (sess) {
-      var S = 320;
+  function fetchWithProgress(url, onProgress) {
+    return fetch(url).then(function (res) {
+      if (!res.ok) throw new Error('모델 다운로드 실패');
+      var total = parseInt(res.headers.get('content-length') || '0', 10);
+      if (!res.body || !total) return res.arrayBuffer();
+      var reader = res.body.getReader();
+      var chunks = [], received = 0;
+      return (function pump() {
+        return reader.read().then(function (r) {
+          if (r.done) {
+            var buf = new Uint8Array(received), off = 0;
+            chunks.forEach(function (c) { buf.set(c, off); off += c.length; });
+            return buf.buffer;
+          }
+          chunks.push(r.value);
+          received += r.value.length;
+          if (onProgress) onProgress(received / total);
+          return pump();
+        });
+      })();
+    });
+  }
+  function loadModel(key, onProgress) {
+    if (aiSessions[key]) return Promise.resolve(aiSessions[key]);
+    if (aiLoadPromises[key]) return aiLoadPromises[key];
+    var m = AI_MODELS[key];
+    var p = loadOrt()
+      .then(function () { return fetchWithProgress(m.file, onProgress); })
+      .then(function (buf) { return ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }); })
+      .then(function (sess) { aiSessions[key] = sess; return sess; });
+    aiLoadPromises[key] = p;
+    p.catch(function () { aiLoadPromises[key] = null; });
+    return p;
+  }
+
+  /* saliency 추론: 모델 해상도 S²(squashed)에서 0..1로 정규화한 전경맵 반환 */
+  function runSaliency(key, srcCanvas, onProgress) {
+    var m = AI_MODELS[key];
+    return loadModel(key, onProgress).then(function (sess) {
+      var S = m.S;
       var c = document.createElement('canvas');
       c.width = S; c.height = S;
       var x = c.getContext('2d', { willReadFrequently: true });
       x.drawImage(srcCanvas, 0, 0, S, S);
       var data = x.getImageData(0, 0, S, S).data;
-      var input = new Float32Array(3 * S * S);
-      for (var i = 0, p = 0; i < S * S; i++, p += 4) {
-        input[i] = (data[p] / 255 - 0.485) / 0.229;
-        input[S * S + i] = (data[p + 1] / 255 - 0.456) / 0.224;
-        input[2 * S * S + i] = (data[p + 2] / 255 - 0.406) / 0.225;
+      var n = S * S;
+      var input = new Float32Array(3 * n);
+      for (var i = 0, p = 0; i < n; i++, p += 4) {
+        input[i] = (data[p] / 255 - m.mean[0]) / m.std[0];
+        input[n + i] = (data[p + 1] / 255 - m.mean[1]) / m.std[1];
+        input[2 * n + i] = (data[p + 2] / 255 - m.mean[2]) / m.std[2];
       }
       var feeds = {};
       feeds[sess.inputNames[0]] = new ort.Tensor('float32', input, [1, 3, S, S]);
       return sess.run(feeds).then(function (out) {
         var raw = out[sess.outputNames[0]].data;
-        var n = S * S;
         var mn = Infinity, mx = -Infinity;
-        for (var i2 = 0; i2 < n; i2++) {
-          var v = raw[i2];
-          if (v < mn) mn = v;
-          if (v > mx) mx = v;
-        }
+        for (var a = 0; a < n; a++) { var v = raw[a]; if (v < mn) mn = v; if (v > mx) mx = v; }
         var range = (mx - mn) || 1;
         var pred = new Float32Array(n);
-        for (var i3 = 0; i3 < n; i3++) pred[i3] = (raw[i3] - mn) / range;
+        for (var b = 0; b < n; b++) pred[b] = (raw[b] - mn) / range;
         return { pred: pred, S: S };
       });
     });
   }
-  function bgAutoMaskAI() {
-    return runU2Net(bgState.srcCanvas).then(function (res) {
-      var S = res.S, predN = res.pred;
-      {
-        var tol = parseInt($('#bgTol').value, 10);
-        var t = 0.12 + (tol - 3) / 57 * 0.55;
-        var lo = Math.max(0, t - 0.12), hi = Math.min(1, t + 0.12);
-        var n = S * S;
-        var alpha = new Uint8Array(n);
-        for (var i3 = 0; i3 < n; i3++) {
-          var pv = predN[i3];
-          if (pv <= lo) { alpha[i3] = 0; continue; }
-          if (pv >= hi) { alpha[i3] = 255; continue; }
-          var tt = (pv - lo) / (hi - lo);
-          tt = tt * tt * (3 - 2 * tt);
-          alpha[i3] = Math.round(255 * tt);
-        }
-        bgDespeckle(alpha, S, S);
-        bgState.workMask = alphaToMaskCanvas(alpha, S, S);
-        bgState.workW = S;
-        bgState.workH = S;
+
+  /* ---------- 가이디드 필터: 저해상도 마스크를 원본 엣지에 맞춰 정밀화 ---------- */
+  function boxFilter(src, w, h, r) {
+    var W1 = w + 1;
+    var integ = new Float64Array(W1 * (h + 1));
+    for (var y = 0; y < h; y++) {
+      var s = 0, row = y * w, irow = (y + 1) * W1;
+      for (var x = 0; x < w; x++) {
+        s += src[row + x];
+        integ[irow + x + 1] = integ[irow - W1 + x + 1] + s;
       }
+    }
+    var out = new Float32Array(w * h);
+    for (var y2 = 0; y2 < h; y2++) {
+      var y0 = y2 - r < 0 ? 0 : y2 - r, y1 = y2 + r >= h ? h - 1 : y2 + r;
+      var a0 = y0 * W1, a1 = (y1 + 1) * W1;
+      for (var x2 = 0; x2 < w; x2++) {
+        var x0 = x2 - r < 0 ? 0 : x2 - r, x1 = x2 + r >= w ? w - 1 : x2 + r;
+        var cnt = (y1 - y0 + 1) * (x1 - x0 + 1);
+        out[y2 * w + x2] = (integ[a1 + x1 + 1] - integ[a0 + x1 + 1] - integ[a1 + x0] + integ[a0 + x0]) / cnt;
+      }
+    }
+    return out;
+  }
+  function guidedFilter(I, p, w, h, r, eps) {
+    var n = w * h, i;
+    var meanI = boxFilter(I, w, h, r);
+    var meanP = boxFilter(p, w, h, r);
+    var Ip = new Float32Array(n), II = new Float32Array(n);
+    for (i = 0; i < n; i++) { Ip[i] = I[i] * p[i]; II[i] = I[i] * I[i]; }
+    var meanIp = boxFilter(Ip, w, h, r);
+    var meanII = boxFilter(II, w, h, r);
+    var a = new Float32Array(n), bb = new Float32Array(n);
+    for (i = 0; i < n; i++) {
+      var covIp = meanIp[i] - meanI[i] * meanP[i];
+      var varI = meanII[i] - meanI[i] * meanI[i];
+      a[i] = covIp / (varI + eps);
+      bb[i] = meanP[i] - a[i] * meanI[i];
+    }
+    var meanA = boxFilter(a, w, h, r), meanB = boxFilter(bb, w, h, r);
+    var q = new Float32Array(n);
+    for (i = 0; i < n; i++) q[i] = meanA[i] * I[i] + meanB[i];
+    return q;
+  }
+
+  function bgAutoMaskAI(onProgress) {
+    var key = aiModelKey();
+    return runSaliency(key, bgState.srcCanvas, onProgress).then(function (res) {
+      var S = res.S, pred = res.pred;
+      /* 정밀화 캔버스: 원본 종횡비로 되돌리고 긴 변 최대 768px */
+      var W = bgState.W, H = bgState.H, RS = 768;
+      var rw, rh;
+      if (W >= H) { rw = Math.min(W, RS); rh = Math.max(1, Math.round(rw * H / W)); }
+      else { rh = Math.min(H, RS); rw = Math.max(1, Math.round(rh * W / H)); }
+      /* squashed 예측맵을 원본 종횡비로 unsquash */
+      var predCanvas = document.createElement('canvas');
+      predCanvas.width = S; predCanvas.height = S;
+      var pd = predCanvas.getContext('2d').createImageData(S, S);
+      for (var i = 0, q = 0; i < S * S; i++, q += 4) {
+        var g = Math.round(pred[i] * 255);
+        pd.data[q] = g; pd.data[q + 1] = g; pd.data[q + 2] = g; pd.data[q + 3] = 255;
+      }
+      predCanvas.getContext('2d').putImageData(pd, 0, 0);
+      var rc = document.createElement('canvas');
+      rc.width = rw; rc.height = rh;
+      var rx = rc.getContext('2d', { willReadFrequently: true });
+      rx.imageSmoothingEnabled = true; rx.imageSmoothingQuality = 'high';
+      rx.drawImage(predCanvas, 0, 0, rw, rh);
+      var pData = rx.getImageData(0, 0, rw, rh).data;
+      /* 원본을 가이드(그레이)로 */
+      rx.drawImage(bgState.srcCanvas, 0, 0, rw, rh);
+      var gData = rx.getImageData(0, 0, rw, rh).data;
+      var rn = rw * rh;
+      var pMask = new Float32Array(rn), guide = new Float32Array(rn);
+      for (var j = 0, k = 0; j < rn; j++, k += 4) {
+        pMask[j] = pData[k] / 255;
+        guide[j] = (0.299 * gData[k] + 0.587 * gData[k + 1] + 0.114 * gData[k + 2]) / 255;
+      }
+      var r = Math.max(4, Math.round(rw / 90));
+      var refined = guidedFilter(guide, pMask, rw, rh, r, 1e-3);
+      /* 민감도 슬라이더 → 임계 + 소프트 램프 */
+      var tol = parseInt($('#bgTol').value, 10);
+      var t = 0.12 + (tol - 3) / 57 * 0.55;
+      var lo = Math.max(0, t - 0.14), hi = Math.min(1, t + 0.14);
+      var alpha = new Uint8Array(rn);
+      for (var a2 = 0; a2 < rn; a2++) {
+        var pv = refined[a2];
+        if (pv <= lo) { alpha[a2] = 0; continue; }
+        if (pv >= hi) { alpha[a2] = 255; continue; }
+        var tt = (pv - lo) / (hi - lo);
+        tt = tt * tt * (3 - 2 * tt);
+        alpha[a2] = Math.round(255 * tt);
+      }
+      bgDespeckle(alpha, rw, rh);
+      bgState.workMask = alphaToMaskCanvas(alpha, rw, rh);
+      bgState.workW = rw;
+      bgState.workH = rh;
     });
   }
   function bgRecompute() {
@@ -2599,9 +2708,16 @@ textarea {
     var seq = bgState.seq;
     var stats = $('#bgStats');
     var run;
-    if (bgEngine === 'ai') {
-      stats.textContent = ortSession ? '🤖 AI가 배경을 인식하는 중…' : '🤖 AI 모델 준비 중… (최초 1회, 약 15MB — 이후엔 오프라인 동작)';
-      run = bgAutoMaskAI().catch(function () {
+    if (bgEngine !== 'classic') {
+      var key = aiModelKey(), m = AI_MODELS[key];
+      var ready = !!aiSessions[key];
+      stats.textContent = ready
+        ? '🤖 ' + m.label + '가 배경을 인식하는 중…'
+        : '🤖 ' + m.label + ' 모델 준비 중… (최초 1회 약 ' + m.mb + 'MB, 이후 오프라인)';
+      var onProg = function (frac) {
+        if (bgState.seq === seq) stats.textContent = '🤖 ' + m.label + ' 모델 내려받는 중… ' + Math.round(frac * 100) + '%';
+      };
+      run = bgAutoMaskAI(onProg).catch(function (e) {
         if (bgState.seq !== seq) return;
         bgEngine = 'classic';
         syncBgEngineChips();
@@ -2615,8 +2731,9 @@ textarea {
       if (bgState.seq !== seq || !bgState.srcCanvas || !bgState.workMask) return;
       bgReplayMask();
       bgRender();
+      var eng = bgEngine === 'classic' ? '색상' : AI_MODELS[aiModelKey()].label;
       stats.textContent = (bgState.file.name || '이미지') + ' · ' + bgState.W + '×' + bgState.H +
-        ' · ' + (bgEngine === 'ai' ? 'AI' : '색상') + ' 인식 완료 — 브러시로 다듬을 수 있어요';
+        ' · ' + eng + ' 인식 완료 — 브러시로 다듬을 수 있어요';
     }).catch(function () {
       if (bgState.seq === seq) stats.textContent = '배경 인식에 실패했어요.';
     });
@@ -3073,8 +3190,15 @@ textarea {
   function exComputeAI() {
     var seq = exState.seq;
     var hint = $('#exHint');
-    hint.textContent = '🤖 AI가 물체를 인식하는 중… (준비 전에는 색상 기반으로 잡혀요)';
-    runU2Net(exState.srcCanvas).then(function (res) {
+    if (bgEngine === 'classic') {
+      hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요 (색상 기반)';
+      return;
+    }
+    var key = aiModelKey(), m = AI_MODELS[key];
+    hint.textContent = '🤖 ' + m.label + '가 물체를 인식하는 중… (준비 전에는 색상 기반으로 잡혀요)';
+    runSaliency(key, exState.srcCanvas, function (frac) {
+      if (seq === exState.seq) hint.textContent = '🤖 ' + m.label + ' 모델 내려받는 중… ' + Math.round(frac * 100) + '%';
+    }).then(function (res) {
       if (seq !== exState.seq) return;
       exState.aiPred = res.pred;
       exState.aiS = res.S;
