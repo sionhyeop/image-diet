@@ -9,23 +9,28 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f14">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%230d9488'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='24' y='24' width='56' height='56' rx='10' opacity='.5'/%3E%3Crect x='58' y='58' width='46' height='46' rx='10'/%3E%3Cpath d='M40 40l24 24M64 46v18H46'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="이미지 변환">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
 :root {
-  --bg: #f6f7f9;
+  --bg: #f6f8fb;
   --panel: #ffffff;
-  --panel-2: #eef1f5;
-  --text: #1a2233;
-  --muted: #5f6b7c;
-  --border: #dfe5ec;
+  --panel-2: #f1f4f8;
+  --text: #191f28;
+  --muted: #8b95a1;
+  --border: #e9edf3;
   --accent: #0d9488;
-  --accent-strong: #0f766e;
-  --accent-soft: rgba(13, 148, 136, .1);
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, .1);
+  --accent-strong: #0b7f74;
+  --accent-soft: rgba(20, 184, 166, .11);
+  --danger: #f04452;
+  --danger-soft: rgba(240, 68, 82, .1);
   --ok: #15803d;
   --ok-soft: rgba(22, 163, 74, .12);
-  --shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 8px 24px rgba(15, 23, 42, .06);
-  --radius: 14px;
+  --shadow: 0 2px 8px rgba(25, 31, 40, .04), 0 12px 32px rgba(25, 31, 40, .07);
+  --radius: 18px;
   color-scheme: light;
 }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -70,11 +75,16 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  background: var(--bg);
+  background: linear-gradient(180deg, #eefaf7 0%, var(--bg) 340px) fixed, var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
   font-size: 15px;
-  line-height: 1.55;
+  line-height: 1.6;
+  letter-spacing: -.01em;
+}
+:root[data-theme="dark"] body { background: var(--bg); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body { background: var(--bg); }
 }
 .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -82,12 +92,12 @@ input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
 /* ---------- header ---------- */
-.site-header { padding: 26px 0 10px; }
+.site-header { padding: 30px 0 10px; }
 .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 13px; }
-.brand svg { width: 42px; height: 42px; flex: none; border-radius: 11px; box-shadow: var(--shadow); }
-.brand h1 { font-size: 21px; margin: 0; letter-spacing: -.3px; }
-.tagline { margin: 1px 0 0; color: var(--muted); font-size: 13px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand svg { width: 46px; height: 46px; flex: none; border-radius: 13px; box-shadow: 0 6px 18px rgba(13, 148, 136, .25); }
+.brand h1 { font-size: 23px; font-weight: 800; margin: 0; letter-spacing: -.5px; }
+.tagline { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .pill {
   font-size: 12.5px; color: var(--accent-strong);
@@ -110,10 +120,14 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
-  border: 1px solid var(--border); background: var(--panel); color: var(--muted);
-  padding: 8px 18px; border-radius: 999px; font-weight: 600; font-size: 14px;
+  border: 1px solid transparent; background: var(--panel); color: var(--muted);
+  padding: 8px 18px; border-radius: 999px; font-weight: 700; font-size: 14px;
   flex: none; touch-action: manipulation;
+  box-shadow: 0 1px 4px rgba(25, 31, 40, .06);
+  transition: color .15s, background .15s, box-shadow .15s;
 }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { box-shadow: 0 4px 14px rgba(13, 148, 136, .3); }
 .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 :root[data-theme="dark"] .tab[aria-selected="true"] { color: #06251f; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tab[aria-selected="true"] { color: #06251f; } }
@@ -126,10 +140,13 @@ main { padding-bottom: 30px; }
 
 /* ---------- dropzone ---------- */
 .dropzone {
-  border: 2px dashed var(--border); border-radius: var(--radius);
-  background: var(--panel); padding: 38px 20px; text-align: center;
-  cursor: pointer; transition: border-color .15s, background .15s, transform .15s;
+  border: 2px dashed color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--panel) 0%, var(--accent-soft) 160%);
+  padding: 38px 20px; text-align: center;
+  cursor: pointer; transition: border-color .15s, background .15s, transform .15s, box-shadow .15s;
 }
+.dropzone:hover { box-shadow: var(--shadow); }
 .dropzone:hover { border-color: var(--accent); }
 .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.005); }
 .dropzone svg { width: 44px; height: 44px; color: var(--accent); margin-bottom: 8px; }
@@ -194,10 +211,13 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 
 /* ---------- buttons ---------- */
 .btn {
-  border: 1px solid var(--border); background: var(--panel); border-radius: 10px;
-  padding: 8px 14px; font-size: 13.5px; font-weight: 600; transition: border-color .12s, background .12s;
+  border: 1px solid var(--border); background: var(--panel); border-radius: 12px;
+  padding: 8px 14px; font-size: 13.5px; font-weight: 700;
+  transition: border-color .12s, background .12s, box-shadow .12s, transform .08s;
   touch-action: manipulation;
 }
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn.primary { box-shadow: 0 4px 14px rgba(13, 148, 136, .22); }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -396,6 +416,10 @@ textarea {
 .cmp-tag.left { left: 6px; }
 .cmp-tag.right { right: 6px; }
 #svgCmpPos { width: 100%; margin-top: 8px; }
+.bg-wrap { max-width: 640px; }
+#bgBox { cursor: col-resize; }
+#bgBox.painting { cursor: crosshair; }
+#bgCanvas { display: block; max-width: 100%; height: auto; touch-action: none; margin: 0 auto; }
 .check-label { display: flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; padding: 7px 0; }
 .check-label input { accent-color: var(--accent); width: 16px; height: 16px; }
 .dec-preview img { width: 100%; height: 100%; object-fit: contain; }
@@ -456,6 +480,7 @@ textarea {
 
 <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
   <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
+  <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경 제거</button>
   <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
   <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
   <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">메타데이터</button>
@@ -545,6 +570,73 @@ textarea {
     </section>
 
     <ul id="results" class="results"></ul>
+  </section>
+
+  <section id="panel-bg" role="tabpanel" aria-labelledby="tabBg" hidden>
+    <div class="card b64-card">
+      <h2>배경 제거</h2>
+      <p class="muted">테두리에서 배경색을 학습해 자동으로 지워요 — 단색·그라데이션 배경에 잘 맞아요. 자동 결과가 아쉬우면 브러시로 직접 다듬으세요.</p>
+      <div class="dropzone dropzone-sm" id="bgDropzone" role="button" tabindex="0" aria-label="배경을 제거할 이미지 선택 또는 드래그하여 추가">
+        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
+        <input type="file" id="bgFile" accept="image/*" hidden>
+      </div>
+      <div id="bgBody" hidden>
+        <div class="settings-grid svg-opts">
+          <div class="field">
+            <label class="field-label" for="bgTol">배경 인식 범위 <output id="bgTolOut">18</output><span class="sub"> — 넓힐수록 과감히 지워요</span></label>
+            <input type="range" id="bgTol" min="3" max="60" step="1" value="18">
+          </div>
+          <div class="field">
+            <label class="field-label" for="bgFeather">가장자리 부드럽게 <output id="bgFeatherOut">1</output></label>
+            <input type="range" id="bgFeather" min="0" max="5" step="1" value="1">
+          </div>
+        </div>
+        <div class="field svg-opts">
+          <span class="field-label">도구 <span class="sub">— 비교: 드래그로 경계선 이동 · 브러시: 그려서 부분 수정</span></span>
+          <div class="chips" id="bgTools">
+            <button type="button" class="chip on" data-bgtool="compare">↔ 비교</button>
+            <button type="button" class="chip" data-bgtool="erase">🧽 배경 지우기</button>
+            <button type="button" class="chip" data-bgtool="restore">🖌️ 복원하기</button>
+            <button type="button" class="chip" id="bgUndo">↩ 실행 취소</button>
+            <button type="button" class="chip" id="bgReset">⟲ 처음부터</button>
+          </div>
+        </div>
+        <div class="field svg-opts" id="bgBrushField" hidden>
+          <label class="field-label" for="bgBrush">브러시 크기 <output id="bgBrushOut">40</output>px</label>
+          <input type="range" id="bgBrush" min="8" max="120" step="1" value="40">
+        </div>
+        <div class="bg-wrap svg-opts">
+          <div class="cmp-box" id="bgBox">
+            <canvas id="bgCanvas"></canvas>
+            <span class="cmp-tag left">원본</span><span class="cmp-tag right">결과</span>
+          </div>
+        </div>
+        <p id="bgStats" class="muted" role="status"></p>
+        <div class="settings-grid svg-opts">
+          <div class="field">
+            <label class="field-label" for="bgOutFmt">압축 형식</label>
+            <select id="bgOutFmt">
+              <option value="webp">WebP (투명 배경 유지)</option>
+              <option value="jpeg">JPEG (배경색 채움)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="bgQ">압축 품질 <output id="bgQOut">80</output>%</label>
+            <input type="range" id="bgQ" min="0.4" max="0.95" step="0.01" value="0.8">
+          </div>
+          <div class="field" id="bgJpegBgField" hidden>
+            <label class="field-label" for="bgJpegBg">JPEG 배경색</label>
+            <input type="color" id="bgJpegBg" value="#ffffff">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="bgZoom" type="button">크게 미리보기</button>
+          <button class="btn primary" id="bgSavePng" type="button">PNG 다운로드 (최대 화질)</button>
+          <button class="btn" id="bgSaveOpt" type="button">압축해서 다운로드</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section id="panel-svg" role="tabpanel" aria-labelledby="tabSvg" hidden>
@@ -819,6 +911,7 @@ textarea {
   /* ================= tabs ================= */
   var tabs = [
     { btn: $('#tabCompress'), panel: $('#panel-compress') },
+    { btn: $('#tabBg'), panel: $('#panel-bg') },
     { btn: $('#tabSvg'), panel: $('#panel-svg') },
     { btn: $('#tabBase64'), panel: $('#panel-base64') },
     { btn: $('#tabMeta'), panel: $('#panel-meta') }
@@ -1865,6 +1958,9 @@ textarea {
     if (!files.length) return;
     if (!$('#panel-meta').hidden) {
       loadMetaFile(files[0]);
+    } else if (!$('#panel-bg').hidden) {
+      loadBgFile(files[0]);
+      if (files.length > 1) toast('첫 번째 이미지만 배경을 제거해요.');
     } else if (!$('#panel-svg').hidden) {
       vectorizeFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
@@ -2403,6 +2499,394 @@ textarea {
   svgZoom.addEventListener('click', function () {
     if (!svgState.previewUrl) return;
     openLightbox(svgState.previewUrl, baseName(svgState.file.name || 'image') + '.svg · ' + fmtBytes(svgState.svg.length));
+  });
+
+  /* ================= background removal =================
+     테두리 픽셀을 k-means로 군집화해 배경색 모델을 만들고,
+     테두리에서 이어지는(연결된) 유사색 영역만 플러드필로 제거한다. */
+  var bgState = {
+    file: null, srcCanvas: null, W: 0, H: 0,
+    workMask: null, workW: 0, workH: 0,
+    mask: null, strokes: [], tool: 'compare', divider: 50,
+    dispImg: null, dispW: 0, dispH: 0, seq: 0
+  };
+  var bgCanvas = $('#bgCanvas'), bgBox = $('#bgBox');
+  var bgTmp = document.createElement('canvas');
+
+  function loadBgFile(f) {
+    var seq = ++bgState.seq;
+    decodeToSource(f).then(function (dec) {
+      if (seq !== bgState.seq) {
+        if (dec.url) URL.revokeObjectURL(dec.url);
+        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+        return;
+      }
+      var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
+      var lim = clampDims(w, h);
+      if (lim) { w = lim.w; h = lim.h; }
+      bgState.srcCanvas = drawScaled(dec.source, w, h, null);
+      if (dec.url) URL.revokeObjectURL(dec.url);
+      if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+      bgState.file = f;
+      bgState.W = w; bgState.H = h;
+      bgState.strokes = [];
+      bgState.divider = 50;
+      $('#bgBody').hidden = false;
+      bgAutoMask();
+      bgSetupDisplay();
+      bgReplayMask();
+      bgRender();
+      $('#bgStats').textContent = (f.name || '이미지') + ' · ' + w + '×' + h + ' · 자동 인식 완료 — 브러시로 다듬을 수 있어요';
+    }).catch(function () { toast('이미지를 열지 못했어요.'); });
+  }
+
+  function bgAutoMask() {
+    var W = bgState.W, H = bgState.H;
+    var s = Math.min(1, 1280 / Math.max(W, H));
+    var ww = Math.max(2, Math.round(W * s)), wh = Math.max(2, Math.round(H * s));
+    var c = document.createElement('canvas');
+    c.width = ww; c.height = wh;
+    var x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(bgState.srcCanvas, 0, 0, ww, wh);
+    var data = x.getImageData(0, 0, ww, wh).data;
+    var samples = [];
+    var push = function (p) { if (data[p + 3] >= 40) samples.push([data[p], data[p + 1], data[p + 2]]); };
+    for (var i = 0; i < ww; i++) { push(i * 4); push(((wh - 1) * ww + i) * 4); }
+    for (var j = 0; j < wh; j++) { push(j * ww * 4); push((j * ww + ww - 1) * 4); }
+    var K = Math.min(4, samples.length || 1);
+    var cs = [];
+    for (var k = 0; k < K; k++) cs.push((samples[Math.floor(k * samples.length / K)] || [255, 255, 255]).slice());
+    for (var it = 0; it < 6; it++) {
+      var sum = [], cnt = [];
+      for (k = 0; k < K; k++) { sum.push([0, 0, 0]); cnt.push(0); }
+      for (i = 0; i < samples.length; i++) {
+        var sp = samples[i], bi = 0, bd = Infinity;
+        for (k = 0; k < K; k++) {
+          var dr = sp[0] - cs[k][0], dg = sp[1] - cs[k][1], db = sp[2] - cs[k][2];
+          var d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+          if (d < bd) { bd = d; bi = k; }
+        }
+        sum[bi][0] += sp[0]; sum[bi][1] += sp[1]; sum[bi][2] += sp[2]; cnt[bi]++;
+      }
+      for (k = 0; k < K; k++) if (cnt[k]) cs[k] = [sum[k][0] / cnt[k], sum[k][1] / cnt[k], sum[k][2] / cnt[k]];
+    }
+    var tol = parseInt($('#bgTol').value, 10);
+    var thr = 9 * Math.pow(tol * 2.55, 2);
+    var n = ww * wh;
+    var cand = new Uint8Array(n);
+    for (i = 0, j = 0; i < n; i++, j += 4) {
+      if (data[j + 3] < 40) { cand[i] = 1; continue; }
+      var bd2 = Infinity;
+      for (k = 0; k < K; k++) {
+        var dr2 = data[j] - cs[k][0], dg2 = data[j + 1] - cs[k][1], db2 = data[j + 2] - cs[k][2];
+        var dd = 2 * dr2 * dr2 + 4 * dg2 * dg2 + 3 * db2 * db2;
+        if (dd < bd2) bd2 = dd;
+      }
+      if (bd2 <= thr) cand[i] = 1;
+    }
+    var bg = new Uint8Array(n);
+    var queue = new Int32Array(n);
+    var qh = 0, qt = 0;
+    var seed = function (idx) { if (cand[idx] && !bg[idx]) { bg[idx] = 1; queue[qt++] = idx; } };
+    for (i = 0; i < ww; i++) { seed(i); seed((wh - 1) * ww + i); }
+    for (j = 0; j < wh; j++) { seed(j * ww); seed(j * ww + ww - 1); }
+    while (qh < qt) {
+      var u = queue[qh++];
+      var ux = u % ww;
+      if (ux > 0) seed(u - 1);
+      if (ux < ww - 1) seed(u + 1);
+      if (u >= ww) seed(u - ww);
+      if (u < n - ww) seed(u + ww);
+    }
+    var md = x.createImageData(ww, wh);
+    for (i = 0; i < n; i++) {
+      var q = i * 4;
+      md.data[q] = 255; md.data[q + 1] = 255; md.data[q + 2] = 255;
+      md.data[q + 3] = bg[i] ? 0 : 255;
+    }
+    var mc = document.createElement('canvas');
+    mc.width = ww; mc.height = wh;
+    mc.getContext('2d').putImageData(md, 0, 0);
+    bgState.workMask = mc;
+    bgState.workW = ww;
+    bgState.workH = wh;
+  }
+
+  function bgReplayMask() {
+    var W = bgState.W, H = bgState.H;
+    if (!bgState.mask) bgState.mask = document.createElement('canvas');
+    bgState.mask.width = W;
+    bgState.mask.height = H;
+    var mx = bgState.mask.getContext('2d');
+    mx.imageSmoothingEnabled = true;
+    mx.imageSmoothingQuality = 'high';
+    var feather = parseInt($('#bgFeather').value, 10);
+    if (feather > 0) {
+      var fs = 1 / (1 + feather * 0.9);
+      var t = document.createElement('canvas');
+      t.width = Math.max(1, Math.round(bgState.workW * fs));
+      t.height = Math.max(1, Math.round(bgState.workH * fs));
+      var tx = t.getContext('2d');
+      tx.imageSmoothingEnabled = true;
+      tx.imageSmoothingQuality = 'high';
+      tx.drawImage(bgState.workMask, 0, 0, t.width, t.height);
+      mx.drawImage(t, 0, 0, W, H);
+    } else {
+      mx.drawImage(bgState.workMask, 0, 0, W, H);
+    }
+    for (var i = 0; i < bgState.strokes.length; i++) bgApplyStroke(mx, bgState.strokes[i], null);
+  }
+
+  function bgApplyStroke(mx, st, fromIdx) {
+    mx.save();
+    mx.globalCompositeOperation = st.mode === 'erase' ? 'destination-out' : 'source-over';
+    mx.strokeStyle = '#fff';
+    mx.fillStyle = '#fff';
+    mx.lineWidth = st.size;
+    mx.lineCap = 'round';
+    mx.lineJoin = 'round';
+    var pts = st.points;
+    var start = fromIdx == null ? 0 : fromIdx;
+    if (pts.length === 1) {
+      mx.beginPath();
+      mx.arc(pts[0][0], pts[0][1], st.size / 2, 0, Math.PI * 2);
+      mx.fill();
+    } else {
+      mx.beginPath();
+      mx.moveTo(pts[Math.max(0, start - 1)][0], pts[Math.max(0, start - 1)][1]);
+      for (var i = Math.max(1, start); i < pts.length; i++) mx.lineTo(pts[i][0], pts[i][1]);
+      mx.stroke();
+    }
+    mx.restore();
+  }
+
+  function bgSetupDisplay() {
+    var boxW = bgBox.clientWidth || 600;
+    var dw = Math.max(1, Math.min(bgState.W, Math.round(boxW)));
+    var dh = Math.max(1, Math.round(dw * bgState.H / bgState.W));
+    if (dh > 560) { dw = Math.max(1, Math.round(dw * 560 / dh)); dh = 560; }
+    bgCanvas.width = dw;
+    bgCanvas.height = dh;
+    var di = document.createElement('canvas');
+    di.width = dw; di.height = dh;
+    var dx = di.getContext('2d');
+    dx.imageSmoothingEnabled = true;
+    dx.imageSmoothingQuality = 'high';
+    dx.drawImage(bgState.srcCanvas, 0, 0, dw, dh);
+    bgState.dispImg = di;
+    bgState.dispW = dw;
+    bgState.dispH = dh;
+  }
+
+  function bgRender(cursor) {
+    if (!bgState.dispImg || !bgState.mask) return;
+    var dw = bgState.dispW, dh = bgState.dispH;
+    bgTmp.width = dw; bgTmp.height = dh;
+    var tx = bgTmp.getContext('2d');
+    tx.clearRect(0, 0, dw, dh);
+    tx.drawImage(bgState.dispImg, 0, 0);
+    tx.globalCompositeOperation = 'destination-in';
+    tx.imageSmoothingEnabled = true;
+    tx.drawImage(bgState.mask, 0, 0, dw, dh);
+    tx.globalCompositeOperation = 'source-over';
+    var ctx = bgCanvas.getContext('2d');
+    ctx.clearRect(0, 0, dw, dh);
+    ctx.drawImage(bgTmp, 0, 0);
+    var divX = Math.round(dw * bgState.divider / 100);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, divX, dh);
+    ctx.clip();
+    ctx.drawImage(bgState.dispImg, 0, 0);
+    ctx.restore();
+    ctx.fillStyle = '#0d9488';
+    ctx.fillRect(divX - 1, 0, 2, dh);
+    if (cursor && bgState.tool !== 'compare') {
+      var rect = bgCanvas.getBoundingClientRect();
+      var r = parseInt($('#bgBrush').value, 10) / 2 * (dw / (rect.width || dw));
+      ctx.beginPath();
+      ctx.arc(cursor.x, cursor.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(13,148,136,.95)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  function bgPos(e) {
+    var r = bgCanvas.getBoundingClientRect();
+    return {
+      dx: (e.clientX - r.left) * (bgState.dispW / r.width),
+      dy: (e.clientY - r.top) * (bgState.dispH / r.height),
+      fx: (e.clientX - r.left) * (bgState.W / r.width),
+      fy: (e.clientY - r.top) * (bgState.H / r.height),
+      rw: r.width
+    };
+  }
+
+  var bgPainting = null;
+  bgCanvas.addEventListener('pointerdown', function (e) {
+    if (!bgState.dispImg) return;
+    e.preventDefault();
+    try { bgCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+    var pos = bgPos(e);
+    if (bgState.tool === 'compare') {
+      bgPainting = { mode: 'divider' };
+      bgState.divider = Math.max(0, Math.min(100, pos.dx / bgState.dispW * 100));
+      bgRender();
+    } else {
+      var st = {
+        mode: bgState.tool === 'erase' ? 'erase' : 'restore',
+        size: Math.max(2, parseInt($('#bgBrush').value, 10) * (bgState.W / pos.rw)),
+        points: [[pos.fx, pos.fy]]
+      };
+      bgState.strokes.push(st);
+      bgApplyStroke(bgState.mask.getContext('2d'), st, null);
+      bgPainting = { mode: 'paint', stroke: st };
+      bgRender({ x: pos.dx, y: pos.dy });
+    }
+  });
+  bgCanvas.addEventListener('pointermove', function (e) {
+    if (!bgState.dispImg) return;
+    var pos = bgPos(e);
+    if (bgPainting && bgPainting.mode === 'divider') {
+      bgState.divider = Math.max(0, Math.min(100, pos.dx / bgState.dispW * 100));
+      bgRender();
+    } else if (bgPainting && bgPainting.mode === 'paint') {
+      var st = bgPainting.stroke;
+      st.points.push([pos.fx, pos.fy]);
+      bgApplyStroke(bgState.mask.getContext('2d'), st, st.points.length - 1);
+      bgRender({ x: pos.dx, y: pos.dy });
+    } else if (bgState.tool !== 'compare') {
+      bgRender({ x: pos.dx, y: pos.dy });
+    }
+  });
+  function bgPtrEnd() {
+    bgPainting = null;
+    bgRender();
+  }
+  bgCanvas.addEventListener('pointerup', bgPtrEnd);
+  bgCanvas.addEventListener('pointercancel', bgPtrEnd);
+  bgCanvas.addEventListener('pointerleave', function () { if (!bgPainting) bgRender(); });
+
+  document.querySelectorAll('#bgTools .chip[data-bgtool]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      bgState.tool = b.dataset.bgtool;
+      document.querySelectorAll('#bgTools .chip[data-bgtool]').forEach(function (o) {
+        o.classList.toggle('on', o === b);
+      });
+      $('#bgBrushField').hidden = bgState.tool === 'compare';
+      bgBox.classList.toggle('painting', bgState.tool !== 'compare');
+    });
+  });
+  $('#bgUndo').addEventListener('click', function () {
+    if (!bgState.strokes.length) { toast('되돌릴 수정이 없어요.'); return; }
+    bgState.strokes.pop();
+    bgReplayMask();
+    bgRender();
+  });
+  $('#bgReset').addEventListener('click', function () {
+    if (!bgState.srcCanvas) return;
+    bgState.strokes = [];
+    bgAutoMask();
+    bgReplayMask();
+    bgRender();
+    toast('자동 인식 결과로 되돌렸어요.');
+  });
+  var bgParamTimer = null;
+  $('#bgTol').addEventListener('input', function () {
+    $('#bgTolOut').textContent = this.value;
+    clearTimeout(bgParamTimer);
+    bgParamTimer = setTimeout(function () {
+      if (!bgState.srcCanvas) return;
+      bgAutoMask();
+      bgReplayMask();
+      bgRender();
+    }, 250);
+  });
+  $('#bgFeather').addEventListener('input', function () {
+    $('#bgFeatherOut').textContent = this.value;
+    clearTimeout(bgParamTimer);
+    bgParamTimer = setTimeout(function () {
+      if (!bgState.srcCanvas) return;
+      bgReplayMask();
+      bgRender();
+    }, 200);
+  });
+  $('#bgBrush').addEventListener('input', function () {
+    $('#bgBrushOut').textContent = this.value;
+  });
+  $('#bgQ').addEventListener('input', function () {
+    $('#bgQOut').textContent = Math.round(parseFloat(this.value) * 100);
+  });
+  $('#bgOutFmt').addEventListener('change', function () {
+    $('#bgJpegBgField').hidden = this.value !== 'jpeg';
+  });
+
+  function bgComposeFull() {
+    var c = document.createElement('canvas');
+    c.width = bgState.W;
+    c.height = bgState.H;
+    var x = c.getContext('2d');
+    x.drawImage(bgState.srcCanvas, 0, 0);
+    x.globalCompositeOperation = 'destination-in';
+    x.drawImage(bgState.mask, 0, 0);
+    return c;
+  }
+  $('#bgSavePng').addEventListener('click', function () {
+    if (!bgState.mask) return;
+    bgComposeFull().toBlob(function (b) {
+      if (!b) return toast('PNG 저장에 실패했어요.');
+      saveBlob(b, baseName(bgState.file.name || 'image') + '-nobg.png');
+      toast('PNG 저장 완료 (' + fmtBytes(b.size) + ')');
+    }, 'image/png');
+  });
+  $('#bgSaveOpt').addEventListener('click', function () {
+    if (!bgState.mask) return;
+    var q = parseFloat($('#bgQ').value);
+    var fmt = $('#bgOutFmt').value;
+    var composed = bgComposeFull();
+    var work;
+    if (fmt === 'jpeg') {
+      var c = document.createElement('canvas');
+      c.width = bgState.W; c.height = bgState.H;
+      var x = c.getContext('2d');
+      x.fillStyle = $('#bgJpegBg').value;
+      x.fillRect(0, 0, c.width, c.height);
+      x.drawImage(composed, 0, 0);
+      work = encodeCanvas(c, 'image/jpeg', q).then(function (b) { return { b: b, ext: 'jpg' }; });
+    } else {
+      work = encodeCanvas(composed, supportsWebP ? 'image/webp' : 'image/png', supportsWebP ? q : undefined)
+        .then(function (b) { return { b: b, ext: supportsWebP ? 'webp' : 'png' }; });
+    }
+    work.then(function (res) {
+      if (!res.b) return toast('저장에 실패했어요.');
+      saveBlob(res.b, baseName(bgState.file.name || 'image') + '-nobg.' + res.ext);
+      toast('압축 저장 완료 (' + fmtBytes(res.b.size) + ')');
+    });
+  });
+  $('#bgZoom').addEventListener('click', function () {
+    if (!bgState.mask) return;
+    bgComposeFull().toBlob(function (b) {
+      if (!b) return;
+      openLightbox(URL.createObjectURL(b), baseName(bgState.file.name || 'image') + '-nobg.png · ' + fmtBytes(b.size));
+    }, 'image/png');
+  });
+  var bgFileInput = $('#bgFile');
+  bgFileInput.addEventListener('change', function () {
+    var f = bgFileInput.files && bgFileInput.files[0];
+    bgFileInput.value = '';
+    if (f) loadBgFile(f);
+  });
+  var bgDropzone = $('#bgDropzone');
+  bgDropzone.addEventListener('click', function () { bgFileInput.click(); });
+  bgDropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bgFileInput.click(); }
+  });
+  window.addEventListener('resize', function () {
+    if (bgState.dispImg && !$('#panel-bg').hidden) {
+      bgSetupDisplay();
+      bgRender();
+    }
   });
 
   /* ================= metadata: JPEG EXIF + PNG text chunks ================= */
@@ -3094,7 +3578,10 @@ textarea {
       reprocessAll();
     },
     addFiles: addFiles,
-    makeZip: makeZip
+    makeZip: makeZip,
+    get bgState() { return bgState; },
+    loadBgFile: loadBgFile,
+    bgComposeFull: bgComposeFull
   };
 
   /* ================= service worker ================= */
