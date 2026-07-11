@@ -570,7 +570,11 @@ textarea {
     <div class="card b64-card">
       <h2>이미지 → Base64 (Data URI)</h2>
       <p class="muted">파일을 압축 없이 그대로 문자열로 바꿔요. 압축까지 하려면 ‘압축하기’ 탭의 <b>Base64 복사</b>를 쓰세요.</p>
-      <label class="btn file-btn">파일 선택<input type="file" id="b64File" accept="image/*,.svg" class="sr-input"></label>
+      <div class="dropzone dropzone-sm" id="b64Dropzone" role="button" tabindex="0" aria-label="Base64로 변환할 이미지 선택 또는 드래그하여 추가">
+        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · 압축 없이 원본 그대로 변환</p>
+        <input type="file" id="b64File" accept="image/*,.svg" hidden>
+      </div>
       <div id="b64EncResult" hidden>
         <p id="b64EncStats" class="muted"></p>
         <textarea id="b64Out" readonly rows="5" spellcheck="false" aria-label="Base64 결과"></textarea>
@@ -597,7 +601,11 @@ textarea {
     <div class="card b64-card">
       <h2>메타데이터 보기·편집</h2>
       <p class="muted">픽셀은 건드리지 않고 메타데이터만 읽고 고쳐요 — 화질 손실 0. JPEG는 EXIF, PNG는 텍스트 청크를 사용해요.</p>
-      <label class="btn file-btn">파일 선택<input type="file" id="metaFile" accept="image/jpeg,image/png,.jpg,.jpeg,.png" class="sr-input"></label>
+      <div class="dropzone dropzone-sm" id="metaDropzone" role="button" tabindex="0" aria-label="메타데이터를 편집할 이미지 선택 또는 드래그하여 추가">
+        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">JPG · PNG 지원 · Ctrl+V 붙여넣기 지원</p>
+        <input type="file" id="metaFile" accept="image/jpeg,image/png,.jpg,.jpeg,.png" hidden>
+      </div>
       <div id="metaBody" hidden>
         <p id="metaSummary" class="muted svg-opts"></p>
         <div id="metaList" class="meta-list"></div>
@@ -1891,6 +1899,11 @@ textarea {
     b64File.value = '';
     if (f) encodeFileToBase64(f);
   });
+  var b64Dropzone = $('#b64Dropzone');
+  b64Dropzone.addEventListener('click', function () { b64File.click(); });
+  b64Dropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); b64File.click(); }
+  });
 
   function copyEnc(kind) {
     if (!b64Enc.dataUrl) return;
@@ -2819,6 +2832,11 @@ textarea {
     var f = this.files && this.files[0];
     this.value = '';
     if (f) loadMetaFile(f);
+  });
+  var metaDropzone = $('#metaDropzone');
+  metaDropzone.addEventListener('click', function () { $('#metaFile').click(); });
+  metaDropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#metaFile').click(); }
   });
   $('#metaSave').addEventListener('click', function () {
     if (!metaState.bytes) return;
