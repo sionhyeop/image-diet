@@ -148,10 +148,14 @@ main { padding-bottom: 30px; }
 .segmented input:checked + span { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(15,23,42,.15); }
 .segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type="range"] { width: 100%; accent-color: var(--accent); margin: 8px 0 0; }
-select, input[type="number"] {
+select, input[type="number"], input[type="text"], input[type="datetime-local"] {
   width: 100%; padding: 8px 10px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--panel); color: var(--text);
 }
+.meta-list { margin: 14px 0 2px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: var(--panel-2); }
+.meta-row { display: flex; gap: 12px; font-size: 13px; padding: 3px 0; }
+.meta-k { color: var(--muted); flex: none; min-width: 110px; }
+.meta-v { word-break: break-all; min-width: 0; }
 input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
 .target-row { display: flex; gap: 8px; align-items: center; }
 .target-row input[type="number"] { max-width: 110px; }
@@ -191,8 +195,8 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
 }
-.item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
-.item + .item { border-top: 1px solid var(--border); }
+.item { display: flex; align-items: center; gap: 12px; padding: 9px 14px; }
+.item + .item { border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
 .thumb-wrap {
   position: relative; width: 52px; height: 52px; border-radius: 8px; overflow: hidden;
   border: 1px solid var(--border); flex: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
@@ -236,18 +240,42 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .notes { margin: 2px 0 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notes:empty { display: none; }
 .item.is-error .notes { color: var(--danger); white-space: normal; }
-.actions { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; flex: none; }
-.actions .btn { padding: 6px 11px; font-size: 12.5px; white-space: nowrap; }
+.actions { display: flex; flex-wrap: nowrap; gap: 5px; align-items: center; flex: none; min-width: 0; }
+.actions .btn { padding: 6px 10px; font-size: 12.5px; white-space: nowrap; flex: none; }
 .icon-btn {
   width: 30px; height: 30px; border-radius: 8px; flex: none;
   border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 14px;
 }
 .icon-btn:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
-@media (max-width: 640px) {
+@media (max-width: 900px) {
   .item { flex-wrap: wrap; row-gap: 8px; }
-  .actions { flex: 1 1 100%; }
+  .actions { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; }
+  .actions::-webkit-scrollbar { display: none; }
   .actions .icon-btn { margin-left: auto; }
 }
+@media (max-width: 480px) {
+  .actions .btn { padding: 5px 8px; font-size: 11.5px; }
+  .icon-btn { width: 27px; height: 27px; font-size: 13px; }
+}
+
+/* ---------- lightbox ---------- */
+.lightbox[hidden] { display: none; }
+.lightbox {
+  position: fixed; inset: 0; z-index: 200; background: rgba(8, 10, 14, .88);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; cursor: zoom-out;
+}
+.lightbox img {
+  max-width: min(94vw, 1400px); max-height: 82vh; object-fit: contain; border-radius: 8px;
+  background: repeating-conic-gradient(#3a4150 0% 25%, #262c38 0% 50%) 0 0 / 18px 18px;
+  box-shadow: 0 12px 50px rgba(0, 0, 0, .6);
+}
+.lightbox p { margin: 0; color: #d7dde6; font-size: 13.5px; text-align: center; }
+.lb-close {
+  position: absolute; top: 14px; right: 16px; width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .25); background: rgba(0, 0, 0, .45); color: #fff; font-size: 17px;
+}
+.lb-close:hover { background: rgba(255, 255, 255, .15); }
 
 /* ---------- base64 tab ---------- */
 .b64-card { padding: 20px; margin-top: 16px; }
@@ -267,8 +295,27 @@ textarea {
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 16px 16px;
   margin: 12px 0 8px;
 }
-.svg-preview { width: 220px; height: 220px; }
 .svg-opts { margin-top: 16px; }
+.cmp-wrap { margin: 14px 0 4px; max-width: 500px; }
+.cmp-box {
+  position: relative; width: 100%; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border); cursor: col-resize; touch-action: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 16px 16px;
+}
+.cmp-box img { display: block; width: 100%; height: auto; -webkit-user-drag: none; pointer-events: none; }
+#svgPreview { position: absolute; inset: 0; height: 100%; }
+.cmp-line {
+  position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); pointer-events: none;
+}
+.cmp-tag {
+  position: absolute; top: 6px; font-size: 10px; font-weight: 700; color: #fff;
+  background: rgba(0, 0, 0, .55); padding: 1px 7px; border-radius: 999px; pointer-events: none;
+}
+.cmp-tag.left { left: 6px; }
+.cmp-tag.right { right: 6px; }
+#svgCmpPos { width: 100%; margin-top: 8px; }
 .check-label { display: flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; padding: 7px 0; }
 .check-label input { accent-color: var(--accent); width: 16px; height: 16px; }
 .dec-preview img { width: 100%; height: 100%; object-fit: contain; }
@@ -331,6 +378,7 @@ textarea {
   <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
   <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
   <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
+  <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">메타데이터</button>
 </nav>
 
 <main class="wrap">
@@ -400,8 +448,12 @@ textarea {
           <label class="field-label" for="bg">투명 배경 채움색</label>
           <input type="color" id="bg">
         </div>
+        <div class="field">
+          <span class="field-label">메타데이터</span>
+          <label class="check-label"><input type="checkbox" id="keepMeta"> 메타데이터 유지하기</label>
+        </div>
       </div>
-      <p class="settings-hint">설정을 바꾸면 목록의 이미지가 자동으로 다시 압축돼요. 재인코딩된 결과에서는 EXIF(위치정보 등) 메타데이터가 제거돼요 — ‘원본 유지’로 표시된 항목은 원본 그대로예요.</p>
+      <p class="settings-hint">설정을 바꾸면 목록의 이미지가 자동으로 다시 압축돼요. 기본값은 EXIF(위치정보 등) 제거 — ‘메타데이터 유지하기’를 켜면 원본 EXIF를 JPEG·PNG 결과에 복사해요 (WebP 제외).</p>
     </section>
 
     <section id="summary" class="card summary" hidden>
@@ -420,14 +472,30 @@ textarea {
       <h2>이미지 → SVG 벡터 변환</h2>
       <p class="muted">색 면의 외곽선을 추적해 진짜 벡터 패스로 바꿔요. 로고·아이콘·일러스트처럼 색 수가 적은 이미지에 잘 맞고, 사진은 포스터화된 그림처럼 표현돼요.</p>
       <label class="btn file-btn">파일 선택<input type="file" id="svgFile" accept="image/*" class="sr-input"></label>
+      <div class="field svg-opts">
+        <span class="field-label">프리셋 <span class="sub">— 이미지 종류에 맞는 시작점</span></span>
+        <div class="chips">
+          <button type="button" class="chip" data-svg-preset="logo">로고·아이콘</button>
+          <button type="button" class="chip" data-svg-preset="illust">일러스트</button>
+          <button type="button" class="chip" data-svg-preset="photo">사진 (포스터화)</button>
+        </div>
+      </div>
       <div class="settings-grid svg-opts">
         <div class="field">
-          <label class="field-label" for="svgColors">색상 수 <output id="svgColorsOut" for="svgColors">6</output></label>
+          <label class="field-label" for="svgColors">색상 수 <output id="svgColorsOut" for="svgColors">6</output><span class="sub"> — 색 양자화 단계</span></label>
           <input type="range" id="svgColors" min="2" max="16" step="1" value="6">
         </div>
         <div class="field">
-          <label class="field-label" for="svgDetail">디테일 <span class="sub">(거칠게 ↔ 섬세하게)</span></label>
+          <label class="field-label" for="svgDetail">추적 정밀도 <output id="svgDetailOut" for="svgDetail">보통</output><span class="sub"> — 잔 디테일 포착량</span></label>
           <input type="range" id="svgDetail" min="1" max="5" step="1" value="3">
+        </div>
+        <div class="field">
+          <label class="field-label" for="svgSimplify">외곽선 단순화 <output id="svgSimplifyOut" for="svgSimplify">보통</output><span class="sub"> — 조절점 수 ↓</span></label>
+          <input type="range" id="svgSimplify" min="0" max="4" step="1" value="2">
+        </div>
+        <div class="field">
+          <label class="field-label" for="svgNoise">잡티 제거 <output id="svgNoiseOut" for="svgNoise">보통</output><span class="sub"> — 작은 얼룩 무시</span></label>
+          <input type="range" id="svgNoise" min="0" max="4" step="1" value="2">
         </div>
         <div class="field">
           <span class="field-label">곡선 처리</span>
@@ -435,7 +503,15 @@ textarea {
         </div>
       </div>
       <div id="svgResult" hidden>
-        <div class="dec-preview svg-preview"><img id="svgPreview" alt="SVG 변환 결과 미리보기"></div>
+        <div class="cmp-wrap">
+          <div class="cmp-box" id="svgCmp">
+            <img id="svgOrig" alt="원본 이미지">
+            <img id="svgPreview" alt="SVG 변환 결과">
+            <div class="cmp-line" id="svgCmpLine"></div>
+            <span class="cmp-tag left">원본</span><span class="cmp-tag right">SVG</span>
+          </div>
+          <input type="range" id="svgCmpPos" min="0" max="100" step="1" value="50" aria-label="원본과 SVG의 비교 경계 위치">
+        </div>
         <p id="svgStats" class="muted" role="status"></p>
         <div class="btn-row">
           <button class="btn primary" id="svgDownload" type="button" disabled>SVG 다운로드</button>
@@ -472,24 +548,56 @@ textarea {
       </div>
     </div>
   </section>
+  <section id="panel-meta" role="tabpanel" aria-labelledby="tabMeta" hidden>
+    <div class="card b64-card">
+      <h2>메타데이터 보기·편집</h2>
+      <p class="muted">픽셀은 건드리지 않고 메타데이터만 읽고 고쳐요 — 화질 손실 0. JPEG는 EXIF, PNG는 텍스트 청크를 사용해요.</p>
+      <label class="btn file-btn">파일 선택<input type="file" id="metaFile" accept="image/jpeg,image/png,.jpg,.jpeg,.png" class="sr-input"></label>
+      <div id="metaBody" hidden>
+        <p id="metaSummary" class="muted svg-opts"></p>
+        <div id="metaList" class="meta-list"></div>
+        <div class="settings-grid svg-opts">
+          <div class="field">
+            <label class="field-label" for="metaDesc">설명 / 제목</label>
+            <input type="text" id="metaDesc" maxlength="500" placeholder="예: 제주 협재 해변">
+          </div>
+          <div class="field">
+            <label class="field-label" for="metaArtist">작가</label>
+            <input type="text" id="metaArtist" maxlength="200" placeholder="예: 홍길동">
+          </div>
+          <div class="field">
+            <label class="field-label" for="metaCopyright">저작권</label>
+            <input type="text" id="metaCopyright" maxlength="200" placeholder="예: © 2026 홍길동">
+          </div>
+          <div class="field">
+            <label class="field-label" for="metaSoftware">소프트웨어</label>
+            <input type="text" id="metaSoftware" maxlength="200">
+          </div>
+          <div class="field">
+            <label class="field-label" for="metaDate">촬영 일시</label>
+            <input type="datetime-local" id="metaDate" step="1">
+          </div>
+          <div class="field">
+            <label class="field-label" for="metaLat">GPS 위도 / 경도</label>
+            <div class="target-row">
+              <input type="number" id="metaLat" step="any" min="-90" max="90" placeholder="37.5665" aria-label="위도">
+              <input type="number" id="metaLon" step="any" min="-180" max="180" placeholder="126.9780" aria-label="경도">
+            </div>
+            <p class="warn-text" id="metaGpsNote" hidden>PNG에는 표준 GPS 항목이 없어 저장되지 않아요.</p>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="metaSave" type="button">적용해서 다운로드</button>
+          <button class="btn" id="metaStrip" type="button">메타데이터 전부 제거</button>
+        </div>
+        <p class="settings-hint">빈 칸으로 두면 해당 항목은 저장되지 않아요(기존 값 삭제). JPEG의 카메라 제조사·모델·방향 정보는 자동으로 보존돼요.</p>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer class="wrap site-footer">
   <p>🔒 모든 변환은 내 브라우저 안에서만 일어나요 — 어떤 이미지도 서버로 전송되지 않아요. 인터넷이 끊겨도 동작해요.</p>
-  <details>
-    <summary>GitHub Pages로 배포하기</summary>
-    <ol>
-      <li>GitHub에서 새 저장소를 만드세요 (예: <code>image-diet</code>).</li>
-      <li>이 폴더에서 아래 명령을 실행하세요.
-<pre><code>git init -b main
-git add .
-git commit -m "image diet"
-git remote add origin https://github.com/&lt;아이디&gt;/image-diet.git
-git push -u origin main</code></pre></li>
-      <li>저장소 <b>Settings → Pages</b>에서 Source를 <code>Deploy from a branch</code>, Branch를 <code>main</code> / <code>(root)</code>로 지정하면 몇 분 뒤 <code>https://&lt;아이디&gt;.github.io/image-diet/</code>에서 열려요.</li>
-    </ol>
-    <p><code>index.html</code> 파일 하나만 따로 저장해도 어디서든 오프라인으로 동작해요.</p>
-  </details>
 </footer>
 
 <template id="cardTpl">
@@ -507,6 +615,7 @@ git push -u origin main</code></pre></li>
       <p class="notes muted"></p>
     </div>
     <div class="actions">
+      <button class="btn" data-act="preview" type="button">미리보기</button>
       <button class="btn primary" data-act="download" type="button">다운로드</button>
       <button class="btn" data-act="copy64" type="button">Base64 복사</button>
       <button class="btn" data-act="copyhtml" type="button">HTML 복사</button>
@@ -514,6 +623,12 @@ git push -u origin main</code></pre></li>
     </div>
   </li>
 </template>
+
+<div id="lightbox" class="lightbox" hidden>
+  <img id="lightboxImg" alt="결과 이미지 미리보기">
+  <p id="lightboxCap"></p>
+  <button id="lightboxClose" class="lb-close" type="button" aria-label="미리보기 닫기">✕</button>
+</div>
 
 <div id="toasts" aria-live="polite"></div>
 
@@ -570,7 +685,8 @@ git push -u origin main</code></pre></li>
   var tabs = [
     { btn: $('#tabCompress'), panel: $('#panel-compress') },
     { btn: $('#tabSvg'), panel: $('#panel-svg') },
-    { btn: $('#tabBase64'), panel: $('#panel-base64') }
+    { btn: $('#tabBase64'), panel: $('#panel-base64') },
+    { btn: $('#tabMeta'), panel: $('#panel-meta') }
   ];
   tabs.forEach(function (t) {
     t.btn.addEventListener('click', function () {
@@ -683,7 +799,7 @@ git push -u origin main</code></pre></li>
   }
 
   /* ================= settings ================= */
-  var DEFAULTS = { mode: 'quality', quality: 0.8, targetKB: 60, maxSideSel: '1920', maxSideCustom: 1600, format: 'auto', bg: '#ffffff' };
+  var DEFAULTS = { mode: 'quality', quality: 0.8, targetKB: 60, maxSideSel: '1920', maxSideCustom: 1600, format: 'auto', bg: '#ffffff', keepMeta: false };
   var settings = (function () {
     try {
       var raw = localStorage.getItem('imgdiet.settings.v1');
@@ -710,7 +826,7 @@ git push -u origin main</code></pre></li>
   var el = {
     quality: $('#quality'), qualityOut: $('#qualityOut'),
     targetKB: $('#targetKB'), maxSide: $('#maxSide'), maxSideCustom: $('#maxSideCustom'),
-    format: $('#format'), bg: $('#bg'),
+    format: $('#format'), bg: $('#bg'), keepMeta: $('#keepMeta'),
     fieldQuality: $('#fieldQuality'), fieldTarget: $('#fieldTarget'), fieldBg: $('#fieldBg'),
     webpWarn: $('#webpWarn'),
     dropzone: $('#dropzone'), fileInput: $('#fileInput'),
@@ -730,6 +846,7 @@ git push -u origin main</code></pre></li>
     el.maxSideCustom.hidden = settings.maxSideSel !== 'custom';
     el.format.value = settings.format;
     el.bg.value = settings.bg;
+    el.keepMeta.checked = !!settings.keepMeta;
     el.fieldQuality.hidden = settings.mode !== 'quality';
     el.fieldTarget.hidden = settings.mode !== 'target';
     el.fieldBg.hidden = settings.format !== 'jpeg';
@@ -785,6 +902,10 @@ git push -u origin main</code></pre></li>
   });
   el.bg.addEventListener('input', function () {
     settings.bg = el.bg.value;
+    scheduleReprocess();
+  });
+  el.keepMeta.addEventListener('change', function () {
+    settings.keepMeta = el.keepMeta.checked;
     scheduleReprocess();
   });
 
@@ -873,7 +994,49 @@ git push -u origin main</code></pre></li>
     if (settings.format === 'jpeg') return 'image/jpeg';
     if (settings.format === 'png') return 'image/png';
     if (item.hasAlpha) return supportsWebP ? 'image/webp' : 'image/png';
+    if (settings.keepMeta && item.exifSeg) return 'image/jpeg';
     return supportsWebP ? 'image/webp' : 'image/jpeg';
+  }
+
+  /* 재인코딩 결과에 원본 EXIF를 복사. 픽셀은 이미 방향 보정돼 있으므로 Orientation은 1로 되돌린다 */
+  function patchOrientation(seg) {
+    var out = seg.slice();
+    var t = 10;
+    var little = out[t] === 0x49;
+    var u16 = function (p) { return little ? out[p] | (out[p + 1] << 8) : (out[p] << 8) | out[p + 1]; };
+    var u32 = function (p) {
+      return little
+        ? (out[p] | (out[p + 1] << 8) | (out[p + 2] << 16) | (out[p + 3] << 24)) >>> 0
+        : ((out[p] << 24) | (out[p + 1] << 16) | (out[p + 2] << 8) | out[p + 3]) >>> 0;
+    };
+    var ifd = t + u32(t + 4);
+    if (ifd + 2 > out.length) return out;
+    var n = u16(ifd);
+    for (var e = 0; e < n; e++) {
+      var entry = ifd + 2 + e * 12;
+      if (entry + 12 > out.length) break;
+      if (u16(entry) === 0x0112) {
+        if (little) { out[entry + 8] = 1; out[entry + 9] = 0; }
+        else { out[entry + 8] = 0; out[entry + 9] = 1; }
+        break;
+      }
+    }
+    return out;
+  }
+  function embedExif(blob, fmt, exifSeg) {
+    return blob.arrayBuffer().then(function (ab) {
+      var bytes = new Uint8Array(ab);
+      var seg = patchOrientation(exifSeg);
+      if (fmt === 'image/jpeg') return rebuildJpeg(bytes, seg, false);
+      var chunk = makePngChunk('eXIf', seg.slice(10));
+      var chunks = parsePngChunks(bytes);
+      var parts = [bytes.slice(0, 8)];
+      chunks.forEach(function (c) {
+        parts.push(bytes.slice(c.start, c.end));
+        if (c.type === 'IHDR') parts.push(chunk);
+      });
+      return new Blob(parts, { type: 'image/png' });
+    }).catch(function () { return null; });
   }
 
   function compressToTarget(source, tw, th, targetBytes, fmt, bg, isStale) {
@@ -998,6 +1161,20 @@ git push -u origin main</code></pre></li>
         item.hasAlpha = item.file.type === 'image/jpeg' ? false : detectAlpha(item.source);
       });
     }
+    if (item.exifSeg === undefined) {
+      item.exifSeg = null;
+      if (item.file.type === 'image/jpeg') {
+        p = p.then(function () { return item.file.arrayBuffer(); }).then(function (ab) {
+          var bytes = new Uint8Array(ab);
+          if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+            var segs = parseJpegSegments(bytes).segs;
+            for (var i = 0; i < segs.length; i++) {
+              if (segIsExif(bytes, segs[i])) { item.exifSeg = bytes.slice(segs[i].start, segs[i].end); break; }
+            }
+          }
+        });
+      }
+    }
     return p.then(function () {
       if (isStale()) return;
       var maxSide = maxSideOf();
@@ -1073,19 +1250,32 @@ git push -u origin main</code></pre></li>
           notes.push('결과가 원본보다 커요 — 형식이나 품질을 조정해 보세요.');
         }
         if (item.file.type === 'image/gif' && !usedOriginal) notes.push('GIF 애니메이션은 첫 프레임만 변환돼요.');
-        if (item.result && item.result.url) URL.revokeObjectURL(item.result.url);
-        item.result = {
-          blob: out.blob,
-          url: URL.createObjectURL(out.blob),
-          w: out.w, h: out.h,
-          quality: out.quality,
-          format: outFmt,
-          usedOriginal: usedOriginal,
-          notes: notes,
-          dataUrl: null
+        var finalize = function (finalBlob) {
+          if (item.result && item.result.url) URL.revokeObjectURL(item.result.url);
+          item.result = {
+            blob: finalBlob,
+            url: URL.createObjectURL(finalBlob),
+            w: out.w, h: out.h,
+            quality: out.quality,
+            format: outFmt,
+            usedOriginal: usedOriginal,
+            notes: notes,
+            dataUrl: null
+          };
+          item.status = 'done';
+          item.error = null;
         };
-        item.status = 'done';
-        item.error = null;
+        if (!usedOriginal && settings.keepMeta && item.exifSeg) {
+          if (outFmt === 'image/jpeg' || outFmt === 'image/png') {
+            return embedExif(out.blob, outFmt, item.exifSeg).then(function (withMeta) {
+              if (isStale()) return;
+              if (withMeta) notes.push('원본 EXIF 메타데이터를 유지했어요.');
+              finalize(withMeta || out.blob);
+            });
+          }
+          notes.push('WebP에는 메타데이터를 담을 수 없어요 — JPEG나 PNG 형식을 선택하면 유지돼요.');
+        }
+        finalize(out.blob);
       });
     }).catch(function (e) {
       if (myGen !== gen || item.removed) return;
@@ -1097,6 +1287,25 @@ git push -u origin main</code></pre></li>
       renderSummary();
     });
   }
+
+  /* ================= lightbox ================= */
+  var lightbox = $('#lightbox');
+  var lightboxImg = $('#lightboxImg');
+  var lightboxCap = $('#lightboxCap');
+  function openLightbox(url, caption) {
+    lightboxImg.src = url;
+    lightboxCap.textContent = caption || '';
+    lightbox.hidden = false;
+    $('#lightboxClose').focus();
+  }
+  function closeLightbox() {
+    lightbox.hidden = true;
+    lightboxImg.src = '';
+  }
+  lightbox.addEventListener('click', closeLightbox);
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !lightbox.hidden) closeLightbox();
+  });
 
   /* ================= card UI ================= */
   var cardTpl = $('#cardTpl');
@@ -1142,7 +1351,9 @@ git push -u origin main</code></pre></li>
       var act = btn.dataset.act;
       if (act === 'remove') return removeItem(item);
       if (item.status !== 'done') return;
-      if (act === 'download') {
+      if (act === 'preview') {
+        openLightbox(item.result.url, outName(item) + ' · ' + fmtBytes(item.result.blob.size) + ' · ' + item.result.w + '×' + item.result.h);
+      } else if (act === 'download') {
         saveBlob(item.result.blob, outName(item));
       } else if (act === 'copy64' || act === 'copyhtml') {
         var makeText = function () {
@@ -1457,7 +1668,9 @@ git push -u origin main</code></pre></li>
   /* 활성 탭에 맞는 도구로 파일 전달 */
   function routeFiles(files, fromPaste) {
     if (!files.length) return;
-    if (!$('#panel-svg').hidden) {
+    if (!$('#panel-meta').hidden) {
+      loadMetaFile(files[0]);
+    } else if (!$('#panel-svg').hidden) {
       vectorizeFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
     } else if (!$('#panel-base64').hidden) {
@@ -1803,6 +2016,7 @@ git push -u origin main</code></pre></li>
       idx[p] = best;
     }
     var paths = [];
+    var totalLoops = 0, totalNodes = 0;
     for (var pc = 0; pc < palette.length; pc++) {
       var mask = new Uint8Array(w * h);
       var count = 0;
@@ -1815,37 +2029,80 @@ git push -u origin main</code></pre></li>
         if (pts.length < 3) continue;
         if (Math.abs(polyArea(pts)) < opts.minArea) continue;
         d += loopToPath(pts, opts.smooth);
+        totalLoops++;
+        totalNodes += pts.length;
       }
       if (d) paths.push({ color: rgbHex(palette[pc]), d: d });
     }
-    if (!paths.length) throw new Error('추적할 만한 색 면을 찾지 못했어요. 디테일을 높여 보세요.');
+    if (!paths.length) throw new Error('추적할 만한 색 면을 찾지 못했어요. 추적 정밀도를 높이거나 잡티 제거를 낮춰 보세요.');
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + ' ' + h + '" width="' + sw + '" height="' + sh + '">\n' +
       paths.map(function (pp) {
         return '  <path fill="' + pp.color + '" stroke="' + pp.color + '" stroke-width="0.4" fill-rule="evenodd" d="' + pp.d + '"/>';
       }).join('\n') + '\n</svg>\n';
-    return { svg: svg, colors: paths.length };
+    return { svg: svg, colors: paths.length, loops: totalLoops, nodes: totalNodes };
   }
 
   /* ---------- svg tab UI ---------- */
   var svgFile = $('#svgFile');
   var svgColors = $('#svgColors'), svgColorsOut = $('#svgColorsOut');
-  var svgDetail = $('#svgDetail'), svgSmooth = $('#svgSmooth');
+  var svgDetail = $('#svgDetail'), svgDetailOut = $('#svgDetailOut');
+  var svgSimplify = $('#svgSimplify'), svgSimplifyOut = $('#svgSimplifyOut');
+  var svgNoise = $('#svgNoise'), svgNoiseOut = $('#svgNoiseOut');
+  var svgSmooth = $('#svgSmooth');
   var svgResult = $('#svgResult'), svgPreview = $('#svgPreview'), svgStats = $('#svgStats');
+  var svgOrig = $('#svgOrig'), svgCmp = $('#svgCmp'), svgCmpLine = $('#svgCmpLine'), svgCmpPos = $('#svgCmpPos');
   var svgDownload = $('#svgDownload'), svgCopy = $('#svgCopy');
-  var svgState = { file: null, source: null, url: null, svg: '', previewUrl: null, seq: 0 };
+  var svgState = { file: null, source: null, url: null, origUrl: null, svg: '', previewUrl: null, seq: 0 };
+
+  var SVG_LV5 = ['최저', '낮음', '보통', '높음', '최고'];
+  var SVG_LV5B = ['끄기', '약하게', '보통', '강하게', '최대'];
+  function syncSvgOutputs() {
+    svgColorsOut.textContent = svgColors.value;
+    svgDetailOut.textContent = SVG_LV5[parseInt(svgDetail.value, 10) - 1];
+    svgSimplifyOut.textContent = SVG_LV5B[parseInt(svgSimplify.value, 10)];
+    svgNoiseOut.textContent = SVG_LV5B[parseInt(svgNoise.value, 10)];
+    svgDetail.setAttribute('aria-valuetext', svgDetailOut.textContent);
+    svgSimplify.setAttribute('aria-valuetext', svgSimplifyOut.textContent);
+    svgNoise.setAttribute('aria-valuetext', svgNoiseOut.textContent);
+  }
+  syncSvgOutputs();
 
   function svgOpts() {
-    var d = parseInt(svgDetail.value, 10);
     var RES = [96, 160, 256, 384, 512];
-    var TOL = [2.4, 1.6, 1.1, 0.8, 0.6];
+    var TOL = [0.3, 0.6, 1.0, 1.6, 2.4];
+    var AREA = [0, 3, 9, 24, 60];
     return {
       colors: parseInt(svgColors.value, 10),
-      workRes: RES[d - 1],
-      tol: TOL[d - 1],
-      minArea: TOL[d - 1] * TOL[d - 1] * 8,
+      workRes: RES[parseInt(svgDetail.value, 10) - 1],
+      tol: TOL[parseInt(svgSimplify.value, 10)],
+      minArea: AREA[parseInt(svgNoise.value, 10)],
       smooth: svgSmooth.checked
     };
   }
+
+  function setCmp(p) {
+    p = Math.max(0, Math.min(100, p));
+    svgCmpPos.value = p;
+    svgPreview.style.clipPath = 'inset(0 0 0 ' + p + '%)';
+    svgCmpLine.style.left = 'calc(' + p + '% - 1px)';
+  }
+  svgCmpPos.addEventListener('input', function () { setCmp(parseFloat(svgCmpPos.value)); });
+  svgCmp.addEventListener('pointerdown', function (e) {
+    try { svgCmp.setPointerCapture(e.pointerId); } catch (err) {}
+    var move = function (ev) {
+      var r = svgCmp.getBoundingClientRect();
+      setCmp((ev.clientX - r.left) / r.width * 100);
+    };
+    move(e);
+    svgCmp.addEventListener('pointermove', move);
+    var up = function () {
+      svgCmp.removeEventListener('pointermove', move);
+      svgCmp.removeEventListener('pointerup', up);
+      svgCmp.removeEventListener('pointercancel', up);
+    };
+    svgCmp.addEventListener('pointerup', up);
+    svgCmp.addEventListener('pointercancel', up);
+  });
 
   function runVectorize() {
     if (!svgState.source) return;
@@ -1863,7 +2120,7 @@ git push -u origin main</code></pre></li>
         svgState.previewUrl = URL.createObjectURL(new Blob([res.svg], { type: 'image/svg+xml' }));
         svgPreview.src = svgState.previewUrl;
         svgStats.textContent = (svgState.file.name || '이미지') + ' · ' + fmtBytes(svgState.file.size) +
-          ' → SVG ' + fmtBytes(res.svg.length) + ' · 색상 ' + res.colors + '개';
+          ' → SVG ' + fmtBytes(res.svg.length) + ' · 색상 ' + res.colors + '개 · 패스 ' + res.loops + '개 · 조절점 ' + res.nodes + '개';
         svgDownload.disabled = svgCopy.disabled = false;
       } catch (e) {
         svgStats.textContent = (e && e.message) || 'SVG 변환에 실패했어요.';
@@ -1880,10 +2137,14 @@ git push -u origin main</code></pre></li>
         return;
       }
       if (svgState.url) URL.revokeObjectURL(svgState.url);
+      if (svgState.origUrl) URL.revokeObjectURL(svgState.origUrl);
       if (svgState.source && typeof svgState.source.close === 'function') { try { svgState.source.close(); } catch (e) {} }
       svgState.file = f;
       svgState.source = dec.source;
       svgState.url = dec.url;
+      svgState.origUrl = URL.createObjectURL(f);
+      svgOrig.src = svgState.origUrl;
+      setCmp(50);
       runVectorize();
     }).catch(function () { toast('이미지를 열지 못했어요.'); });
   }
@@ -1898,12 +2159,32 @@ git push -u origin main</code></pre></li>
     clearTimeout(svgOptTimer);
     svgOptTimer = setTimeout(runVectorize, 300);
   }
-  svgColors.addEventListener('input', function () {
-    svgColorsOut.textContent = svgColors.value;
-    scheduleVectorize();
+  [svgColors, svgDetail, svgSimplify, svgNoise].forEach(function (input) {
+    input.addEventListener('input', function () {
+      syncSvgOutputs();
+      scheduleVectorize();
+    });
   });
-  svgDetail.addEventListener('input', scheduleVectorize);
   svgSmooth.addEventListener('change', scheduleVectorize);
+
+  var SVG_PRESETS = {
+    logo: { colors: 4, detail: 5, simplify: 2, noise: 3, smooth: true },
+    illust: { colors: 8, detail: 4, simplify: 1, noise: 2, smooth: true },
+    photo: { colors: 16, detail: 5, simplify: 1, noise: 1, smooth: true }
+  };
+  document.querySelectorAll('.chip[data-svg-preset]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var p = SVG_PRESETS[chip.dataset.svgPreset];
+      if (!p) return;
+      svgColors.value = p.colors;
+      svgDetail.value = p.detail;
+      svgSimplify.value = p.simplify;
+      svgNoise.value = p.noise;
+      svgSmooth.checked = p.smooth;
+      syncSvgOutputs();
+      runVectorize();
+    });
+  });
   svgDownload.addEventListener('click', function () {
     if (!svgState.svg) return;
     saveBlob(new Blob([svgState.svg], { type: 'image/svg+xml' }), baseName(svgState.file.name || 'image') + '.svg');
@@ -1913,6 +2194,432 @@ git push -u origin main</code></pre></li>
     copyText(svgState.svg).then(function (ok) {
       toast(ok ? 'SVG 코드 복사 완료 (' + fmtBytes(svgState.svg.length) + ')' : '복사에 실패했어요.');
     });
+  });
+
+  /* ================= metadata: JPEG EXIF + PNG text chunks ================= */
+  var META_TAGS = {
+    0x010E: 'desc', 0x010F: 'make', 0x0110: 'model', 0x0112: 'orientation',
+    0x0131: 'software', 0x0132: 'dateTime', 0x013B: 'artist', 0x8298: 'copyright'
+  };
+  var PNG_KEYS = { desc: 'Description', artist: 'Author', copyright: 'Copyright', software: 'Software', dateTime: 'Creation Time' };
+
+  function parseJpegSegments(bytes) {
+    var segs = [];
+    var i = 2;
+    while (i + 4 <= bytes.length && bytes[i] === 0xFF) {
+      var marker = bytes[i + 1];
+      if (marker === 0xFF) { i++; continue; }
+      if (marker === 0xD8 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { i += 2; continue; }
+      if (marker === 0xDA || marker === 0xD9) break;
+      var size = (bytes[i + 2] << 8) | bytes[i + 3];
+      if (size < 2) break;
+      segs.push({ marker: marker, start: i, end: i + 2 + size });
+      i += 2 + size;
+    }
+    return { segs: segs, restStart: i };
+  }
+  function segIsExif(bytes, seg) {
+    return seg.marker === 0xE1 && seg.end - seg.start >= 14 &&
+      bytes[seg.start + 4] === 0x45 && bytes[seg.start + 5] === 0x78 &&
+      bytes[seg.start + 6] === 0x69 && bytes[seg.start + 7] === 0x66 &&
+      bytes[seg.start + 8] === 0 && bytes[seg.start + 9] === 0;
+  }
+
+  function parseExif(bytes, tiffStart, tiffEnd) {
+    var out = { other: 0 };
+    var little = bytes[tiffStart] === 0x49;
+    var u16 = function (p) { return little ? bytes[p] | (bytes[p + 1] << 8) : (bytes[p] << 8) | bytes[p + 1]; };
+    var u32 = function (p) {
+      return little
+        ? (bytes[p] | (bytes[p + 1] << 8) | (bytes[p + 2] << 16) | (bytes[p + 3] << 24)) >>> 0
+        : ((bytes[p] << 24) | (bytes[p + 1] << 16) | (bytes[p + 2] << 8) | bytes[p + 3]) >>> 0;
+    };
+    var readAscii = function (p, n) {
+      var end = p, limit = Math.min(p + n, tiffEnd);
+      while (end < limit && bytes[end]) end++;
+      return new TextDecoder().decode(bytes.slice(p, end));
+    };
+    var SIZES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
+    var valPtr = function (entry, type, count) {
+      var byteLen = (SIZES[type] || 1) * count;
+      return byteLen <= 4 ? entry + 8 : tiffStart + u32(entry + 8);
+    };
+    var readIFD = function (ifdOff, handler) {
+      if (ifdOff < tiffStart || ifdOff + 2 > tiffEnd) return;
+      var n = u16(ifdOff);
+      for (var e = 0; e < n; e++) {
+        var entry = ifdOff + 2 + e * 12;
+        if (entry + 12 > tiffEnd) return;
+        handler(u16(entry), u16(entry + 2), u32(entry + 4), entry);
+      }
+    };
+    var rat = function (p) { var den = u32(p + 4); return den ? u32(p) / den : 0; };
+    var exifPtr = 0, gpsPtr = 0;
+    readIFD(tiffStart + u32(tiffStart + 4), function (tag, type, count, entry) {
+      var p = valPtr(entry, type, count);
+      if (META_TAGS[tag]) {
+        if (type === 2) out[META_TAGS[tag]] = readAscii(p, count);
+        else if (type === 3) out[META_TAGS[tag]] = u16(p);
+      } else if (tag === 0x8769) exifPtr = u32(entry + 8);
+      else if (tag === 0x8825) gpsPtr = u32(entry + 8);
+      else out.other++;
+    });
+    if (exifPtr) readIFD(tiffStart + exifPtr, function (tag, type, count, entry) {
+      var p = valPtr(entry, type, count);
+      if (tag === 0x9003 && type === 2) out.dateTimeOriginal = readAscii(p, count);
+      else out.other++;
+    });
+    if (gpsPtr) readIFD(tiffStart + gpsPtr, function (tag, type, count, entry) {
+      var p = valPtr(entry, type, count);
+      if (tag === 0x0001) out.latRef = readAscii(p, count);
+      else if (tag === 0x0002 && count === 3) out.latV = rat(p) + rat(p + 8) / 60 + rat(p + 16) / 3600;
+      else if (tag === 0x0003) out.lonRef = readAscii(p, count);
+      else if (tag === 0x0004 && count === 3) out.lonV = rat(p) + rat(p + 8) / 60 + rat(p + 16) / 3600;
+    });
+    if (out.latV != null && out.lonV != null) {
+      out.lat = (out.latRef === 'S' ? -1 : 1) * out.latV;
+      out.lon = (out.lonRef === 'W' ? -1 : 1) * out.lonV;
+    }
+    return out;
+  }
+
+  function buildExif(f) {
+    var enc = new TextEncoder();
+    var ascii = function (s) {
+      var b = enc.encode(s);
+      var out = new Uint8Array(b.length + 1);
+      out.set(b);
+      return out;
+    };
+    var ifd0 = [], exif = [], gps = [];
+    var addAscii = function (arr, tag, s) { if (s) { var d = ascii(s); arr.push([tag, 2, d.length, d]); } };
+    addAscii(ifd0, 0x010E, f.desc);
+    addAscii(ifd0, 0x010F, f.make);
+    addAscii(ifd0, 0x0110, f.model);
+    if (f.orientation) ifd0.push([0x0112, 3, 1, f.orientation]);
+    addAscii(ifd0, 0x0131, f.software);
+    addAscii(ifd0, 0x0132, f.dateTime);
+    addAscii(ifd0, 0x013B, f.artist);
+    addAscii(ifd0, 0x8298, f.copyright);
+    addAscii(exif, 0x9003, f.dateTimeOriginal || f.dateTime);
+    var hasGps = typeof f.lat === 'number' && typeof f.lon === 'number' && isFinite(f.lat) && isFinite(f.lon);
+    if (hasGps) {
+      var dms = function (v) {
+        v = Math.abs(v);
+        var d = Math.floor(v), rem = (v - d) * 60, m = Math.floor(rem), s = Math.round((rem - m) * 60 * 10000);
+        var buf = new Uint8Array(24), dv2 = new DataView(buf.buffer);
+        dv2.setUint32(0, d, true); dv2.setUint32(4, 1, true);
+        dv2.setUint32(8, m, true); dv2.setUint32(12, 1, true);
+        dv2.setUint32(16, s, true); dv2.setUint32(20, 10000, true);
+        return buf;
+      };
+      gps.push([0x0000, 1, 4, new Uint8Array([2, 3, 0, 0])]);
+      gps.push([0x0001, 2, 2, ascii(f.lat >= 0 ? 'N' : 'S')]);
+      gps.push([0x0002, 5, 3, dms(f.lat)]);
+      gps.push([0x0003, 2, 2, ascii(f.lon >= 0 ? 'E' : 'W')]);
+      gps.push([0x0004, 5, 3, dms(f.lon)]);
+    }
+    if (!ifd0.length && !exif.length && !gps.length) return null;
+    var ifdSize = function (arr) {
+      var s = 2 + arr.length * 12 + 4;
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i][3] instanceof Uint8Array && arr[i][3].length > 4) s += arr[i][3].length;
+      }
+      return s;
+    };
+    var nPtr = (exif.length ? 1 : 0) + (gps.length ? 1 : 0);
+    var ifd0Size = ifdSize(ifd0) + nPtr * 12;
+    var exifOff = 8 + ifd0Size;
+    var gpsOff = exifOff + (exif.length ? ifdSize(exif) : 0);
+    if (exif.length) ifd0.push([0x8769, 4, 1, exifOff]);
+    if (gps.length) ifd0.push([0x8825, 4, 1, gpsOff]);
+    var byTag = function (a, b) { return a[0] - b[0]; };
+    ifd0.sort(byTag); exif.sort(byTag); gps.sort(byTag);
+    var total = 8 + ifd0Size + (exif.length ? ifdSize(exif) : 0) + (gps.length ? ifdSize(gps) : 0);
+    var tiff = new Uint8Array(total);
+    var dv = new DataView(tiff.buffer);
+    tiff[0] = 0x49; tiff[1] = 0x49;
+    dv.setUint16(2, 42, true);
+    dv.setUint32(4, 8, true);
+    var writeIFD = function (arr, off) {
+      dv.setUint16(off, arr.length, true);
+      var dataOff = off + 2 + arr.length * 12 + 4;
+      for (var i = 0; i < arr.length; i++) {
+        var p = off + 2 + i * 12;
+        dv.setUint16(p, arr[i][0], true);
+        dv.setUint16(p + 2, arr[i][1], true);
+        dv.setUint32(p + 4, arr[i][2], true);
+        var val = arr[i][3];
+        if (val instanceof Uint8Array) {
+          if (val.length <= 4) tiff.set(val, p + 8);
+          else { dv.setUint32(p + 8, dataOff, true); tiff.set(val, dataOff); dataOff += val.length; }
+        } else if (arr[i][1] === 3) dv.setUint16(p + 8, val, true);
+        else dv.setUint32(p + 8, val, true);
+      }
+      dv.setUint32(off + 2 + arr.length * 12, 0, true);
+    };
+    writeIFD(ifd0, 8);
+    if (exif.length) writeIFD(exif, exifOff);
+    if (gps.length) writeIFD(gps, gpsOff);
+    var head = enc.encode('Exif\0\0');
+    var seg = new Uint8Array(4 + head.length + tiff.length);
+    seg[0] = 0xFF; seg[1] = 0xE1;
+    var len = 2 + head.length + tiff.length;
+    seg[2] = len >> 8; seg[3] = len & 0xFF;
+    seg.set(head, 4);
+    seg.set(tiff, 4 + head.length);
+    return seg;
+  }
+
+  function rebuildJpeg(bytes, newExifSeg, strip) {
+    var parsed = parseJpegSegments(bytes);
+    var parts = [bytes.slice(0, 2)];
+    var inserted = false;
+    parsed.segs.forEach(function (seg) {
+      var isExif = segIsExif(bytes, seg);
+      var drop = isExif || (strip && (seg.marker === 0xE1 || seg.marker === 0xED || seg.marker === 0xFE));
+      if (seg.marker === 0xE0 && !inserted && parts.length === 1) {
+        parts.push(bytes.slice(seg.start, seg.end));
+        if (newExifSeg) parts.push(newExifSeg);
+        inserted = true;
+        return;
+      }
+      if (!inserted) {
+        if (newExifSeg) parts.push(newExifSeg);
+        inserted = true;
+      }
+      if (!drop) parts.push(bytes.slice(seg.start, seg.end));
+    });
+    if (!inserted && newExifSeg) parts.push(newExifSeg);
+    parts.push(bytes.slice(parsed.restStart));
+    return new Blob(parts, { type: 'image/jpeg' });
+  }
+
+  function parsePngChunks(bytes) {
+    var chunks = [];
+    var i = 8;
+    while (i + 12 <= bytes.length) {
+      var len = ((bytes[i] << 24) | (bytes[i + 1] << 16) | (bytes[i + 2] << 8) | bytes[i + 3]) >>> 0;
+      var type = String.fromCharCode(bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]);
+      chunks.push({ type: type, start: i, end: i + 12 + len, dataStart: i + 8, dataEnd: i + 8 + len });
+      i += 12 + len;
+      if (type === 'IEND') break;
+    }
+    return chunks;
+  }
+  function pngChunkKeyword(bytes, c) {
+    var d = bytes.slice(c.dataStart, Math.min(c.dataEnd, c.dataStart + 90));
+    var nul = d.indexOf(0);
+    return nul > 0 ? String.fromCharCode.apply(null, d.slice(0, nul)) : '';
+  }
+  function pngReadText(bytes, chunks) {
+    var texts = [];
+    var dec = new TextDecoder();
+    chunks.forEach(function (c) {
+      var d = bytes.slice(c.dataStart, c.dataEnd);
+      var nul = d.indexOf(0);
+      if (nul <= 0) return;
+      var key = String.fromCharCode.apply(null, d.slice(0, nul));
+      if (c.type === 'tEXt') texts.push({ key: key, value: dec.decode(d.slice(nul + 1)) });
+      else if (c.type === 'zTXt') texts.push({ key: key, value: '(압축된 텍스트)' });
+      else if (c.type === 'iTXt') {
+        var comp = d[nul + 1];
+        var n2 = d.indexOf(0, nul + 3);
+        if (n2 < 0) return;
+        var n3 = d.indexOf(0, n2 + 1);
+        if (n3 < 0) return;
+        texts.push({ key: key, value: comp === 0 ? dec.decode(d.slice(n3 + 1)) : '(압축된 텍스트)' });
+      }
+    });
+    return texts;
+  }
+  function makePngChunk(type, data) {
+    var full = new Uint8Array(12 + data.length);
+    var dv = new DataView(full.buffer);
+    dv.setUint32(0, data.length, false);
+    for (var i = 0; i < 4; i++) full[4 + i] = type.charCodeAt(i);
+    full.set(data, 8);
+    var crcBuf = new Uint8Array(4 + data.length);
+    crcBuf.set(full.subarray(4, 8), 0);
+    crcBuf.set(data, 4);
+    dv.setUint32(8 + data.length, crc32(crcBuf), false);
+    return full;
+  }
+  function pngTextChunk(key, value) {
+    var enc = new TextEncoder();
+    var kb = enc.encode(key), vb = enc.encode(value);
+    var data = new Uint8Array(kb.length + 5 + vb.length);
+    data.set(kb, 0);
+    data.set(vb, kb.length + 5);
+    return makePngChunk('iTXt', data);
+  }
+  function rebuildPng(bytes, fields, strip) {
+    var chunks = parsePngChunks(bytes);
+    var managed = {};
+    Object.keys(PNG_KEYS).forEach(function (k) { managed[PNG_KEYS[k]] = true; });
+    var parts = [bytes.slice(0, 8)];
+    chunks.forEach(function (c) {
+      var isText = c.type === 'tEXt' || c.type === 'iTXt' || c.type === 'zTXt';
+      var drop = strip
+        ? (isText || c.type === 'eXIf' || c.type === 'tIME')
+        : (isText && managed[pngChunkKeyword(bytes, c)]);
+      if (!drop) parts.push(bytes.slice(c.start, c.end));
+      if (c.type === 'IHDR' && !strip) {
+        Object.keys(PNG_KEYS).forEach(function (k) {
+          if (fields[k]) parts.push(pngTextChunk(PNG_KEYS[k], fields[k]));
+        });
+      }
+    });
+    return new Blob(parts, { type: 'image/png' });
+  }
+
+  /* ---------- metadata tab UI ---------- */
+  var metaState = { file: null, bytes: null, kind: null, parsed: null };
+  function exifDateToInput(s) {
+    var m = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s || '');
+    if (!m) return '';
+    return m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':' + (m[6] || '00');
+  }
+  function inputDateToExif(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s || '');
+    if (!m) return '';
+    return m[1] + ':' + m[2] + ':' + m[3] + ' ' + m[4] + ':' + m[5] + ':' + (m[6] || '00');
+  }
+  function isoToInput(s) {
+    var m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)/.exec(s || '');
+    return m ? (m[1].length === 16 ? m[1] + ':00' : m[1]) : '';
+  }
+  function metaRow(box, label, value) {
+    var div = document.createElement('div');
+    div.className = 'meta-row';
+    var k = document.createElement('span');
+    k.className = 'meta-k';
+    k.textContent = label;
+    var v = document.createElement('span');
+    v.className = 'meta-v';
+    v.textContent = value;
+    div.appendChild(k);
+    div.appendChild(v);
+    box.appendChild(div);
+  }
+
+  function loadMetaFile(f) {
+    var isJpeg = f.type === 'image/jpeg' || /\.jpe?g$/i.test(f.name || '');
+    var isPng = f.type === 'image/png' || /\.png$/i.test(f.name || '');
+    if (!isJpeg && !isPng) { toast('메타데이터 편집은 JPEG·PNG만 지원해요.'); return; }
+    f.arrayBuffer().then(function (ab) {
+      var bytes = new Uint8Array(ab);
+      var okSig = isJpeg ? (bytes[0] === 0xFF && bytes[1] === 0xD8) : (bytes[0] === 0x89 && bytes[1] === 0x50);
+      if (!okSig) { toast('파일 내용이 ' + (isJpeg ? 'JPEG' : 'PNG') + ' 형식이 아니에요.'); return; }
+      metaState = { file: f, bytes: bytes, kind: isJpeg ? 'jpeg' : 'png', parsed: null };
+      renderMeta();
+    }).catch(function () { toast('파일을 읽지 못했어요.'); });
+  }
+
+  function renderMeta() {
+    var bytes = metaState.bytes;
+    var listEl = $('#metaList');
+    listEl.textContent = '';
+    var m = {};
+    if (metaState.kind === 'jpeg') {
+      var segs = parseJpegSegments(bytes).segs;
+      for (var i = 0; i < segs.length; i++) {
+        if (segIsExif(bytes, segs[i])) { m = parseExif(bytes, segs[i].start + 10, segs[i].end); break; }
+      }
+      if (m.make || m.model) metaRow(listEl, '카메라', ((m.make || '') + ' ' + (m.model || '')).trim());
+      if (m.orientation) metaRow(listEl, '방향', 'Orientation ' + m.orientation);
+      if (m.dateTimeOriginal || m.dateTime) metaRow(listEl, '촬영 일시', m.dateTimeOriginal || m.dateTime);
+      if (m.software) metaRow(listEl, '소프트웨어', m.software);
+      if (m.artist) metaRow(listEl, '작가', m.artist);
+      if (m.copyright) metaRow(listEl, '저작권', m.copyright);
+      if (m.desc) metaRow(listEl, '설명', m.desc);
+      if (typeof m.lat === 'number') metaRow(listEl, 'GPS', m.lat.toFixed(6) + ', ' + m.lon.toFixed(6));
+      if (m.other) metaRow(listEl, '기타', 'EXIF 태그 ' + m.other + '개 (저장하면 아래 항목만 남아요)');
+    } else {
+      var texts = pngReadText(bytes, parsePngChunks(bytes));
+      texts.forEach(function (t) {
+        metaRow(listEl, t.key, t.value.length > 200 ? t.value.slice(0, 200) + '…' : t.value);
+        for (var k in PNG_KEYS) if (PNG_KEYS[k] === t.key) m[k] = t.value;
+      });
+    }
+    metaState.parsed = m;
+    if (!listEl.children.length) {
+      var p = document.createElement('p');
+      p.className = 'muted';
+      p.style.margin = '0';
+      p.textContent = '저장된 메타데이터가 없어요. 아래에서 새로 추가할 수 있어요.';
+      listEl.appendChild(p);
+    }
+    $('#metaSummary').textContent = (metaState.file.name || '이미지') + ' · ' + fmtBytes(metaState.file.size) +
+      ' · ' + (metaState.kind === 'jpeg' ? 'JPEG (EXIF)' : 'PNG (텍스트 청크)');
+    $('#metaDesc').value = m.desc || '';
+    $('#metaArtist').value = m.artist || '';
+    $('#metaCopyright').value = m.copyright || '';
+    $('#metaSoftware').value = m.software || '';
+    $('#metaDate').value = metaState.kind === 'jpeg'
+      ? exifDateToInput(m.dateTimeOriginal || m.dateTime)
+      : isoToInput(m.dateTime);
+    $('#metaLat').value = typeof m.lat === 'number' ? String(Math.round(m.lat * 1e6) / 1e6) : '';
+    $('#metaLon').value = typeof m.lon === 'number' ? String(Math.round(m.lon * 1e6) / 1e6) : '';
+    var isPng = metaState.kind === 'png';
+    $('#metaLat').disabled = $('#metaLon').disabled = isPng;
+    $('#metaGpsNote').hidden = !isPng;
+    $('#metaBody').hidden = false;
+  }
+
+  $('#metaFile').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    this.value = '';
+    if (f) loadMetaFile(f);
+  });
+  $('#metaSave').addEventListener('click', function () {
+    if (!metaState.bytes) return;
+    var latS = $('#metaLat').value.trim(), lonS = $('#metaLon').value.trim();
+    var lat = latS === '' ? null : parseFloat(latS);
+    var lon = lonS === '' ? null : parseFloat(lonS);
+    if ((lat === null) !== (lon === null)) return toast('위도와 경도를 함께 입력해 주세요.');
+    if (lat !== null && (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)) {
+      return toast('GPS 좌표 범위를 확인해 주세요 (위도 ±90, 경도 ±180).');
+    }
+    var blob, ext;
+    if (metaState.kind === 'jpeg') {
+      var d = inputDateToExif($('#metaDate').value);
+      var prev = metaState.parsed || {};
+      var seg = buildExif({
+        desc: $('#metaDesc').value.trim(),
+        artist: $('#metaArtist').value.trim(),
+        copyright: $('#metaCopyright').value.trim(),
+        software: $('#metaSoftware').value.trim(),
+        dateTime: d,
+        dateTimeOriginal: d,
+        make: prev.make || '',
+        model: prev.model || '',
+        orientation: prev.orientation || 0,
+        lat: lat === null ? undefined : lat,
+        lon: lon === null ? undefined : lon
+      });
+      blob = rebuildJpeg(metaState.bytes, seg, false);
+      ext = 'jpg';
+    } else {
+      blob = rebuildPng(metaState.bytes, {
+        desc: $('#metaDesc').value.trim(),
+        artist: $('#metaArtist').value.trim(),
+        copyright: $('#metaCopyright').value.trim(),
+        software: $('#metaSoftware').value.trim(),
+        dateTime: isoToInput($('#metaDate').value)
+      }, false);
+      ext = 'png';
+    }
+    saveBlob(blob, baseName(metaState.file.name || 'image') + '-meta.' + ext);
+    toast('메타데이터를 적용해 저장했어요.');
+  });
+  $('#metaStrip').addEventListener('click', function () {
+    if (!metaState.bytes) return;
+    var blob = metaState.kind === 'jpeg'
+      ? rebuildJpeg(metaState.bytes, null, true)
+      : rebuildPng(metaState.bytes, {}, true);
+    saveBlob(blob, baseName(metaState.file.name || 'image') + '-clean.' + (metaState.kind === 'jpeg' ? 'jpg' : 'png'));
+    toast('메타데이터를 제거해 저장했어요.');
   });
 
   /* 콘솔/테스트용 내부 핸들 */
