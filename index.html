@@ -268,6 +268,10 @@ textarea {
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 16px 16px;
   margin: 12px 0 8px;
 }
+.svg-preview { width: 220px; height: 220px; }
+.svg-opts { margin-top: 16px; }
+.check-label { display: flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; padding: 7px 0; }
+.check-label input { accent-color: var(--accent); width: 16px; height: 16px; }
 .dec-preview img { width: 100%; height: 100%; object-fit: contain; }
 #b64DecMsg { font-size: 13px; margin: 8px 0 0; }
 #b64DecMsg.error { color: var(--danger); }
@@ -326,6 +330,7 @@ textarea {
 
 <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
   <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
+  <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
   <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
 </nav>
 
@@ -338,7 +343,7 @@ textarea {
         <line x1="12" y1="3" x2="12" y2="15"/>
       </svg>
       <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-      <p class="dz-hint">여러 장 가능 · Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP / GIF / SVG</p>
+      <p class="dz-hint">여러 장 · 폴더째 끌어놓기 가능 · Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP / GIF / SVG</p>
       <input type="file" id="fileInput" accept="image/*,.svg" multiple hidden>
     </div>
 
@@ -409,6 +414,36 @@ textarea {
     </section>
 
     <ul id="results" class="results"></ul>
+  </section>
+
+  <section id="panel-svg" role="tabpanel" aria-labelledby="tabSvg" hidden>
+    <div class="card b64-card">
+      <h2>이미지 → SVG 벡터 변환</h2>
+      <p class="muted">색 면의 외곽선을 추적해 진짜 벡터 패스로 바꿔요. 로고·아이콘·일러스트처럼 색 수가 적은 이미지에 잘 맞고, 사진은 포스터화된 그림처럼 표현돼요.</p>
+      <label class="btn file-btn">파일 선택<input type="file" id="svgFile" accept="image/*" class="sr-input"></label>
+      <div class="settings-grid svg-opts">
+        <div class="field">
+          <label class="field-label" for="svgColors">색상 수 <output id="svgColorsOut" for="svgColors">6</output></label>
+          <input type="range" id="svgColors" min="2" max="16" step="1" value="6">
+        </div>
+        <div class="field">
+          <label class="field-label" for="svgDetail">디테일 <span class="sub">(거칠게 ↔ 섬세하게)</span></label>
+          <input type="range" id="svgDetail" min="1" max="5" step="1" value="3">
+        </div>
+        <div class="field">
+          <span class="field-label">곡선 처리</span>
+          <label class="check-label"><input type="checkbox" id="svgSmooth" checked> 부드럽게 다듬기</label>
+        </div>
+      </div>
+      <div id="svgResult" hidden>
+        <div class="dec-preview svg-preview"><img id="svgPreview" alt="SVG 변환 결과 미리보기"></div>
+        <p id="svgStats" class="muted" role="status"></p>
+        <div class="btn-row">
+          <button class="btn primary" id="svgDownload" type="button" disabled>SVG 다운로드</button>
+          <button class="btn" id="svgCopy" type="button" disabled>SVG 코드 복사</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section id="panel-base64" role="tabpanel" aria-labelledby="tabBase64" hidden>
@@ -537,6 +572,7 @@ git push -u origin main</code></pre></li>
   /* ================= tabs ================= */
   var tabs = [
     { btn: $('#tabCompress'), panel: $('#panel-compress') },
+    { btn: $('#tabSvg'), panel: $('#panel-svg') },
     { btn: $('#tabBase64'), panel: $('#panel-base64') }
   ];
   tabs.forEach(function (t) {
@@ -1381,18 +1417,76 @@ git push -u origin main</code></pre></li>
     if (!dragDepth) el.dropzone.classList.remove('drag');
   });
   window.addEventListener('dragover', function (e) { e.preventDefault(); });
+
+  /* 폴더째 드롭하면 안의 파일을 재귀적으로 수집 */
+  function collectFromDataTransfer(dt) {
+    return new Promise(function (resolve) {
+      var items = dt.items;
+      var plain = Array.prototype.slice.call(dt.files || []);
+      if (!items || !items.length || typeof items[0].webkitGetAsEntry !== 'function') {
+        resolve(plain);
+        return;
+      }
+      var entries = [];
+      for (var i = 0; i < items.length; i++) {
+        var en = items[i].webkitGetAsEntry();
+        if (en) entries.push(en);
+      }
+      if (!entries.length) { resolve(plain); return; }
+      var files = [];
+      var pending = 1;
+      var done = function () { if (--pending === 0) resolve(files.length ? files : plain); };
+      var walk = function (entry) {
+        pending++;
+        if (entry.isFile) {
+          entry.file(function (f) { files.push(f); done(); }, done);
+        } else if (entry.isDirectory) {
+          var reader = entry.createReader();
+          var readAll = function () {
+            reader.readEntries(function (ents) {
+              if (!ents.length) { done(); return; }
+              ents.forEach(walk);
+              readAll();
+            }, done);
+          };
+          readAll();
+        } else done();
+      };
+      entries.forEach(walk);
+      done();
+    });
+  }
+
+  /* 활성 탭에 맞는 도구로 파일 전달 */
+  function routeFiles(files, fromPaste) {
+    if (!files.length) return;
+    if (!$('#panel-svg').hidden) {
+      vectorizeFile(files[0]);
+      if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
+    } else if (!$('#panel-base64').hidden) {
+      encodeFileToBase64(files[0]);
+      toast('이미지를 Base64 문자열로 변환했어요.');
+    } else {
+      addFiles(files);
+      if (fromPaste) toast('클립보드 이미지를 추가했어요.');
+    }
+  }
+
   window.addEventListener('drop', function (e) {
     e.preventDefault();
     dragDepth = 0;
     el.dropzone.classList.remove('drag');
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    if (!e.dataTransfer) return;
+    collectFromDataTransfer(e.dataTransfer).then(function (files) {
+      routeFiles(files, false);
+    });
   });
 
   window.addEventListener('paste', function (e) {
     var cd = e.clipboardData;
     if (!cd) return;
     var files = [];
-    if (cd.files && cd.files.length) files = cd.files;
+    if (cd.files && cd.files.length) files = Array.prototype.slice.call(cd.files);
     else if (cd.items) {
       Array.prototype.forEach.call(cd.items, function (it) {
         if (it.kind === 'file') {
@@ -1401,16 +1495,7 @@ git push -u origin main</code></pre></li>
         }
       });
     }
-    if (files.length) {
-      if (!tabs[1].panel.hidden) {
-        encodeFileToBase64(files[0]);
-        toast('클립보드 이미지를 Base64로 변환했어요.');
-      } else {
-        if (tabs[0].panel.hidden) tabs[0].btn.click();
-        addFiles(files);
-        toast('클립보드 이미지를 추가했어요.');
-      }
-    }
+    routeFiles(files, true);
   });
 
   /* ================= base64 tab ================= */
@@ -1537,6 +1622,300 @@ git push -u origin main</code></pre></li>
   b64DecSave.addEventListener('click', function () {
     if (!decBlob) return;
     saveBlob(decBlob, 'decoded.' + extFor(decBlob.type));
+  });
+
+  /* ================= svg vectorizer =================
+     색상 양자화(median cut) → 색별 마스크 경계 추적 → 단순화(Douglas-Peucker) → 패스 출력.
+     경계 에지 집합이 같으면 fill-rule:evenodd 채움 결과는 루프 분해 방식과 무관하게 동일하다. */
+  function quantizePalette(data, n) {
+    var px = [];
+    var step = Math.max(1, Math.floor((data.length / 4) / 60000)) * 4;
+    for (var i = 0; i < data.length; i += step) {
+      if (data[i + 3] >= 128) px.push([data[i], data[i + 1], data[i + 2]]);
+    }
+    if (!px.length) return [];
+    var boxes = [px];
+    while (boxes.length < n) {
+      var bi = -1, bs = 0;
+      for (var b = 0; b < boxes.length; b++) {
+        var box = boxes[b];
+        if (box.length < 2) continue;
+        var mn = [255, 255, 255], mx = [0, 0, 0];
+        for (var p = 0; p < box.length; p++) {
+          for (var c = 0; c < 3; c++) {
+            if (box[p][c] < mn[c]) mn[c] = box[p][c];
+            if (box[p][c] > mx[c]) mx[c] = box[p][c];
+          }
+        }
+        var range = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]);
+        var score = range * Math.sqrt(box.length);
+        if (score > bs) { bs = score; bi = b; box._mn = mn; box._mx = mx; }
+      }
+      if (bi < 0) break;
+      var big = boxes[bi];
+      var dr = big._mx[0] - big._mn[0], dg = big._mx[1] - big._mn[1], db = big._mx[2] - big._mn[2];
+      var ch = dg >= dr && dg >= db ? 1 : (db >= dr && db >= dg ? 2 : 0);
+      big.sort(function (a, b2) { return a[ch] - b2[ch]; });
+      var half = big.length >> 1;
+      boxes.splice(bi, 1, big.slice(0, half), big.slice(half));
+    }
+    return boxes.map(function (box) {
+      var r = 0, g = 0, b2 = 0;
+      for (var p = 0; p < box.length; p++) { r += box[p][0]; g += box[p][1]; b2 += box[p][2]; }
+      var L = box.length;
+      return [Math.round(r / L), Math.round(g / L), Math.round(b2 / L)];
+    });
+  }
+
+  function traceLoops(mask, w, h) {
+    var W1 = w + 1;
+    var edges = new Map();
+    var addEdge = function (x1, y1, x2, y2) {
+      var k = y1 * W1 + x1;
+      var arr = edges.get(k);
+      if (arr) arr.push(y2 * W1 + x2); else edges.set(k, [y2 * W1 + x2]);
+    };
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (!mask[y * w + x]) continue;
+        if (y === 0 || !mask[(y - 1) * w + x]) addEdge(x, y, x + 1, y);
+        if (x === w - 1 || !mask[y * w + x + 1]) addEdge(x + 1, y, x + 1, y + 1);
+        if (y === h - 1 || !mask[(y + 1) * w + x]) addEdge(x + 1, y + 1, x, y + 1);
+        if (x === 0 || !mask[y * w + x - 1]) addEdge(x, y + 1, x, y);
+      }
+    }
+    var loops = [];
+    edges.forEach(function (ends, startKey) {
+      while (ends.length) {
+        var loop = [startKey];
+        var cur = ends.pop();
+        while (cur !== startKey) {
+          loop.push(cur);
+          var outs = edges.get(cur);
+          if (!outs || !outs.length) { loop = null; break; }
+          cur = outs.pop();
+        }
+        if (loop && loop.length >= 4) {
+          var pts = [];
+          for (var i = 0; i < loop.length; i++) pts.push([loop[i] % W1, (loop[i] / W1) | 0]);
+          loops.push(pts);
+        }
+      }
+    });
+    return loops;
+  }
+
+  function simplifyLoop(pts, tol) {
+    var out = [];
+    var n = pts.length;
+    for (var i = 0; i < n; i++) {
+      var a = pts[(i + n - 1) % n], b = pts[i], c = pts[(i + 1) % n];
+      if ((a[0] === b[0] && b[0] === c[0]) || (a[1] === b[1] && b[1] === c[1])) continue;
+      out.push(b);
+    }
+    if (tol <= 0 || out.length < 5) return out;
+    var far = 0, fd = -1;
+    for (var j = 1; j < out.length; j++) {
+      var dx = out[j][0] - out[0][0], dy = out[j][1] - out[0][1];
+      var d = dx * dx + dy * dy;
+      if (d > fd) { fd = d; far = j; }
+    }
+    var h1 = dpSimplify(out.slice(0, far + 1), tol);
+    var h2 = dpSimplify(out.slice(far).concat([out[0]]), tol);
+    return h1.slice(0, -1).concat(h2.slice(0, -1));
+  }
+
+  function dpSimplify(pts, tol) {
+    if (pts.length < 3) return pts;
+    var keep = new Uint8Array(pts.length);
+    keep[0] = keep[pts.length - 1] = 1;
+    var stack = [[0, pts.length - 1]];
+    while (stack.length) {
+      var seg = stack.pop();
+      var s = seg[0], e = seg[1];
+      var ax = pts[s][0], ay = pts[s][1];
+      var abx = pts[e][0] - ax, aby = pts[e][1] - ay;
+      var ab2 = abx * abx + aby * aby || 1;
+      var mi = -1, md = tol * tol;
+      for (var i = s + 1; i < e; i++) {
+        var t = ((pts[i][0] - ax) * abx + (pts[i][1] - ay) * aby) / ab2;
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        var qx = ax + t * abx - pts[i][0], qy = ay + t * aby - pts[i][1];
+        var d = qx * qx + qy * qy;
+        if (d > md) { md = d; mi = i; }
+      }
+      if (mi >= 0) { keep[mi] = 1; stack.push([s, mi], [mi, e]); }
+    }
+    var out = [];
+    for (var j = 0; j < pts.length; j++) if (keep[j]) out.push(pts[j]);
+    return out;
+  }
+
+  function polyArea(pts) {
+    var s = 0;
+    for (var i = 0; i < pts.length; i++) {
+      var a = pts[i], b = pts[(i + 1) % pts.length];
+      s += a[0] * b[1] - b[0] * a[1];
+    }
+    return s / 2;
+  }
+
+  function loopToPath(pts, smooth) {
+    var f = function (v) { return Math.round(v * 10) / 10; };
+    var d, i;
+    if (!smooth || pts.length < 4) {
+      d = 'M' + f(pts[0][0]) + ' ' + f(pts[0][1]);
+      for (i = 1; i < pts.length; i++) d += 'L' + f(pts[i][0]) + ' ' + f(pts[i][1]);
+      return d + 'Z';
+    }
+    var n = pts.length;
+    var mid = function (a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; };
+    var m0 = mid(pts[0], pts[1]);
+    d = 'M' + f(m0[0]) + ' ' + f(m0[1]);
+    for (i = 1; i <= n; i++) {
+      var v = pts[i % n];
+      var m = mid(v, pts[(i + 1) % n]);
+      d += 'Q' + f(v[0]) + ' ' + f(v[1]) + ' ' + f(m[0]) + ' ' + f(m[1]);
+    }
+    return d + 'Z';
+  }
+
+  function rgbHex(c) {
+    var s = '#';
+    for (var i = 0; i < 3; i++) s += (c[i] < 16 ? '0' : '') + c[i].toString(16);
+    return s;
+  }
+
+  function vectorizeToSvg(source, opts) {
+    var sw = srcW(source) || 512, sh = srcH(source) || 512;
+    var scale = Math.min(1, opts.workRes / Math.max(sw, sh));
+    var w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+    var canvas = drawScaled(source, w, h, null);
+    var data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    var palette = quantizePalette(data, opts.colors);
+    if (!palette.length) throw new Error('이미지에서 색을 찾지 못했어요.');
+    var idx = new Int16Array(w * h);
+    for (var i = 0, p = 0; p < idx.length; p++, i += 4) {
+      if (data[i + 3] < 128) { idx[p] = -1; continue; }
+      var best = 0, bd = Infinity;
+      for (var c = 0; c < palette.length; c++) {
+        var dr = data[i] - palette[c][0], dg = data[i + 1] - palette[c][1], db = data[i + 2] - palette[c][2];
+        var d2 = dr * dr * 2 + dg * dg * 4 + db * db * 3;
+        if (d2 < bd) { bd = d2; best = c; }
+      }
+      idx[p] = best;
+    }
+    var paths = [];
+    for (var pc = 0; pc < palette.length; pc++) {
+      var mask = new Uint8Array(w * h);
+      var count = 0;
+      for (var q = 0; q < idx.length; q++) if (idx[q] === pc) { mask[q] = 1; count++; }
+      if (!count) continue;
+      var loops = traceLoops(mask, w, h);
+      var d = '';
+      for (var L = 0; L < loops.length; L++) {
+        var pts = simplifyLoop(loops[L], opts.tol);
+        if (pts.length < 3) continue;
+        if (Math.abs(polyArea(pts)) < opts.minArea) continue;
+        d += loopToPath(pts, opts.smooth);
+      }
+      if (d) paths.push({ color: rgbHex(palette[pc]), d: d });
+    }
+    if (!paths.length) throw new Error('추적할 만한 색 면을 찾지 못했어요. 디테일을 높여 보세요.');
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + ' ' + h + '" width="' + sw + '" height="' + sh + '">\n' +
+      paths.map(function (pp) {
+        return '  <path fill="' + pp.color + '" stroke="' + pp.color + '" stroke-width="0.4" fill-rule="evenodd" d="' + pp.d + '"/>';
+      }).join('\n') + '\n</svg>\n';
+    return { svg: svg, colors: paths.length };
+  }
+
+  /* ---------- svg tab UI ---------- */
+  var svgFile = $('#svgFile');
+  var svgColors = $('#svgColors'), svgColorsOut = $('#svgColorsOut');
+  var svgDetail = $('#svgDetail'), svgSmooth = $('#svgSmooth');
+  var svgResult = $('#svgResult'), svgPreview = $('#svgPreview'), svgStats = $('#svgStats');
+  var svgDownload = $('#svgDownload'), svgCopy = $('#svgCopy');
+  var svgState = { file: null, source: null, url: null, svg: '', previewUrl: null, seq: 0 };
+
+  function svgOpts() {
+    var d = parseInt(svgDetail.value, 10);
+    var RES = [96, 160, 256, 384, 512];
+    var TOL = [2.4, 1.6, 1.1, 0.8, 0.6];
+    return {
+      colors: parseInt(svgColors.value, 10),
+      workRes: RES[d - 1],
+      tol: TOL[d - 1],
+      minArea: TOL[d - 1] * TOL[d - 1] * 8,
+      smooth: svgSmooth.checked
+    };
+  }
+
+  function runVectorize() {
+    if (!svgState.source) return;
+    var seq = ++svgState.seq;
+    svgResult.hidden = false;
+    svgStats.textContent = '변환 중…';
+    svgDownload.disabled = svgCopy.disabled = true;
+    setTimeout(function () {
+      if (seq !== svgState.seq) return;
+      try {
+        var res = vectorizeToSvg(svgState.source, svgOpts());
+        if (seq !== svgState.seq) return;
+        svgState.svg = res.svg;
+        if (svgState.previewUrl) URL.revokeObjectURL(svgState.previewUrl);
+        svgState.previewUrl = URL.createObjectURL(new Blob([res.svg], { type: 'image/svg+xml' }));
+        svgPreview.src = svgState.previewUrl;
+        svgStats.textContent = (svgState.file.name || '이미지') + ' · ' + fmtBytes(svgState.file.size) +
+          ' → SVG ' + fmtBytes(res.svg.length) + ' · 색상 ' + res.colors + '개';
+        svgDownload.disabled = svgCopy.disabled = false;
+      } catch (e) {
+        svgStats.textContent = (e && e.message) || 'SVG 변환에 실패했어요.';
+      }
+    }, 30);
+  }
+
+  function vectorizeFile(f) {
+    var seq = ++svgState.seq;
+    decodeToSource(f).then(function (dec) {
+      if (seq !== svgState.seq) {
+        if (dec.url) URL.revokeObjectURL(dec.url);
+        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+        return;
+      }
+      if (svgState.url) URL.revokeObjectURL(svgState.url);
+      if (svgState.source && typeof svgState.source.close === 'function') { try { svgState.source.close(); } catch (e) {} }
+      svgState.file = f;
+      svgState.source = dec.source;
+      svgState.url = dec.url;
+      runVectorize();
+    }).catch(function () { toast('이미지를 열지 못했어요.'); });
+  }
+
+  svgFile.addEventListener('change', function () {
+    var f = svgFile.files && svgFile.files[0];
+    svgFile.value = '';
+    if (f) vectorizeFile(f);
+  });
+  var svgOptTimer = null;
+  function scheduleVectorize() {
+    clearTimeout(svgOptTimer);
+    svgOptTimer = setTimeout(runVectorize, 300);
+  }
+  svgColors.addEventListener('input', function () {
+    svgColorsOut.textContent = svgColors.value;
+    scheduleVectorize();
+  });
+  svgDetail.addEventListener('input', scheduleVectorize);
+  svgSmooth.addEventListener('change', scheduleVectorize);
+  svgDownload.addEventListener('click', function () {
+    if (!svgState.svg) return;
+    saveBlob(new Blob([svgState.svg], { type: 'image/svg+xml' }), baseName(svgState.file.name || 'image') + '.svg');
+  });
+  svgCopy.addEventListener('click', function () {
+    if (!svgState.svg) return;
+    copyText(svgState.svg).then(function (ok) {
+      toast(ok ? 'SVG 코드 복사 완료 (' + fmtBytes(svgState.svg.length) + ')' : '복사에 실패했어요.');
+    });
   });
 
   /* 콘솔/테스트용 내부 핸들 */
