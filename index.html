@@ -185,28 +185,27 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .btn.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
-/* ---------- result cards ---------- */
-.results { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 12px; }
-.item { display: grid; grid-template-columns: 92px 1fr; gap: 14px 16px; padding: 14px; align-items: center; }
+/* ---------- result list ---------- */
+.results { list-style: none; padding: 0; margin: 14px 0 0; }
+.results:not(:empty) {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+.item + .item { border-top: 1px solid var(--border); }
 .thumb-wrap {
-  position: relative; width: 92px; height: 92px; border-radius: 10px; overflow: hidden;
+  position: relative; width: 52px; height: 52px; border-radius: 8px; overflow: hidden;
   border: 1px solid var(--border); flex: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
-  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 16px 16px;
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
 }
 .thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; -webkit-user-drag: none; }
 .original-img { z-index: 2; }
-.hold-hint {
-  position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; text-align: center;
-  font-size: 10px; padding: 2px 0; color: #fff; background: rgba(0, 0, 0, .45);
-  opacity: 0; transition: opacity .15s; pointer-events: none;
-}
-.item.is-done:not(.is-kept) .thumb-wrap:hover .hold-hint,
-.item.is-done:not(.is-kept) .thumb-wrap:focus-visible .hold-hint { opacity: 1; }
+.item.is-done:not(.is-kept) .thumb-wrap { cursor: zoom-in; }
 .compare-label {
-  position: absolute; z-index: 3; top: 4px; left: 4px; font-size: 10px; font-weight: 700;
-  color: #fff; background: rgba(0, 0, 0, .55); padding: 1px 7px; border-radius: 999px;
+  position: absolute; z-index: 3; inset: auto 0 0 0; text-align: center; font-size: 9px; font-weight: 700;
+  color: #fff; background: rgba(0, 0, 0, .55); padding: 1px 0;
 }
-.err-icon { position: absolute; inset: 0; display: none; place-items: center; font-size: 30px; background: var(--danger-soft); }
+.err-icon { position: absolute; inset: 0; display: none; place-items: center; font-size: 20px; background: var(--danger-soft); }
 .item.is-error .err-icon { display: grid; }
 .item.is-error .thumb { display: none; }
 .spinner {
@@ -214,18 +213,18 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
   background: color-mix(in srgb, var(--panel) 55%, transparent);
 }
 .spinner::after {
-  content: ""; width: 26px; height: 26px; border-radius: 50%;
-  border: 3px solid var(--accent-soft); border-top-color: var(--accent);
+  content: ""; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--accent-soft); border-top-color: var(--accent);
   animation: spin .8s linear infinite;
 }
 .item.is-processing .spinner { display: grid; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.meta { min-width: 0; }
-.fname { margin: 0 0 3px; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sizes { margin: 0; font-size: 14px; }
+.meta { flex: 1; min-width: 0; }
+.fname { margin: 0 0 2px; font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sizes { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arrow { color: var(--muted); }
 .badge {
-  display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px;
+  display: inline-block; font-size: 11.5px; font-weight: 700; padding: 0 7px;
   border-radius: 999px; margin-left: 6px; vertical-align: 1px;
 }
 .badge.save { background: var(--ok-soft); color: var(--ok); }
@@ -234,20 +233,20 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 :root[data-theme="dark"] .badge.keep { color: var(--accent); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge.keep { color: var(--accent); } }
 .muted { color: var(--muted); }
-.dims { margin: 2px 0 0; font-size: 12.5px; }
-.notes { margin: 3px 0 0; font-size: 12.5px; }
-.item.is-error .notes { color: var(--danger); }
-.actions { grid-column: 1 / -1; display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
-.actions .btn { padding: 7px 12px; font-size: 13px; }
+.notes { margin: 2px 0 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notes:empty { display: none; }
+.item.is-error .notes { color: var(--danger); white-space: normal; }
+.actions { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; flex: none; }
+.actions .btn { padding: 6px 11px; font-size: 12.5px; white-space: nowrap; }
 .icon-btn {
-  margin-left: auto; width: 32px; height: 32px; border-radius: 9px;
-  border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 15px;
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 14px;
 }
 .icon-btn:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
-@media (min-width: 700px) {
-  .item { grid-template-columns: 92px minmax(0, 1fr) auto; }
-  .actions { grid-column: auto; display: grid; grid-template-columns: repeat(2, auto); justify-content: end; }
-  .icon-btn { grid-column: 2; justify-self: end; margin-left: 0; }
+@media (max-width: 640px) {
+  .item { flex-wrap: wrap; row-gap: 8px; }
+  .actions { flex: 1 1 100%; }
+  .actions .icon-btn { margin-left: auto; }
 }
 
 /* ---------- base64 tab ---------- */
@@ -494,19 +493,17 @@ git push -u origin main</code></pre></li>
 </footer>
 
 <template id="cardTpl">
-  <li class="item card">
+  <li class="item">
     <div class="thumb-wrap">
       <img class="thumb result-img" alt="압축 결과 미리보기">
       <img class="thumb original-img" alt="원본 미리보기" hidden>
       <span class="compare-label" hidden>원본</span>
-      <span class="hold-hint">꾹 누르면 원본</span>
       <div class="err-icon">⚠️</div>
       <div class="spinner"></div>
     </div>
     <div class="meta">
       <p class="fname"></p>
       <p class="sizes"></p>
-      <p class="dims muted"></p>
       <p class="notes muted"></p>
     </div>
     <div class="actions">
@@ -1197,14 +1194,15 @@ git push -u origin main</code></pre></li>
       tWrap.setAttribute('tabindex', '0');
       tWrap.setAttribute('role', 'button');
       tWrap.setAttribute('aria-label', '누르고 있는 동안 원본 이미지 표시');
+      tWrap.setAttribute('title', '꾹 눌러 원본과 비교');
     } else {
       tWrap.removeAttribute('tabindex');
       tWrap.removeAttribute('role');
       tWrap.removeAttribute('aria-label');
+      tWrap.removeAttribute('title');
     }
 
     var sizes = li.querySelector('.sizes');
-    var dims = li.querySelector('.dims');
     var notes = li.querySelector('.notes');
     var resultImg = li.querySelector('.result-img');
     li.querySelectorAll('button[data-act]').forEach(function (b) {
@@ -1213,13 +1211,11 @@ git push -u origin main</code></pre></li>
 
     if (item.status === 'error') {
       sizes.textContent = fmtBytes(item.file.size);
-      dims.textContent = '';
       notes.textContent = item.error || '처리 중 문제가 생겼어요.';
       return;
     }
     if (item.status !== 'done') {
       sizes.innerHTML = '<span class="muted">' + fmtBytes(item.file.size) + ' · 압축 중…</span>';
-      dims.textContent = '';
       notes.textContent = '';
       return;
     }
@@ -1238,13 +1234,14 @@ git push -u origin main</code></pre></li>
         ? '<span class="badge save">-' + pct + '%</span>'
         : '<span class="badge grow">+' + (-pct) + '%</span>';
     }
-    sizes.innerHTML = '<b>' + fmtBytes(item.file.size) + '</b> <span class="arrow">→</span> <b>' + fmtBytes(r.blob.size) + '</b>' + badge;
     var d = item.w + '×' + item.h;
-    if (r.w !== item.w || r.h !== item.h) d += ' → ' + r.w + '×' + r.h;
+    if (r.w !== item.w || r.h !== item.h) d += '→' + r.w + '×' + r.h;
     d += ' · ' + fmtLabel(r.format);
     if (r.quality != null && !r.usedOriginal) d += ' · 품질 ' + Math.round(r.quality * 100);
-    dims.textContent = d;
+    sizes.innerHTML = '<b>' + fmtBytes(item.file.size) + '</b> <span class="arrow">→</span> <b>' + fmtBytes(r.blob.size) + '</b>' + badge +
+      ' <span class="muted">· ' + d + '</span>';
     notes.textContent = r.notes.join(' ');
+    if (r.notes.length) notes.title = r.notes.join(' ');
   }
 
   function removeItem(item) {
