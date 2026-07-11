@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>이미지 다이어트 — 화질은 그대로, 용량만 가볍게</title>
 <meta name="description" content="서버 업로드 없이 브라우저에서만 동작하는 이미지 압축·리사이즈·Base64 변환 도구. 오프라인에서도 쓸 수 있어요.">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7f9">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f14">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%230d9488'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='24' y='24' width='56' height='56' rx='10' opacity='.5'/%3E%3Crect x='58' y='58' width='46' height='46' rx='10'/%3E%3Cpath d='M40 40l24 24M64 46v18H46'/%3E%3C/g%3E%3C/svg%3E">
+<meta name="theme-color" content="#f2f4f6">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%233182f6'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='24' y='24' width='56' height='56' rx='10' opacity='.5'/%3E%3Crect x='58' y='58' width='46' height='46' rx='10'/%3E%3Cpath d='M40 40l24 24M64 46v18H46'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="mobile-web-app-capable" content="yes">
@@ -16,75 +15,33 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
 :root {
-  --bg: #f6f8fb;
+  --bg: #f2f4f6;
   --panel: #ffffff;
-  --panel-2: #f1f4f8;
+  --panel-2: #f2f4f6;
   --text: #191f28;
-  --muted: #8b95a1;
-  --border: #e9edf3;
-  --accent: #0d9488;
-  --accent-strong: #0b7f74;
-  --accent-soft: rgba(20, 184, 166, .11);
+  --muted: #6b7684;
+  --border: #e5e8eb;
+  --accent: #3182f6;
+  --accent-strong: #1b64da;
+  --accent-soft: rgba(49, 130, 246, .08);
   --danger: #f04452;
   --danger-soft: rgba(240, 68, 82, .1);
   --ok: #15803d;
   --ok-soft: rgba(22, 163, 74, .12);
-  --shadow: 0 2px 8px rgba(25, 31, 40, .04), 0 12px 32px rgba(25, 31, 40, .07);
-  --radius: 18px;
+  --shadow: 0 1px 3px rgba(25, 31, 40, .04), 0 10px 28px rgba(25, 31, 40, .06);
+  --radius: 20px;
   color-scheme: light;
-}
-:root[data-theme="dark"] { color-scheme: dark; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { color-scheme: dark; }
-}
-:root[data-theme="dark"], :root.dark-vars {
-  --bg: #0b0f14;
-  --panel: #121821;
-  --panel-2: #0e141c;
-  --text: #e6edf3;
-  --muted: #8b98a9;
-  --border: #232c38;
-  --accent: #2dd4bf;
-  --accent-strong: #14b8a6;
-  --accent-soft: rgba(45, 212, 191, .12);
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, .12);
-  --ok: #4ade80;
-  --ok-soft: rgba(74, 222, 128, .12);
-  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0b0f14;
-    --panel: #121821;
-    --panel-2: #0e141c;
-    --text: #e6edf3;
-    --muted: #8b98a9;
-    --border: #232c38;
-    --accent: #2dd4bf;
-    --accent-strong: #14b8a6;
-    --accent-soft: rgba(45, 212, 191, .12);
-    --danger: #f87171;
-    --danger-soft: rgba(248, 113, 113, .12);
-    --ok: #4ade80;
-    --ok-soft: rgba(74, 222, 128, .12);
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
-  }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  background: linear-gradient(180deg, #eefaf7 0%, var(--bg) 340px) fixed, var(--bg);
+  background: var(--bg);
   color: var(--text);
   font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
   font-size: 15px;
   line-height: 1.6;
   letter-spacing: -.01em;
-}
-:root[data-theme="dark"] body { background: var(--bg); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) body { background: var(--bg); }
 }
 .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -95,7 +52,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .site-header { padding: 30px 0 10px; }
 .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 14px; }
-.brand svg { width: 46px; height: 46px; flex: none; border-radius: 13px; box-shadow: 0 6px 18px rgba(13, 148, 136, .25); }
+.brand svg { width: 46px; height: 46px; flex: none; border-radius: 13px; box-shadow: 0 6px 18px rgba(49, 130, 246, .25); }
 .brand h1 { font-size: 23px; font-weight: 800; margin: 0; letter-spacing: -.5px; }
 .tagline { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
@@ -104,13 +61,6 @@ input, select, textarea { font: inherit; color: inherit; }
   background: var(--accent-soft); border: 1px solid transparent;
   padding: 5px 11px; border-radius: 999px; white-space: nowrap;
 }
-:root[data-theme="dark"] .pill { color: var(--accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pill { color: var(--accent); } }
-.theme-btn {
-  width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border);
-  background: var(--panel); display: grid; place-items: center; font-size: 16px;
-}
-.theme-btn:hover { border-color: var(--accent); }
 
 /* ---------- tabs ---------- */
 .tabs {
@@ -127,10 +77,8 @@ input, select, textarea { font: inherit; color: inherit; }
   transition: color .15s, background .15s, box-shadow .15s;
 }
 .tab:hover { color: var(--text); }
-.tab[aria-selected="true"] { box-shadow: 0 4px 14px rgba(13, 148, 136, .3); }
+.tab[aria-selected="true"] { box-shadow: 0 4px 14px rgba(49, 130, 246, .3); }
 .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-:root[data-theme="dark"] .tab[aria-selected="true"] { color: #06251f; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tab[aria-selected="true"] { color: #06251f; } }
 
 main { padding-bottom: 30px; }
 .card {
@@ -161,8 +109,6 @@ main { padding-bottom: 30px; }
 .field-label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 7px; }
 .field-label .sub { font-weight: 400; color: var(--muted); }
 .field-label output { color: var(--accent-strong); }
-:root[data-theme="dark"] .field-label output { color: var(--accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .field-label output { color: var(--accent); } }
 .segmented { display: flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
 .segmented label { flex: 1; }
 .segmented input { position: absolute; opacity: 0; pointer-events: none; }
@@ -192,8 +138,6 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 }
 .chip:hover { border-color: var(--accent); color: var(--text); }
 .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
-:root[data-theme="dark"] .chip.on { color: var(--accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.on { color: var(--accent); } }
 .chip:disabled { opacity: .45; cursor: not-allowed; }
 .field-wide { grid-column: 1 / -1; }
 .pair-row { display: flex; gap: 8px; }
@@ -217,12 +161,10 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
   touch-action: manipulation;
 }
 .btn:active:not(:disabled) { transform: scale(.97); }
-.btn.primary { box-shadow: 0 4px 14px rgba(13, 148, 136, .22); }
+.btn.primary { box-shadow: 0 4px 14px rgba(49, 130, 246, .22); }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-:root[data-theme="dark"] .btn.primary { color: #06251f; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #06251f; } }
 .btn.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
@@ -271,8 +213,6 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .badge.save { background: var(--ok-soft); color: var(--ok); }
 .badge.grow { background: var(--danger-soft); color: var(--danger); }
 .badge.keep { background: var(--accent-soft); color: var(--accent-strong); }
-:root[data-theme="dark"] .badge.keep { color: var(--accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge.keep { color: var(--accent); } }
 .muted { color: var(--muted); }
 .notes { margin: 2px 0 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notes:empty { display: none; }
@@ -302,7 +242,6 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
   .icon-btn { width: 40px; height: 40px; font-size: 16px; }
   .tab { padding: 10px 18px; min-height: 42px; }
   .chip { padding: 8px 13px; font-size: 13px; }
-  .theme-btn { width: 42px; height: 42px; }
   .check-label { padding: 10px 0; }
   .check-label input { width: 20px; height: 20px; }
   input[type="range"] { height: 32px; }
@@ -459,7 +398,7 @@ textarea {
   <div class="wrap header-inner">
     <div class="brand">
       <svg viewBox="0 0 128 128" aria-hidden="true">
-        <rect width="128" height="128" rx="28" fill="#0d9488"/>
+        <rect width="128" height="128" rx="28" fill="#3182f6"/>
         <g fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
           <rect x="24" y="24" width="56" height="56" rx="10" opacity=".5"/>
           <rect x="58" y="58" width="46" height="46" rx="10"/>
@@ -473,7 +412,6 @@ textarea {
     </div>
     <div class="header-actions">
       <span class="pill">🔒 100% 브라우저 처리 · 업로드 없음</span>
-      <button id="themeToggle" class="theme-btn" type="button" aria-label="테마 전환">🌙</button>
     </div>
   </div>
 </header>
@@ -885,28 +823,6 @@ textarea {
     if (s >= 1) return null;
     return { w: Math.max(1, Math.floor(w * s)), h: Math.max(1, Math.floor(h * s)) };
   }
-
-  /* ================= theme ================= */
-  var themeBtn = $('#themeToggle');
-  function currentTheme() {
-    var t = document.documentElement.dataset.theme;
-    if (t) return t;
-    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  function applyTheme(t, persist) {
-    document.documentElement.dataset.theme = t;
-    themeBtn.textContent = t === 'dark' ? '☀️' : '🌙';
-    if (persist) { try { localStorage.setItem('imgdiet.theme', t); } catch (e) {} }
-  }
-  (function () {
-    var saved = null;
-    try { saved = localStorage.getItem('imgdiet.theme'); } catch (e) {}
-    if (saved === 'dark' || saved === 'light') applyTheme(saved, false);
-    else themeBtn.textContent = currentTheme() === 'dark' ? '☀️' : '🌙';
-  })();
-  themeBtn.addEventListener('click', function () {
-    applyTheme(currentTheme() === 'dark' ? 'light' : 'dark', true);
-  });
 
   /* ================= tabs ================= */
   var tabs = [
@@ -2699,14 +2615,14 @@ textarea {
     ctx.clip();
     ctx.drawImage(bgState.dispImg, 0, 0);
     ctx.restore();
-    ctx.fillStyle = '#0d9488';
+    ctx.fillStyle = '#3182f6';
     ctx.fillRect(divX - 1, 0, 2, dh);
     if (cursor && bgState.tool !== 'compare') {
       var rect = bgCanvas.getBoundingClientRect();
       var r = parseInt($('#bgBrush').value, 10) / 2 * (dw / (rect.width || dw));
       ctx.beginPath();
       ctx.arc(cursor.x, cursor.y, r, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(13,148,136,.95)';
+      ctx.strokeStyle = 'rgba(49,130,246,.95)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
