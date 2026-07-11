@@ -2537,13 +2537,14 @@ textarea {
     ortLoadPromise.catch(function () { ortLoadPromise = null; });
     return ortLoadPromise;
   }
-  function bgAutoMaskAI() {
+  /* U²-Net 추론 공용부: 320² saliency를 0..1로 정규화해 돌려준다 */
+  function runU2Net(srcCanvas) {
     return loadOrtSession().then(function (sess) {
       var S = 320;
       var c = document.createElement('canvas');
       c.width = S; c.height = S;
       var x = c.getContext('2d', { willReadFrequently: true });
-      x.drawImage(bgState.srcCanvas, 0, 0, S, S);
+      x.drawImage(srcCanvas, 0, 0, S, S);
       var data = x.getImageData(0, 0, S, S).data;
       var input = new Float32Array(3 * S * S);
       for (var i = 0, p = 0; i < S * S; i++, p += 4) {
@@ -2554,21 +2555,32 @@ textarea {
       var feeds = {};
       feeds[sess.inputNames[0]] = new ort.Tensor('float32', input, [1, 3, S, S]);
       return sess.run(feeds).then(function (out) {
-        var pred = out[sess.outputNames[0]].data;
+        var raw = out[sess.outputNames[0]].data;
         var n = S * S;
         var mn = Infinity, mx = -Infinity;
         for (var i2 = 0; i2 < n; i2++) {
-          var v = pred[i2];
+          var v = raw[i2];
           if (v < mn) mn = v;
           if (v > mx) mx = v;
         }
         var range = (mx - mn) || 1;
+        var pred = new Float32Array(n);
+        for (var i3 = 0; i3 < n; i3++) pred[i3] = (raw[i3] - mn) / range;
+        return { pred: pred, S: S };
+      });
+    });
+  }
+  function bgAutoMaskAI() {
+    return runU2Net(bgState.srcCanvas).then(function (res) {
+      var S = res.S, predN = res.pred;
+      {
         var tol = parseInt($('#bgTol').value, 10);
         var t = 0.12 + (tol - 3) / 57 * 0.55;
         var lo = Math.max(0, t - 0.12), hi = Math.min(1, t + 0.12);
+        var n = S * S;
         var alpha = new Uint8Array(n);
         for (var i3 = 0; i3 < n; i3++) {
-          var pv = (pred[i3] - mn) / range;
+          var pv = predN[i3];
           if (pv <= lo) { alpha[i3] = 0; continue; }
           if (pv >= hi) { alpha[i3] = 255; continue; }
           var tt = (pv - lo) / (hi - lo);
@@ -2579,7 +2591,7 @@ textarea {
         bgState.workMask = alphaToMaskCanvas(alpha, S, S);
         bgState.workW = S;
         bgState.workH = S;
-      });
+      }
     });
   }
   function bgRecompute() {
@@ -3046,12 +3058,82 @@ textarea {
       if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
       exState.file = f;
       exState.W = w; exState.H = h;
+      exState.aiPred = null;
+      exState.aiS = 0;
       $('#exBody').hidden = false;
       $('#bgBody').hidden = true;
       exComputeWork();
       exSetupDisplay();
       exRender(null);
+      exComputeAI();
     }).catch(function () { toast('이미지를 열지 못했어요.'); });
+  }
+
+  /* AI 전경맵을 백그라운드에서 준비 — 준비되면 꾹 누르기가 AI 기반으로 동작 */
+  function exComputeAI() {
+    var seq = exState.seq;
+    var hint = $('#exHint');
+    hint.textContent = '🤖 AI가 물체를 인식하는 중… (준비 전에는 색상 기반으로 잡혀요)';
+    runU2Net(exState.srcCanvas).then(function (res) {
+      if (seq !== exState.seq) return;
+      exState.aiPred = res.pred;
+      exState.aiS = res.S;
+      hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 AI가 잡아줘요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요';
+    }).catch(function () {
+      if (seq !== exState.seq) return;
+      hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요 (색상 기반)';
+    });
+  }
+
+  /* AI 전경맵에서 눌린 지점의 연결 성분 선택 (소프트 엣지 1픽셀 림 포함) */
+  function exPickComponentAI(ax, ay) {
+    if (!exState.aiPred) return null;
+    var S = exState.aiS, pred = exState.aiPred;
+    var n = S * S;
+    var tol = parseInt($('#exTol').value, 10);
+    var thr = 0.15 + (tol - 3) / 57 * 0.7;
+    var lo = Math.max(0, thr - 0.12);
+    var start = Math.min(n - 1, Math.max(0, ay * S + ax));
+    if (pred[start] < thr) return null;
+    var seen = new Uint8Array(n);
+    var queue = new Int32Array(n);
+    var qh = 0, qt = 0;
+    seen[start] = 1;
+    queue[qt++] = start;
+    var minX = S, minY = S, maxX = 0, maxY = 0;
+    while (qh < qt) {
+      var u = queue[qh++];
+      var ux = u % S, uy = (u / S) | 0;
+      if (ux < minX) minX = ux;
+      if (ux > maxX) maxX = ux;
+      if (uy < minY) minY = uy;
+      if (uy > maxY) maxY = uy;
+      var grow = function (v) { if (!seen[v] && pred[v] >= thr) { seen[v] = 1; queue[qt++] = v; } };
+      if (ux > 0) grow(u - 1);
+      if (ux < S - 1) grow(u + 1);
+      if (u >= S) grow(u - S);
+      if (u < n - S) grow(u + S);
+    }
+    if (qt < 8) return null;
+    /* 소프트 림: 성분에 인접한 완충 구간 픽셀을 부분 알파로 포함 */
+    var alpha = new Uint8Array(n);
+    for (var i = 0; i < n; i++) if (seen[i]) alpha[i] = 255;
+    for (i = 0; i < n; i++) {
+      if (seen[i] || pred[i] <= lo) continue;
+      var ix = i % S;
+      var near = (ix > 0 && seen[i - 1]) || (ix < S - 1 && seen[i + 1]) || (i >= S && seen[i - S]) || (i < n - S && seen[i + S]);
+      if (!near) continue;
+      var tt = (pred[i] - lo) / (thr - lo);
+      tt = Math.max(0, Math.min(1, tt));
+      tt = tt * tt * (3 - 2 * tt);
+      alpha[i] = Math.round(255 * tt);
+      var jx = i % S, jy = (i / S) | 0;
+      if (jx < minX) minX = jx;
+      if (jx > maxX) maxX = jx;
+      if (jy < minY) minY = jy;
+      if (jy > maxY) maxY = jy;
+    }
+    return { mask: alphaToMaskCanvas(alpha, S, S), minX: minX, minY: minY, maxX: maxX, maxY: maxY, gw: S, gh: S };
   }
 
   function exComputeWork() {
@@ -3170,11 +3252,11 @@ textarea {
       md.data[q] = 255; md.data[q + 1] = 255; md.data[q + 2] = 255; md.data[q + 3] = 255;
     }
     mx.putImageData(md, 0, 0);
-    return { mask: mc, minX: minX, minY: minY, maxX: maxX, maxY: maxY, area: area };
+    return { mask: mc, minX: minX, minY: minY, maxX: maxX, maxY: maxY, area: area, gw: ww, gh: wh };
   }
 
   function exCropComponent(comp) {
-    var sx = exState.W / exState.workW, sy = exState.H / exState.workH;
+    var sx = exState.W / comp.gw, sy = exState.H / comp.gh;
     var pad = 2;
     var x0 = Math.max(0, Math.floor(comp.minX * sx) - pad);
     var y0 = Math.max(0, Math.floor(comp.minY * sy) - pad);
@@ -3188,7 +3270,7 @@ textarea {
     x.globalCompositeOperation = 'destination-in';
     x.imageSmoothingEnabled = true;
     x.imageSmoothingQuality = 'high';
-    x.drawImage(comp.mask, 0, 0, exState.workW, exState.workH, -x0, -y0, exState.W, exState.H);
+    x.drawImage(comp.mask, 0, 0, comp.gw, comp.gh, -x0, -y0, exState.W, exState.H);
     return c;
   }
 
@@ -3238,7 +3320,14 @@ textarea {
   }
   function exActivate(e) {
     var pos = exPos(e);
-    var comp = exPickComponent(pos.wx, pos.wy);
+    var r = exCanvas.getBoundingClientRect();
+    var comp = null;
+    if (exState.aiPred) {
+      var ax = Math.round((e.clientX - r.left) * (exState.aiS / r.width));
+      var ay = Math.round((e.clientY - r.top) * (exState.aiS / r.height));
+      comp = exPickComponentAI(ax, ay);
+    }
+    if (!comp) comp = exPickComponent(pos.wx, pos.wy);
     if (!comp) {
       toast('여기서는 물체를 찾지 못했어요 — 인식 범위를 조절해 보세요.');
       exDrag = null;
