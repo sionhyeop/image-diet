@@ -103,10 +103,16 @@ input, select, textarea { font: inherit; color: inherit; }
 .theme-btn:hover { border-color: var(--accent); }
 
 /* ---------- tabs ---------- */
-.tabs { display: flex; gap: 6px; margin: 16px auto 18px; }
+.tabs {
+  display: flex; gap: 6px; margin: 16px auto 18px;
+  overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; padding-bottom: 2px;
+}
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   border: 1px solid var(--border); background: var(--panel); color: var(--muted);
   padding: 8px 18px; border-radius: 999px; font-weight: 600; font-size: 14px;
+  flex: none; touch-action: manipulation;
 }
 .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 :root[data-theme="dark"] .tab[aria-selected="true"] { color: #06251f; }
@@ -165,6 +171,7 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .chip {
   border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
   font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+  touch-action: manipulation;
 }
 .chip:hover { border-color: var(--accent); color: var(--text); }
 .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
@@ -189,6 +196,7 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .btn {
   border: 1px solid var(--border); background: var(--panel); border-radius: 10px;
   padding: 8px 14px; font-size: 13.5px; font-weight: 600; transition: border-color .12s, background .12s;
+  touch-action: manipulation;
 }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -263,8 +271,40 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
   .actions .icon-btn { margin-left: auto; }
 }
 @media (max-width: 480px) {
-  .actions .btn { padding: 5px 8px; font-size: 11.5px; }
-  .icon-btn { width: 27px; height: 27px; font-size: 13px; }
+  .actions .btn { padding: 7px 9px; font-size: 12px; }
+  .icon-btn { width: 32px; height: 32px; font-size: 13px; }
+}
+
+/* ---------- touch devices ---------- */
+@media (pointer: coarse) {
+  .btn { padding: 10px 15px; min-height: 42px; }
+  .actions .btn { padding: 9px 12px; min-height: 40px; }
+  .icon-btn { width: 40px; height: 40px; font-size: 16px; }
+  .tab { padding: 10px 18px; min-height: 42px; }
+  .chip { padding: 8px 13px; font-size: 13px; }
+  .theme-btn { width: 42px; height: 42px; }
+  .check-label { padding: 10px 0; }
+  .check-label input { width: 20px; height: 20px; }
+  input[type="range"] { height: 32px; }
+  .lb-close { width: 46px; height: 46px; font-size: 20px; }
+  .map-zoom button { width: 44px; height: 44px; font-size: 19px; }
+  .segmented span { padding: 9px 4px; }
+  input[type="color"] { width: 64px; height: 42px; }
+}
+/* iOS는 입력 폰트가 16px 미만이면 포커스 시 화면을 강제 확대함 */
+@media (max-width: 640px) {
+  select, textarea, input[type="text"], input[type="number"], input[type="datetime-local"] { font-size: 16px; }
+  .wrap { padding: 0 14px; }
+  .settings { padding: 15px 14px 12px; }
+  .summary { padding: 12px 14px; }
+  .summary-actions { width: 100%; }
+  .summary-actions .btn { flex: 1; }
+  .b64-card { padding: 16px 14px; }
+  .target-row { flex-wrap: wrap; }
+  .pair-row { flex-wrap: wrap; }
+  .pair-row input { flex: 1 1 100%; }
+  .map-foot { flex-wrap: wrap; }
+  .map-foot .btn { width: 100%; }
 }
 
 /* ---------- lightbox ---------- */
@@ -2960,33 +3000,54 @@ textarea {
     mapState.z = z2;
     requestMapDraw();
   }
+  /* 한 손가락 드래그 + 두 손가락 핀치 줌 */
+  var mapPtrs = new Map();
+  var pinchBase = 0;
+  function panMapBy(dx, dy) {
+    var z = mapState.z, n = 256 * Math.pow(2, z);
+    var c = mapProject(mapState.lon, mapState.lat, z);
+    c.x -= dx;
+    c.y = Math.max(0, Math.min(n, c.y - dy));
+    var g = mapUnproject(c.x, c.y, z);
+    mapState.lat = g.lat;
+    mapState.lon = ((g.lon + 540) % 360) - 180;
+    requestMapDraw();
+  }
+  function pinchDist() {
+    var pts = Array.from(mapPtrs.values());
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  }
   mapCanvas.addEventListener('pointerdown', function (e) {
     e.preventDefault();
     try { mapCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+    mapPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (mapPtrs.size === 2) pinchBase = pinchDist();
     mapCanvas.classList.add('dragging');
-    var lastX = e.clientX, lastY = e.clientY;
-    var move = function (ev) {
-      var z = mapState.z, n = 256 * Math.pow(2, z);
-      var c = mapProject(mapState.lon, mapState.lat, z);
-      c.x -= ev.clientX - lastX;
-      c.y = Math.max(0, Math.min(n, c.y - (ev.clientY - lastY)));
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      var g = mapUnproject(c.x, c.y, z);
-      mapState.lat = g.lat;
-      mapState.lon = ((g.lon + 540) % 360) - 180;
-      requestMapDraw();
-    };
-    var up = function () {
-      mapCanvas.classList.remove('dragging');
-      mapCanvas.removeEventListener('pointermove', move);
-      mapCanvas.removeEventListener('pointerup', up);
-      mapCanvas.removeEventListener('pointercancel', up);
-    };
-    mapCanvas.addEventListener('pointermove', move);
-    mapCanvas.addEventListener('pointerup', up);
-    mapCanvas.addEventListener('pointercancel', up);
   });
+  mapCanvas.addEventListener('pointermove', function (e) {
+    var prev = mapPtrs.get(e.pointerId);
+    if (!prev) return;
+    if (mapPtrs.size === 1) {
+      panMapBy(e.clientX - prev.x, e.clientY - prev.y);
+      mapPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    } else if (mapPtrs.size === 2) {
+      mapPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      var d = pinchDist();
+      if (pinchBase > 0 && Math.abs(Math.log2(d / pinchBase)) >= 0.4) {
+        var pts = Array.from(mapPtrs.values());
+        var r = mapCanvas.getBoundingClientRect();
+        zoomAt((pts[0].x + pts[1].x) / 2 - r.left, (pts[0].y + pts[1].y) / 2 - r.top, d > pinchBase ? 1 : -1);
+        pinchBase = d;
+      }
+    }
+  });
+  function mapPtrEnd(e) {
+    mapPtrs.delete(e.pointerId);
+    if (mapPtrs.size === 2) pinchBase = pinchDist();
+    if (!mapPtrs.size) mapCanvas.classList.remove('dragging');
+  }
+  mapCanvas.addEventListener('pointerup', mapPtrEnd);
+  mapCanvas.addEventListener('pointercancel', mapPtrEnd);
   mapCanvas.addEventListener('wheel', function (e) {
     e.preventDefault();
     var r = mapCanvas.getBoundingClientRect();
