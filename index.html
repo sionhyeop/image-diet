@@ -544,9 +544,16 @@ textarea {
         <input type="file" id="bgFile" accept="image/*" hidden>
       </div>
       <div id="bgBody" hidden>
+        <div class="field svg-opts">
+          <span class="field-label">인식 엔진</span>
+          <div class="chips" id="bgEngineChips">
+            <button type="button" class="chip on" data-engine="ai">🤖 AI 인식 (권장)</button>
+            <button type="button" class="chip" data-engine="classic">🎨 색상 기반 (단색 배경)</button>
+          </div>
+        </div>
         <div class="settings-grid svg-opts">
           <div class="field">
-            <label class="field-label" for="bgTol">배경 인식 범위 <output id="bgTolOut">18</output><span class="sub"> — 넓힐수록 과감히 지워요</span></label>
+            <label class="field-label" for="bgTol">인식 민감도 <output id="bgTolOut">18</output><span class="sub"> — 높일수록 과감히 지워요</span></label>
             <input type="range" id="bgTol" min="3" max="60" step="1" value="18">
           </div>
           <div class="field">
@@ -2502,16 +2509,125 @@ textarea {
       bgState.W = w; bgState.H = h;
       bgState.strokes = [];
       bgState.divider = 50;
+      bgState.mask = null;
       $('#bgBody').hidden = false;
-      bgAutoMask();
       bgSetupDisplay();
-      bgReplayMask();
       bgRender();
-      $('#bgStats').textContent = (f.name || '이미지') + ' · ' + w + '×' + h + ' · 자동 인식 완료 — 브러시로 다듬을 수 있어요';
+      bgRecompute();
     }).catch(function () { toast('이미지를 열지 못했어요.'); });
   }
 
-  function bgAutoMask() {
+  /* ---------- AI 엔진 (U²-Net-p, 온디바이스 ONNX) ---------- */
+  var bgEngine = 'ai';
+  var ortSession = null, ortLoadPromise = null;
+  function syncBgEngineChips() {
+    document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.engine === bgEngine);
+    });
+  }
+  function loadOrtSession() {
+    if (ortSession) return Promise.resolve(ortSession);
+    if (ortLoadPromise) return ortLoadPromise;
+    ortLoadPromise = new Promise(function (resolve, reject) {
+      if (window.ort) return resolve();
+      var s = document.createElement('script');
+      s.src = 'vendor/ort.min.js';
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error('ONNX 런타임 로드 실패')); };
+      document.head.appendChild(s);
+    }).then(function () {
+      ort.env.wasm.wasmPaths = new URL('vendor/', location.href).href;
+      ort.env.wasm.numThreads = 1;
+      return ort.InferenceSession.create('models/u2netp.onnx', { executionProviders: ['wasm'] });
+    }).then(function (sess) {
+      ortSession = sess;
+      return sess;
+    });
+    ortLoadPromise.catch(function () { ortLoadPromise = null; });
+    return ortLoadPromise;
+  }
+  function bgAutoMaskAI() {
+    return loadOrtSession().then(function (sess) {
+      var S = 320;
+      var c = document.createElement('canvas');
+      c.width = S; c.height = S;
+      var x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(bgState.srcCanvas, 0, 0, S, S);
+      var data = x.getImageData(0, 0, S, S).data;
+      var input = new Float32Array(3 * S * S);
+      for (var i = 0, p = 0; i < S * S; i++, p += 4) {
+        input[i] = (data[p] / 255 - 0.485) / 0.229;
+        input[S * S + i] = (data[p + 1] / 255 - 0.456) / 0.224;
+        input[2 * S * S + i] = (data[p + 2] / 255 - 0.406) / 0.225;
+      }
+      var feeds = {};
+      feeds[sess.inputNames[0]] = new ort.Tensor('float32', input, [1, 3, S, S]);
+      return sess.run(feeds).then(function (out) {
+        var pred = out[sess.outputNames[0]].data;
+        var n = S * S;
+        var mn = Infinity, mx = -Infinity;
+        for (var i2 = 0; i2 < n; i2++) {
+          var v = pred[i2];
+          if (v < mn) mn = v;
+          if (v > mx) mx = v;
+        }
+        var range = (mx - mn) || 1;
+        var tol = parseInt($('#bgTol').value, 10);
+        var t = 0.12 + (tol - 3) / 57 * 0.55;
+        var lo = Math.max(0, t - 0.12), hi = Math.min(1, t + 0.12);
+        var alpha = new Uint8Array(n);
+        for (var i3 = 0; i3 < n; i3++) {
+          var pv = (pred[i3] - mn) / range;
+          if (pv <= lo) { alpha[i3] = 0; continue; }
+          if (pv >= hi) { alpha[i3] = 255; continue; }
+          var tt = (pv - lo) / (hi - lo);
+          tt = tt * tt * (3 - 2 * tt);
+          alpha[i3] = Math.round(255 * tt);
+        }
+        bgDespeckle(alpha, S, S);
+        bgState.workMask = alphaToMaskCanvas(alpha, S, S);
+        bgState.workW = S;
+        bgState.workH = S;
+      });
+    });
+  }
+  function bgRecompute() {
+    if (!bgState.srcCanvas) return Promise.resolve();
+    var seq = bgState.seq;
+    var stats = $('#bgStats');
+    var run;
+    if (bgEngine === 'ai') {
+      stats.textContent = ortSession ? '🤖 AI가 배경을 인식하는 중…' : '🤖 AI 모델 준비 중… (최초 1회, 약 15MB — 이후엔 오프라인 동작)';
+      run = bgAutoMaskAI().catch(function () {
+        if (bgState.seq !== seq) return;
+        bgEngine = 'classic';
+        syncBgEngineChips();
+        toast('AI 모델을 불러오지 못해 색상 기반으로 전환했어요.');
+        bgAutoMaskClassic();
+      });
+    } else {
+      run = Promise.resolve().then(bgAutoMaskClassic);
+    }
+    return run.then(function () {
+      if (bgState.seq !== seq || !bgState.srcCanvas || !bgState.workMask) return;
+      bgReplayMask();
+      bgRender();
+      stats.textContent = (bgState.file.name || '이미지') + ' · ' + bgState.W + '×' + bgState.H +
+        ' · ' + (bgEngine === 'ai' ? 'AI' : '색상') + ' 인식 완료 — 브러시로 다듬을 수 있어요';
+    }).catch(function () {
+      if (bgState.seq === seq) stats.textContent = '배경 인식에 실패했어요.';
+    });
+  }
+  document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (bgEngine === b.dataset.engine) return;
+      bgEngine = b.dataset.engine;
+      syncBgEngineChips();
+      bgRecompute();
+    });
+  });
+
+  function bgAutoMaskClassic() {
     var W = bgState.W, H = bgState.H;
     var s = Math.min(1, 1280 / Math.max(W, H));
     var ww = Math.max(2, Math.round(W * s)), wh = Math.max(2, Math.round(H * s));
@@ -2583,14 +2699,22 @@ textarea {
       t = t * t * (3 - 2 * t);
       alpha[i] = Math.round(255 * t);
     }
-    /* 중심 우선 잡티 제거: 중앙 30% 박스에 걸치지 않는 작은 전경 조각은 노이즈로 보고 삭제 */
+    bgDespeckle(alpha, ww, wh);
+    bgState.workMask = alphaToMaskCanvas(alpha, ww, wh);
+    bgState.workW = ww;
+    bgState.workH = wh;
+  }
+
+  /* 중심 우선 잡티 제거: 중앙 30% 박스에 걸치지 않는 작은 전경 조각은 노이즈로 보고 삭제 */
+  function bgDespeckle(alpha, ww, wh) {
+    var n = ww * wh;
     var seen = new Uint8Array(n);
+    var queue = new Int32Array(n);
     var minKeep = Math.max(25, n * 0.002);
     var cx0 = ww * 0.35, cx1 = ww * 0.65, cy0 = wh * 0.35, cy1 = wh * 0.65;
-    for (i = 0; i < n; i++) {
+    for (var i = 0; i < n; i++) {
       if (seen[i] || alpha[i] < 128) continue;
-      var qs = 0;
-      qt = 0;
+      var qs = 0, qt = 0;
       seen[i] = 1;
       queue[qt++] = i;
       var touchesCenter = false;
@@ -2608,21 +2732,23 @@ textarea {
         for (var e2 = 0; e2 < qt; e2++) alpha[queue[e2]] = 0;
       }
     }
-    var md = x.createImageData(ww, wh);
-    for (i = 0; i < n; i++) {
+  }
+  function alphaToMaskCanvas(alpha, ww, wh) {
+    var mc = document.createElement('canvas');
+    mc.width = ww; mc.height = wh;
+    var mx = mc.getContext('2d');
+    var md = mx.createImageData(ww, wh);
+    for (var i = 0; i < ww * wh; i++) {
       var q = i * 4;
       md.data[q] = 255; md.data[q + 1] = 255; md.data[q + 2] = 255;
       md.data[q + 3] = alpha[i];
     }
-    var mc = document.createElement('canvas');
-    mc.width = ww; mc.height = wh;
-    mc.getContext('2d').putImageData(md, 0, 0);
-    bgState.workMask = mc;
-    bgState.workW = ww;
-    bgState.workH = wh;
+    mx.putImageData(md, 0, 0);
+    return mc;
   }
 
   function bgReplayMask() {
+    if (!bgState.workMask) return;
     var W = bgState.W, H = bgState.H;
     if (!bgState.mask) bgState.mask = document.createElement('canvas');
     bgState.mask.width = W;
@@ -2689,7 +2815,13 @@ textarea {
   }
 
   function bgRender(cursor) {
-    if (!bgState.dispImg || !bgState.mask) return;
+    if (!bgState.dispImg) return;
+    if (!bgState.mask) {
+      var ctx0 = bgCanvas.getContext('2d');
+      ctx0.clearRect(0, 0, bgState.dispW, bgState.dispH);
+      ctx0.drawImage(bgState.dispImg, 0, 0);
+      return;
+    }
     var dw = bgState.dispW, dh = bgState.dispH;
     bgTmp.width = dw; bgTmp.height = dh;
     var tx = bgTmp.getContext('2d');
@@ -2744,6 +2876,7 @@ textarea {
       bgState.divider = Math.max(0, Math.min(100, pos.dx / bgState.dispW * 100));
       bgRender();
     } else {
+      if (!bgState.mask) return;
       var st = {
         mode: bgState.tool === 'erase' ? 'erase' : 'restore',
         size: Math.max(2, parseInt($('#bgBrush').value, 10) * (bgState.W / pos.rw)),
@@ -2797,9 +2930,7 @@ textarea {
   $('#bgReset').addEventListener('click', function () {
     if (!bgState.srcCanvas) return;
     bgState.strokes = [];
-    bgAutoMask();
-    bgReplayMask();
-    bgRender();
+    bgRecompute();
     toast('자동 인식 결과로 되돌렸어요.');
   });
   var bgParamTimer = null;
@@ -2807,10 +2938,7 @@ textarea {
     $('#bgTolOut').textContent = this.value;
     clearTimeout(bgParamTimer);
     bgParamTimer = setTimeout(function () {
-      if (!bgState.srcCanvas) return;
-      bgAutoMask();
-      bgReplayMask();
-      bgRender();
+      bgRecompute();
     }, 250);
   });
   $('#bgFeather').addEventListener('input', function () {
@@ -3963,6 +4091,8 @@ textarea {
     addFiles: addFiles,
     makeZip: makeZip,
     get bgState() { return bgState; },
+    setBgEngine: function (e) { bgEngine = e; syncBgEngineChips(); },
+    get bgEngine() { return bgEngine; },
     loadBgFile: loadBgFile,
     bgComposeFull: bgComposeFull,
     get exState() { return exState; },
