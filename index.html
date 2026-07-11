@@ -563,8 +563,8 @@ textarea {
             <input type="range" id="bgTol" min="3" max="60" step="1" value="18">
           </div>
           <div class="field">
-            <label class="field-label" for="bgFeather">가장자리 부드럽게 <output id="bgFeatherOut">1</output></label>
-            <input type="range" id="bgFeather" min="0" max="5" step="1" value="1">
+            <label class="field-label" for="bgFeather">가장자리 부드럽게 <output id="bgFeatherOut">0</output><span class="sub"> — 기본 0(선명)</span></label>
+            <input type="range" id="bgFeather" min="0" max="5" step="1" value="0">
           </div>
         </div>
         <div class="field svg-opts">
@@ -2682,12 +2682,13 @@ textarea {
         pMask[j] = pData[k] / 255;
         guide[j] = (0.299 * gData[k] + 0.587 * gData[k + 1] + 0.114 * gData[k + 2]) / 255;
       }
-      var r = Math.max(4, Math.round(rw / 90));
-      var refined = guidedFilter(guide, pMask, rw, rh, r, 1e-3);
-      /* 민감도 슬라이더 → 임계 + 소프트 램프 */
+      /* 작은 반경·낮은 eps로 엣지에 바짝 붙여 후광(누출) 최소화 */
+      var r = Math.max(2, Math.round(rw / 200));
+      var refined = guidedFilter(guide, pMask, rw, rh, r, 4e-4);
+      /* 민감도 슬라이더 → 임계. 좁은 램프로 깔끔한 컷아웃(얇은 안티앨리어싱만) */
       var tol = parseInt($('#bgTol').value, 10);
       var t = 0.12 + (tol - 3) / 57 * 0.55;
-      var lo = Math.max(0, t - 0.14), hi = Math.min(1, t + 0.14);
+      var lo = Math.max(0, t - 0.045), hi = Math.min(1, t + 0.045);
       var alpha = new Uint8Array(rn);
       for (var a2 = 0; a2 < rn; a2++) {
         var pv = refined[a2];
@@ -2697,11 +2698,35 @@ textarea {
         tt = tt * tt * (3 - 2 * tt);
         alpha[a2] = Math.round(255 * tt);
       }
+      /* 후광 제거: 배경(플러드필)에서 이어진 저·중 알파 잔재를 완전 투명으로 정리 —
+         고신뢰 전경(코어)에 연결되지 않은 반투명 픽셀만 제거해 경계 안티앨리어싱은 보존 */
+      bgTrimHalo(alpha, refined, rw, rh, t);
       bgDespeckle(alpha, rw, rh);
       bgState.workMask = alphaToMaskCanvas(alpha, rw, rh);
       bgState.workW = rw;
       bgState.workH = rh;
     });
+  }
+  /* refined<t 인 픽셀 중 테두리에서 연결된 것은 배경으로 확정(알파 0).
+     피사체 코어에서 삐져나온 반투명 후광 링을 제거한다. */
+  function bgTrimHalo(alpha, refined, w, h, t) {
+    var n = w * h;
+    var bgv = new Uint8Array(n);
+    var stack = new Int32Array(n);
+    var sp = 0;
+    var lowT = t; /* refined가 t 미만이면 배경 후보 */
+    var seed = function (i) { if (!bgv[i] && refined[i] < lowT) { bgv[i] = 1; stack[sp++] = i; } };
+    for (var x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
+    for (var y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+    while (sp > 0) {
+      var u = stack[--sp];
+      var ux = u % w;
+      if (ux > 0) seed(u - 1);
+      if (ux < w - 1) seed(u + 1);
+      if (u >= w) seed(u - w);
+      if (u < n - w) seed(u + w);
+    }
+    for (var i = 0; i < n; i++) if (bgv[i]) alpha[i] = 0;
   }
   function bgRecompute() {
     if (!bgState.srcCanvas) return Promise.resolve();
