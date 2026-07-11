@@ -48,37 +48,43 @@ button { font: inherit; color: inherit; cursor: pointer; }
 input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
-/* ---------- header ---------- */
-.site-header { padding: 30px 0 10px; }
-.header-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+/* ---------- header (탭 라인까지 흰 밴드) ---------- */
+.site-header {
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  padding: 24px 0 0; margin-bottom: 22px;
+}
+.header-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 14px; }
 .brand svg { width: 46px; height: 46px; flex: none; border-radius: 13px; box-shadow: 0 6px 18px rgba(49, 130, 246, .25); }
 .brand h1 { font-size: 23px; font-weight: 800; margin: 0; letter-spacing: -.5px; }
 .tagline { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
-.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .pill {
   font-size: 12.5px; color: var(--accent-strong);
   background: var(--accent-soft); border: 1px solid transparent;
   padding: 5px 11px; border-radius: 999px; white-space: nowrap;
 }
+/* 오른쪽에 나란히 못 앉는 폭이면 깔끔하게 숨김 */
+@media (max-width: 720px) { .pill { display: none; } }
 
-/* ---------- tabs ---------- */
+/* ---------- tabs (헤더 안 흰 밴드 위) ---------- */
 .tabs {
-  display: flex; gap: 6px; margin: 16px auto 18px;
+  display: flex; gap: 4px; margin: 14px auto 0; padding-bottom: 12px;
   overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none;
-  -webkit-overflow-scrolling: touch; padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
-  border: 1px solid transparent; background: var(--panel); color: var(--muted);
-  padding: 8px 18px; border-radius: 999px; font-weight: 700; font-size: 14px;
+  border: 1px solid transparent; background: transparent; color: var(--muted);
+  padding: 8px 16px; border-radius: 999px; font-weight: 700; font-size: 14px;
   flex: none; touch-action: manipulation;
-  box-shadow: 0 1px 4px rgba(25, 31, 40, .06);
   transition: color .15s, background .15s, box-shadow .15s;
 }
-.tab:hover { color: var(--text); }
-.tab[aria-selected="true"] { box-shadow: 0 4px 14px rgba(49, 130, 246, .3); }
-.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab:hover { color: var(--text); background: var(--panel-2); }
+.tab[aria-selected="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+  box-shadow: 0 4px 12px rgba(49, 130, 246, .28);
+}
 
 main { padding-bottom: 30px; }
 .card {
@@ -98,8 +104,7 @@ main { padding-bottom: 30px; }
 .dropzone:hover { border-color: var(--accent); }
 .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); transform: scale(1.005); }
 .dropzone svg { width: 44px; height: 44px; color: var(--accent); margin-bottom: 8px; }
-.dropzone-sm { padding: 22px 16px; margin-top: 4px; }
-.dropzone-sm .dz-main { font-size: 14.5px; }
+.dropzone-sm { padding: 44px 20px; margin-top: 4px; }
 .dropzone .dz-main { margin: 0; font-size: 16px; font-weight: 600; }
 .dropzone .dz-hint { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 
@@ -359,6 +364,26 @@ textarea {
 #bgBox { cursor: col-resize; }
 #bgBox.painting { cursor: crosshair; }
 #bgCanvas { display: block; max-width: 100%; height: auto; touch-action: none; margin: 0 auto; }
+#exBox { cursor: crosshair; }
+#exCanvas { display: block; max-width: 100%; height: auto; touch-action: none; margin: 0 auto; cursor: crosshair; }
+.ex-queue { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.ex-item {
+  width: 122px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 8px; text-align: center;
+}
+.ex-item .ex-thumb {
+  width: 100%; height: 84px; object-fit: contain; border-radius: 8px;
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
+}
+.ex-item p { margin: 6px 0; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-item .ex-btns { display: flex; gap: 4px; }
+.ex-item .btn { flex: 1; padding: 5px 4px; font-size: 12px; min-height: 0; }
+#exGhost {
+  position: fixed; z-index: 300; pointer-events: none; opacity: .92;
+  transform: translate(-50%, -65%); filter: drop-shadow(0 8px 20px rgba(0, 0, 0, .35));
+}
+#exGhost img { max-width: 130px; max-height: 130px; display: block; }
+#exGhost[hidden] { display: none; }
 .check-label { display: flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; padding: 7px 0; }
 .check-label input { accent-color: var(--accent); width: 16px; height: 16px; }
 .dec-preview img { width: 100%; height: 100%; object-fit: contain; }
@@ -414,15 +439,15 @@ textarea {
       <span class="pill">🔒 100% 브라우저 처리 · 업로드 없음</span>
     </div>
   </div>
+  <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
+    <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
+    <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경 제거</button>
+    <button class="tab" id="tabExtract" role="tab" aria-selected="false" aria-controls="panel-extract" type="button">요소 추출</button>
+    <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
+    <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
+    <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">메타데이터</button>
+  </nav>
 </header>
-
-<nav class="tabs wrap" role="tablist" aria-label="도구 선택">
-  <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
-  <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경 제거</button>
-  <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
-  <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
-  <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">메타데이터</button>
-</nav>
 
 <main class="wrap">
   <section id="panel-compress" role="tabpanel" aria-labelledby="tabCompress">
@@ -513,7 +538,6 @@ textarea {
   <section id="panel-bg" role="tabpanel" aria-labelledby="tabBg" hidden>
     <div class="card b64-card">
       <h2>배경 제거</h2>
-      <p class="muted">테두리에서 배경색을 학습해 자동으로 지워요 — 단색·그라데이션 배경에 잘 맞아요. 자동 결과가 아쉬우면 브러시로 직접 다듬으세요.</p>
       <div class="dropzone dropzone-sm" id="bgDropzone" role="button" tabindex="0" aria-label="배경을 제거할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
         <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
@@ -577,10 +601,38 @@ textarea {
     </div>
   </section>
 
+  <section id="panel-extract" role="tabpanel" aria-labelledby="tabExtract" hidden>
+    <div class="card b64-card">
+      <h2>요소 추출</h2>
+      <div class="dropzone dropzone-sm" id="exDropzone" role="button" tabindex="0" aria-label="요소를 추출할 이미지 선택 또는 드래그하여 추가">
+        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · 깔끔한 배경일수록 잘 잡혀요</p>
+        <input type="file" id="exFile" accept="image/*" hidden>
+      </div>
+      <div id="exBody" hidden>
+        <div class="field svg-opts">
+          <label class="field-label" for="exTol">배경 인식 범위 <output id="exTolOut">18</output><span class="sub"> — 물체가 배경까지 물고 오면 줄이세요</span></label>
+          <input type="range" id="exTol" min="3" max="60" step="1" value="18">
+        </div>
+        <div class="bg-wrap svg-opts">
+          <div class="cmp-box" id="exBox"><canvas id="exCanvas"></canvas></div>
+        </div>
+        <p class="muted" id="exHint" role="status">🖐️ 물체 위를 잠시 꾹 누르면 파랗게 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요</p>
+        <div id="exQueueWrap" hidden>
+          <p class="field-label" style="margin-top:16px">추출 대기열 <output id="exCount"></output></p>
+          <ul id="exQueue" class="ex-queue"></ul>
+          <div class="btn-row">
+            <button class="btn primary" id="exZip" type="button">ZIP으로 모두 저장</button>
+            <button class="btn" id="exClear" type="button">대기열 비우기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="panel-svg" role="tabpanel" aria-labelledby="tabSvg" hidden>
     <div class="card b64-card">
       <h2>이미지 → SVG 벡터 변환</h2>
-      <p class="muted">색 면의 외곽선을 추적해 진짜 벡터 패스로 바꿔요. 로고·아이콘·일러스트처럼 색 수가 적은 이미지에 잘 맞고, 사진은 포스터화된 그림처럼 표현돼요.</p>
       <div class="dropzone dropzone-sm" id="svgDropzone" role="button" tabindex="0" aria-label="SVG로 변환할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
         <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP / GIF</p>
@@ -639,7 +691,6 @@ textarea {
   <section id="panel-base64" role="tabpanel" aria-labelledby="tabBase64" hidden>
     <div class="card b64-card">
       <h2>이미지 → Base64 (Data URI)</h2>
-      <p class="muted">파일을 압축 없이 그대로 문자열로 바꿔요. 압축까지 하려면 ‘압축하기’ 탭의 <b>Base64 복사</b>를 쓰세요.</p>
       <div class="dropzone dropzone-sm" id="b64Dropzone" role="button" tabindex="0" aria-label="Base64로 변환할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
         <p class="dz-hint">Ctrl+V 붙여넣기 지원 · 압축 없이 원본 그대로 변환</p>
@@ -657,7 +708,6 @@ textarea {
     </div>
     <div class="card b64-card">
       <h2>Base64 → 이미지</h2>
-      <p class="muted">Data URI 또는 순수 Base64 문자열을 붙여넣으세요. 이미지 형식은 자동으로 알아내요.</p>
       <textarea id="b64In" rows="5" placeholder="data:image/png;base64,iVBORw0…" spellcheck="false" aria-label="Base64 입력"></textarea>
       <p id="b64DecMsg" role="status"></p>
       <div id="b64DecResult" hidden>
@@ -670,7 +720,6 @@ textarea {
   <section id="panel-meta" role="tabpanel" aria-labelledby="tabMeta" hidden>
     <div class="card b64-card">
       <h2>메타데이터 보기·편집</h2>
-      <p class="muted">픽셀은 건드리지 않고 메타데이터만 읽고 고쳐요 — 화질 손실 0. JPEG는 EXIF, PNG는 텍스트 청크를 사용해요.</p>
       <div class="dropzone dropzone-sm" id="metaDropzone" role="button" tabindex="0" aria-label="메타데이터를 편집할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
         <p class="dz-hint">JPG · PNG 지원 · Ctrl+V 붙여넣기 지원</p>
@@ -767,6 +816,8 @@ textarea {
   </li>
 </template>
 
+<div id="exGhost" hidden><img alt=""></div>
+
 <div id="mapModal" class="lightbox map-modal" hidden>
   <div class="map-card">
     <div class="map-head">
@@ -828,6 +879,7 @@ textarea {
   var tabs = [
     { btn: $('#tabCompress'), panel: $('#panel-compress') },
     { btn: $('#tabBg'), panel: $('#panel-bg') },
+    { btn: $('#tabExtract'), panel: $('#panel-extract') },
     { btn: $('#tabSvg'), panel: $('#panel-svg') },
     { btn: $('#tabBase64'), panel: $('#panel-base64') },
     { btn: $('#tabMeta'), panel: $('#panel-meta') }
@@ -1877,6 +1929,9 @@ textarea {
     } else if (!$('#panel-bg').hidden) {
       loadBgFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 배경을 제거해요.');
+    } else if (!$('#panel-extract').hidden) {
+      loadExFile(files[0]);
+      if (files.length > 1) toast('첫 번째 이미지에서 요소를 추출해요.');
     } else if (!$('#panel-svg').hidden) {
       vectorizeFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
@@ -2805,6 +2860,379 @@ textarea {
     }
   });
 
+  /* ================= element extraction =================
+     배경 플러드필로 '물체(비배경) 연결 성분'을 구하고, 꾹 누른 지점의 성분만 잘라
+     투명 PNG로 만든다. 배경 위를 누르면 그 색 영역을 매직완드로 잡는다. */
+  var exState = {
+    file: null, srcCanvas: null, W: 0, H: 0,
+    workData: null, workBg: null, workW: 0, workH: 0,
+    dispImg: null, dispW: 0, dispH: 0,
+    queue: [], seq: 0, count: 0
+  };
+  var exCanvas = $('#exCanvas'), exBox = $('#exBox'), exGhost = $('#exGhost');
+  var exGhostImg = exGhost.querySelector('img');
+
+  function loadExFile(f) {
+    var seq = ++exState.seq;
+    decodeToSource(f).then(function (dec) {
+      if (seq !== exState.seq) {
+        if (dec.url) URL.revokeObjectURL(dec.url);
+        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+        return;
+      }
+      var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
+      var lim = clampDims(w, h);
+      if (lim) { w = lim.w; h = lim.h; }
+      exState.srcCanvas = drawScaled(dec.source, w, h, null);
+      if (dec.url) URL.revokeObjectURL(dec.url);
+      if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+      exState.file = f;
+      exState.W = w; exState.H = h;
+      $('#exBody').hidden = false;
+      exComputeWork();
+      exSetupDisplay();
+      exRender(null);
+    }).catch(function () { toast('이미지를 열지 못했어요.'); });
+  }
+
+  function exComputeWork() {
+    var W = exState.W, H = exState.H;
+    var s = Math.min(1, 1280 / Math.max(W, H));
+    var ww = Math.max(2, Math.round(W * s)), wh = Math.max(2, Math.round(H * s));
+    var c = document.createElement('canvas');
+    c.width = ww; c.height = wh;
+    var x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(exState.srcCanvas, 0, 0, ww, wh);
+    var data = x.getImageData(0, 0, ww, wh).data;
+    var samples = [];
+    var push = function (p) { if (data[p + 3] >= 40) samples.push([data[p], data[p + 1], data[p + 2]]); };
+    for (var i = 0; i < ww; i++) { push(i * 4); push(((wh - 1) * ww + i) * 4); }
+    for (var j = 0; j < wh; j++) { push(j * ww * 4); push((j * ww + ww - 1) * 4); }
+    var K = Math.min(4, samples.length || 1);
+    var cs = [];
+    for (var k = 0; k < K; k++) cs.push((samples[Math.floor(k * samples.length / K)] || [255, 255, 255]).slice());
+    for (var it = 0; it < 6; it++) {
+      var sum = [], cnt = [];
+      for (k = 0; k < K; k++) { sum.push([0, 0, 0]); cnt.push(0); }
+      for (i = 0; i < samples.length; i++) {
+        var sp = samples[i], bi = 0, bd = Infinity;
+        for (k = 0; k < K; k++) {
+          var dr = sp[0] - cs[k][0], dg = sp[1] - cs[k][1], db = sp[2] - cs[k][2];
+          var d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+          if (d < bd) { bd = d; bi = k; }
+        }
+        sum[bi][0] += sp[0]; sum[bi][1] += sp[1]; sum[bi][2] += sp[2]; cnt[bi]++;
+      }
+      for (k = 0; k < K; k++) if (cnt[k]) cs[k] = [sum[k][0] / cnt[k], sum[k][1] / cnt[k], sum[k][2] / cnt[k]];
+    }
+    var tol = parseInt($('#exTol').value, 10);
+    var thr = 9 * Math.pow(tol * 2.55, 2);
+    var n = ww * wh;
+    var cand = new Uint8Array(n);
+    for (i = 0, j = 0; i < n; i++, j += 4) {
+      if (data[j + 3] < 40) { cand[i] = 1; continue; }
+      var bd2 = Infinity;
+      for (k = 0; k < K; k++) {
+        var dr2 = data[j] - cs[k][0], dg2 = data[j + 1] - cs[k][1], db2 = data[j + 2] - cs[k][2];
+        var dd = 2 * dr2 * dr2 + 4 * dg2 * dg2 + 3 * db2 * db2;
+        if (dd < bd2) bd2 = dd;
+      }
+      if (bd2 <= thr) cand[i] = 1;
+    }
+    var bg = new Uint8Array(n);
+    var queue = new Int32Array(n);
+    var qh = 0, qt = 0;
+    var seed = function (idx) { if (cand[idx] && !bg[idx]) { bg[idx] = 1; queue[qt++] = idx; } };
+    for (i = 0; i < ww; i++) { seed(i); seed((wh - 1) * ww + i); }
+    for (j = 0; j < wh; j++) { seed(j * ww); seed(j * ww + ww - 1); }
+    while (qh < qt) {
+      var u = queue[qh++];
+      var ux = u % ww;
+      if (ux > 0) seed(u - 1);
+      if (ux < ww - 1) seed(u + 1);
+      if (u >= ww) seed(u - ww);
+      if (u < n - ww) seed(u + ww);
+    }
+    exState.workData = data;
+    exState.workBg = bg;
+    exState.workW = ww;
+    exState.workH = wh;
+  }
+
+  /* 꾹 누른 지점의 연결 성분 → {mask(work-res 성분만), bbox} 또는 null */
+  function exPickComponent(wx, wy) {
+    var ww = exState.workW, wh = exState.workH;
+    var bg = exState.workBg, data = exState.workData;
+    var n = ww * wh;
+    var start = Math.min(n - 1, Math.max(0, wy * ww + wx));
+    var inSet;
+    if (!bg[start]) {
+      inSet = function (idx) { return !bg[idx]; };
+    } else {
+      var p0 = start * 4;
+      var sr = data[p0], sg = data[p0 + 1], sb = data[p0 + 2];
+      var tol = parseInt($('#exTol').value, 10);
+      var thr = 9 * Math.pow(tol * 2.55, 2);
+      inSet = function (idx) {
+        var p = idx * 4;
+        var dr = data[p] - sr, dg = data[p + 1] - sg, db = data[p + 2] - sb;
+        return 2 * dr * dr + 4 * dg * dg + 3 * db * db <= thr;
+      };
+      if (!inSet(start)) return null;
+    }
+    var seen = new Uint8Array(n);
+    var queue = new Int32Array(n);
+    var qh = 0, qt = 0;
+    seen[start] = 1;
+    queue[qt++] = start;
+    var minX = ww, minY = wh, maxX = 0, maxY = 0, area = 0;
+    while (qh < qt) {
+      var u = queue[qh++];
+      area++;
+      var ux = u % ww, uy = (u / ww) | 0;
+      if (ux < minX) minX = ux;
+      if (ux > maxX) maxX = ux;
+      if (uy < minY) minY = uy;
+      if (uy > maxY) maxY = uy;
+      var tryAdd = function (v) { if (!seen[v] && inSet(v)) { seen[v] = 1; queue[qt++] = v; } };
+      if (ux > 0) tryAdd(u - 1);
+      if (ux < ww - 1) tryAdd(u + 1);
+      if (u >= ww) tryAdd(u - ww);
+      if (u < n - ww) tryAdd(u + ww);
+    }
+    if (area < 25) return null;
+    var mc = document.createElement('canvas');
+    mc.width = ww; mc.height = wh;
+    var mx = mc.getContext('2d');
+    var md = mx.createImageData(ww, wh);
+    for (var i = 0; i < n; i++) {
+      if (!seen[i]) continue;
+      var q = i * 4;
+      md.data[q] = 255; md.data[q + 1] = 255; md.data[q + 2] = 255; md.data[q + 3] = 255;
+    }
+    mx.putImageData(md, 0, 0);
+    return { mask: mc, minX: minX, minY: minY, maxX: maxX, maxY: maxY, area: area };
+  }
+
+  function exCropComponent(comp) {
+    var sx = exState.W / exState.workW, sy = exState.H / exState.workH;
+    var pad = 2;
+    var x0 = Math.max(0, Math.floor(comp.minX * sx) - pad);
+    var y0 = Math.max(0, Math.floor(comp.minY * sy) - pad);
+    var x1 = Math.min(exState.W, Math.ceil((comp.maxX + 1) * sx) + pad);
+    var y1 = Math.min(exState.H, Math.ceil((comp.maxY + 1) * sy) + pad);
+    var cw = Math.max(1, x1 - x0), ch = Math.max(1, y1 - y0);
+    var c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    var x = c.getContext('2d');
+    x.drawImage(exState.srcCanvas, -x0, -y0);
+    x.globalCompositeOperation = 'destination-in';
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(comp.mask, 0, 0, exState.workW, exState.workH, -x0, -y0, exState.W, exState.H);
+    return c;
+  }
+
+  function exSetupDisplay() {
+    var boxW = exBox.clientWidth || 600;
+    var dw = Math.max(1, Math.min(exState.W, Math.round(boxW)));
+    var dh = Math.max(1, Math.round(dw * exState.H / exState.W));
+    if (dh > 560) { dw = Math.max(1, Math.round(dw * 560 / dh)); dh = 560; }
+    exCanvas.width = dw;
+    exCanvas.height = dh;
+    var di = document.createElement('canvas');
+    di.width = dw; di.height = dh;
+    var dx = di.getContext('2d');
+    dx.imageSmoothingEnabled = true;
+    dx.imageSmoothingQuality = 'high';
+    dx.drawImage(exState.srcCanvas, 0, 0, dw, dh);
+    exState.dispImg = di;
+    exState.dispW = dw;
+    exState.dispH = dh;
+  }
+
+  function exRender(comp) {
+    if (!exState.dispImg) return;
+    var ctx = exCanvas.getContext('2d');
+    ctx.clearRect(0, 0, exState.dispW, exState.dispH);
+    ctx.drawImage(exState.dispImg, 0, 0);
+    if (comp) {
+      var hl = document.createElement('canvas');
+      hl.width = exState.dispW; hl.height = exState.dispH;
+      var hx = hl.getContext('2d');
+      hx.drawImage(comp.mask, 0, 0, exState.dispW, exState.dispH);
+      hx.globalCompositeOperation = 'source-in';
+      hx.fillStyle = 'rgba(49,130,246,.5)';
+      hx.fillRect(0, 0, hl.width, hl.height);
+      ctx.drawImage(hl, 0, 0);
+    }
+  }
+
+  var exDrag = null; /* {timer, downX, downY, comp, crop, active, lastX, lastY} */
+  function exPos(e) {
+    var r = exCanvas.getBoundingClientRect();
+    return {
+      wx: Math.round((e.clientX - r.left) * (exState.workW / r.width)),
+      wy: Math.round((e.clientY - r.top) * (exState.workH / r.height)),
+      rect: r
+    };
+  }
+  function exActivate(e) {
+    var pos = exPos(e);
+    var comp = exPickComponent(pos.wx, pos.wy);
+    if (!comp) {
+      toast('여기서는 물체를 찾지 못했어요 — 인식 범위를 조절해 보세요.');
+      exDrag = null;
+      return;
+    }
+    var crop = exCropComponent(comp);
+    exDrag.comp = comp;
+    exDrag.crop = crop;
+    exDrag.active = true;
+    exRender(comp);
+    var prev = document.createElement('canvas');
+    var ps = Math.min(1, 130 / Math.max(crop.width, crop.height));
+    prev.width = Math.max(1, Math.round(crop.width * ps));
+    prev.height = Math.max(1, Math.round(crop.height * ps));
+    prev.getContext('2d').drawImage(crop, 0, 0, prev.width, prev.height);
+    exGhostImg.src = prev.toDataURL();
+    exGhost.hidden = false;
+    exMoveGhost(exDrag.lastX, exDrag.lastY);
+    if (navigator.vibrate) { try { navigator.vibrate(30); } catch (err) {} }
+  }
+  function exMoveGhost(cx, cy) {
+    exGhost.style.left = cx + 'px';
+    exGhost.style.top = cy + 'px';
+  }
+  function exCleanupDrag() {
+    if (exDrag && exDrag.timer) clearTimeout(exDrag.timer);
+    exDrag = null;
+    exGhost.hidden = true;
+    exRender(null);
+  }
+  exCanvas.addEventListener('pointerdown', function (e) {
+    if (!exState.dispImg) return;
+    e.preventDefault();
+    try { exCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+    exDrag = { downX: e.clientX, downY: e.clientY, lastX: e.clientX, lastY: e.clientY, active: false, timer: null };
+    exDrag.timer = setTimeout(function () { if (exDrag && !exDrag.active) exActivate(e); }, 320);
+  });
+  exCanvas.addEventListener('pointermove', function (e) {
+    if (!exDrag) return;
+    exDrag.lastX = e.clientX;
+    exDrag.lastY = e.clientY;
+    if (!exDrag.active) {
+      if (Math.hypot(e.clientX - exDrag.downX, e.clientY - exDrag.downY) > 12) exCleanupDrag();
+      return;
+    }
+    exMoveGhost(e.clientX, e.clientY);
+  });
+  function exPointerUp(e) {
+    if (!exDrag) return;
+    if (!exDrag.active) { exCleanupDrag(); return; }
+    var r = exCanvas.getBoundingClientRect();
+    var outside = e.clientX < r.left - 8 || e.clientX > r.right + 8 || e.clientY < r.top - 8 || e.clientY > r.bottom + 8;
+    var crop = exDrag.crop;
+    exCleanupDrag();
+    if (!outside) {
+      toast('이미지 밖까지 끌어다 놓으면 대기열에 담겨요.');
+      return;
+    }
+    crop.toBlob(function (b) {
+      if (!b) return toast('PNG 생성에 실패했어요.');
+      exState.count++;
+      var item = {
+        blob: b,
+        url: URL.createObjectURL(b),
+        w: crop.width, h: crop.height,
+        name: baseName(exState.file.name || 'image') + '-요소' + exState.count + '.png'
+      };
+      exState.queue.push(item);
+      exRenderQueue();
+      toast('대기열에 담았어요 (' + fmtBytes(b.size) + ')');
+    }, 'image/png');
+  }
+  exCanvas.addEventListener('pointerup', exPointerUp);
+  exCanvas.addEventListener('pointercancel', function () { exCleanupDrag(); });
+  exCanvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  function exRenderQueue() {
+    var ul = $('#exQueue');
+    ul.textContent = '';
+    exState.queue.forEach(function (item, idx) {
+      var li = document.createElement('li');
+      li.className = 'ex-item';
+      var img = document.createElement('img');
+      img.className = 'ex-thumb';
+      img.src = item.url;
+      img.alt = item.name;
+      var p = document.createElement('p');
+      p.textContent = item.w + '×' + item.h + ' · ' + fmtBytes(item.blob.size);
+      var btns = document.createElement('div');
+      btns.className = 'ex-btns';
+      var dl = document.createElement('button');
+      dl.className = 'btn primary';
+      dl.type = 'button';
+      dl.textContent = '저장';
+      dl.addEventListener('click', function () { saveBlob(item.blob, item.name); });
+      var rm = document.createElement('button');
+      rm.className = 'btn';
+      rm.type = 'button';
+      rm.textContent = '✕';
+      rm.setAttribute('aria-label', '대기열에서 제거');
+      rm.addEventListener('click', function () {
+        URL.revokeObjectURL(item.url);
+        exState.queue.splice(exState.queue.indexOf(item), 1);
+        exRenderQueue();
+      });
+      btns.appendChild(dl);
+      btns.appendChild(rm);
+      li.appendChild(img);
+      li.appendChild(p);
+      li.appendChild(btns);
+      ul.appendChild(li);
+    });
+    $('#exCount').textContent = exState.queue.length ? exState.queue.length + '개' : '';
+    $('#exQueueWrap').hidden = exState.queue.length === 0;
+  }
+  $('#exZip').addEventListener('click', function () {
+    if (!exState.queue.length) return;
+    makeZip(exState.queue.map(function (q) { return { name: q.name, blob: q.blob }; })).then(function (zip) {
+      saveBlob(zip, baseName(exState.file.name || 'image') + '-요소모음.zip');
+      toast('ZIP으로 ' + exState.queue.length + '개를 저장했어요.');
+    }).catch(function () { toast('ZIP 생성에 실패했어요.'); });
+  });
+  $('#exClear').addEventListener('click', function () {
+    exState.queue.forEach(function (q) { URL.revokeObjectURL(q.url); });
+    exState.queue = [];
+    exRenderQueue();
+  });
+  var exTolTimer = null;
+  $('#exTol').addEventListener('input', function () {
+    $('#exTolOut').textContent = this.value;
+    clearTimeout(exTolTimer);
+    exTolTimer = setTimeout(function () {
+      if (exState.srcCanvas) exComputeWork();
+    }, 250);
+  });
+  var exFileInput = $('#exFile');
+  exFileInput.addEventListener('change', function () {
+    var f = exFileInput.files && exFileInput.files[0];
+    exFileInput.value = '';
+    if (f) loadExFile(f);
+  });
+  var exDropzone = $('#exDropzone');
+  exDropzone.addEventListener('click', function () { exFileInput.click(); });
+  exDropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); exFileInput.click(); }
+  });
+  window.addEventListener('resize', function () {
+    if (exState.dispImg && !$('#panel-extract').hidden) {
+      exSetupDisplay();
+      exRender(null);
+    }
+  });
+
   /* ================= metadata: JPEG EXIF + PNG text chunks ================= */
   var META_TAGS = {
     0x010E: 'desc', 0x010F: 'make', 0x0110: 'model', 0x0112: 'orientation',
@@ -3497,7 +3925,9 @@ textarea {
     makeZip: makeZip,
     get bgState() { return bgState; },
     loadBgFile: loadBgFile,
-    bgComposeFull: bgComposeFull
+    bgComposeFull: bgComposeFull,
+    get exState() { return exState; },
+    loadExFile: loadExFile
   };
 
   /* ================= service worker ================= */
