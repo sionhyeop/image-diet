@@ -984,6 +984,12 @@ textarea {
     if (s >= 1) return null;
     return { w: Math.max(1, Math.floor(w * s)), h: Math.max(1, Math.floor(h * s)) };
   }
+  /* 배경·요소 / SVG / PDF: 업로드 즉시 작업 해상도를 1920px로 자동 압축 — 이미 작으면 그대로 */
+  function capTo1920(w, h) {
+    var s = Math.min(1, 1920 / Math.max(w, h));
+    if (s >= 1) return null;
+    return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+  }
 
   /* ================= tabs ================= */
   var tabs = [
@@ -2327,16 +2333,30 @@ textarea {
     var added = 0;
     Array.prototype.forEach.call(files, function (f) {
       if (!/^image\//.test(f.type) && !/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(f.name || '')) return;
-      var item = { file: f, url: URL.createObjectURL(f), iw: 0, ih: 0 };
+      var item = { file: f, blob: null, url: URL.createObjectURL(f), iw: 0, ih: 0 };
       pdfState.queue.push(item);
-      /* 페이지 규격 미리보기용 원본 치수 프로브 */
-      var probe = new Image();
-      probe.onload = function () {
-        item.iw = probe.naturalWidth;
-        item.ih = probe.naturalHeight;
+      /* 추가 즉시 1920px로 자동 압축(투명 유지 PNG) — 이미 작으면 원본 그대로 */
+      decodeToSource(f).then(function (dec) {
+        var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
+        var cap = capTo1920(w, h);
+        var finish = function (blob, tw, th) {
+          if (dec.url) URL.revokeObjectURL(dec.url);
+          if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+          if (pdfState.queue.indexOf(item) < 0) return;
+          if (blob) {
+            URL.revokeObjectURL(item.url);
+            item.blob = blob;
+            item.url = URL.createObjectURL(blob);
+          }
+          item.iw = tw; item.ih = th;
+          renderPdfQueue();
+        };
+        if (!cap) { finish(null, w, h); return; }
+        var c = drawScaled(dec.source, cap.w, cap.h, null);
+        c.toBlob(function (b) { finish(b, cap.w, cap.h); }, 'image/png');
+      }).catch(function () {
         if (pdfState.queue.indexOf(item) >= 0) renderPdfQueue();
-      };
-      probe.src = item.url;
+      });
       added++;
     });
     if (!added) { toast('이미지 파일만 PDF로 만들 수 있어요.'); return; }
@@ -2528,10 +2548,12 @@ textarea {
     q.forEach(function (item, i) {
       chain = chain.then(function () {
         stat.textContent = (i + 1) + ' / ' + q.length + ' 이미지 변환 중…';
-        return decodeToSource(item.file).then(function (dec) {
+        return decodeToSource(item.blob || item.file).then(function (dec) {
           var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
           var lim = clampDims(w, h);
           if (lim) { w = lim.w; h = lim.h; }
+          var cap = capTo1920(w, h);
+          if (cap) { w = cap.w; h = cap.h; }
           var c = drawScaled(dec.source, w, h, '#ffffff'); /* JPEG에는 투명이 없어 흰 배경 */
           if (dec.url) URL.revokeObjectURL(dec.url);
           if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
@@ -2997,8 +3019,18 @@ textarea {
       if (svgState.origUrl) URL.revokeObjectURL(svgState.origUrl);
       if (svgState.source && typeof svgState.source.close === 'function') { try { svgState.source.close(); } catch (e) {} }
       svgState.file = f;
-      svgState.source = dec.source;
-      svgState.url = dec.url;
+      /* 업로드 즉시 1920px로 자동 압축 후 변환 파이프라인에 사용 */
+      var sw0 = srcW(dec.source) || 512, sh0 = srcH(dec.source) || 512;
+      var cap = capTo1920(sw0, sh0);
+      if (cap) {
+        svgState.source = drawScaled(dec.source, cap.w, cap.h, null);
+        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e2) {} }
+        if (dec.url) URL.revokeObjectURL(dec.url);
+        svgState.url = null;
+      } else {
+        svgState.source = dec.source;
+        svgState.url = dec.url;
+      }
       svgState.origUrl = URL.createObjectURL(f);
       svgOrig.src = svgState.origUrl;
       setCmp(50);
@@ -3109,6 +3141,8 @@ textarea {
       var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
       var lim = clampDims(w, h);
       if (lim) { w = lim.w; h = lim.h; }
+      var cap = capTo1920(w, h);
+      if (cap) { w = cap.w; h = cap.h; }
       bgState.srcCanvas = drawScaled(dec.source, w, h, null);
       if (dec.url) URL.revokeObjectURL(dec.url);
       if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
@@ -3822,6 +3856,8 @@ textarea {
       var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
       var lim = clampDims(w, h);
       if (lim) { w = lim.w; h = lim.h; }
+      var cap = capTo1920(w, h);
+      if (cap) { w = cap.w; h = cap.h; }
       exState.srcCanvas = drawScaled(dec.source, w, h, null);
       if (dec.url) URL.revokeObjectURL(dec.url);
       if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
