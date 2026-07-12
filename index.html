@@ -334,6 +334,16 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
   resize: vertical; word-break: break-all;
 }
+.ta-wrap { position: relative; margin-top: 12px; }
+.ta-wrap textarea { margin-top: 0; }
+/* 문자 수 세기 — 박스 오른쪽 아래 모서리 */
+.char-count {
+  position: absolute; right: 14px; bottom: 9px;
+  font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1;
+  color: var(--muted); background: var(--panel-2);
+  padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border);
+  pointer-events: none; opacity: .92;
+}
 .dec-preview {
   width: 132px; height: 132px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border);
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 16px 16px;
@@ -700,7 +710,10 @@ textarea {
       </div>
       <div id="b64EncResult" hidden>
         <p id="b64EncStats" class="muted"></p>
-        <textarea id="b64Out" readonly rows="5" spellcheck="false" aria-label="Base64 결과"></textarea>
+        <div class="ta-wrap">
+          <textarea id="b64Out" readonly rows="5" spellcheck="false" aria-label="Base64 결과"></textarea>
+          <span class="char-count" id="b64OutCount" aria-hidden="true">0자</span>
+        </div>
         <div class="btn-row">
           <button class="btn primary" id="copyUri" type="button">Data URI 복사</button>
           <button class="btn" id="copyImg" type="button">&lt;img&gt; 태그 복사</button>
@@ -710,7 +723,10 @@ textarea {
     </div>
     <div class="card b64-card">
       <h2>Base64 → 이미지</h2>
-      <textarea id="b64In" rows="5" placeholder="data:image/png;base64,iVBORw0…" spellcheck="false" aria-label="Base64 입력"></textarea>
+      <div class="ta-wrap">
+        <textarea id="b64In" rows="5" placeholder="data:image/png;base64,iVBORw0…" spellcheck="false" aria-label="Base64 입력"></textarea>
+        <span class="char-count" id="b64InCount" aria-hidden="true">0자</span>
+      </div>
       <p id="b64DecMsg" role="status"></p>
       <div id="b64DecResult" hidden>
         <div class="dec-preview"><img id="b64DecImg" alt="디코딩된 이미지 미리보기"></div>
@@ -1975,6 +1991,9 @@ textarea {
   var b64EncStats = $('#b64EncStats');
   var b64Enc = { dataUrl: '', file: null, w: 0, h: 0 };
   var b64EncSeq = 0;
+  var b64OutCount = $('#b64OutCount');
+  var b64InCount = $('#b64InCount');
+  function setCharCount(el, n) { el.textContent = n.toLocaleString('ko-KR') + '자'; }
 
   function encodeFileToBase64(f) {
     var seq = ++b64EncSeq;
@@ -1990,6 +2009,7 @@ textarea {
       };
       probe.src = dataUrl;
       b64Out.value = dataUrl;
+      setCharCount(b64OutCount, dataUrl.length);
       var growth = f.size > 0 ? Math.round((dataUrl.length / f.size - 1) * 100) : 0;
       var label = f.name || '클립보드 이미지';
       b64EncStats.textContent = label + ' · 원본 ' + fmtBytes(f.size) + ' → 문자열 ' + fmtBytes(dataUrl.length) + ' (+' + growth + '%)';
@@ -2091,6 +2111,7 @@ textarea {
     }
   }
   b64In.addEventListener('input', function () {
+    setCharCount(b64InCount, b64In.value.length);
     clearTimeout(decTimer);
     decTimer = setTimeout(decodeB64Input, 300);
   });
