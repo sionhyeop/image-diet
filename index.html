@@ -564,24 +564,24 @@ textarea {
         <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
         <input type="file" id="bgFile" accept="image/*" hidden>
       </div>
-      <div id="bgBody" hidden>
+      <div id="cutShared" hidden>
         <div class="field svg-opts">
-          <span class="field-label">인식 엔진</span>
+          <span class="field-label">인식 엔진 <span class="sub">— 배경 제거·요소 추출이 함께 쓰는 공통 설정</span></span>
           <div class="chips" id="bgEngineChips">
             <button type="button" class="chip on" data-engine="precise">🎯 정밀 AI (권장)</button>
             <button type="button" class="chip" data-engine="fast">⚡ 빠른 AI</button>
             <button type="button" class="chip" data-engine="classic">🎨 색상 기반 (단색 배경)</button>
           </div>
         </div>
-        <div class="settings-grid svg-opts">
-          <div class="field">
-            <label class="field-label" for="bgTol">인식 민감도 <output id="bgTolOut">18</output><span class="sub"> — 높일수록 과감히 지워요</span></label>
-            <input type="range" id="bgTol" min="3" max="60" step="1" value="18">
-          </div>
-          <div class="field">
-            <label class="field-label" for="bgFeather">가장자리 부드럽게 <output id="bgFeatherOut">0</output><span class="sub"> — 기본 0(선명)</span></label>
-            <input type="range" id="bgFeather" min="0" max="5" step="1" value="0">
-          </div>
+        <div class="field svg-opts">
+          <label class="field-label" for="bgTol">인식 민감도 <output id="bgTolOut">18</output><span class="sub"> — 높일수록 과감히 인식해요 (두 도구 공통)</span></label>
+          <input type="range" id="bgTol" min="3" max="60" step="1" value="18">
+        </div>
+      </div>
+      <div id="bgBody" hidden>
+        <div class="field svg-opts">
+          <label class="field-label" for="bgFeather">가장자리 부드럽게 <output id="bgFeatherOut">0</output><span class="sub"> — 기본 0(선명)</span></label>
+          <input type="range" id="bgFeather" min="0" max="5" step="1" value="0">
         </div>
         <div class="field svg-opts">
           <span class="field-label">도구 <span class="sub">— 비교: 드래그로 경계선 이동 · 브러시: 그려서 부분 수정</span></span>
@@ -628,10 +628,6 @@ textarea {
         </div>
       </div>
       <div id="exBody" hidden>
-        <div class="field svg-opts">
-          <label class="field-label" for="exTol">배경 인식 범위 <output id="exTolOut">18</output><span class="sub"> — 물체가 배경까지 물고 오면 줄이세요</span></label>
-          <input type="range" id="exTol" min="3" max="60" step="1" value="18">
-        </div>
         <div class="bg-wrap svg-opts">
           <div class="cmp-box" id="exBox"><canvas id="exCanvas"></canvas></div>
         </div>
@@ -2839,6 +2835,7 @@ textarea {
       bgState.mask = null;
       bgState.revealed = false;
       bgStopReveal();
+      $('#cutShared').hidden = false;
       $('#bgBody').hidden = false;
       $('#exBody').hidden = true;
       bgSetupDisplay();
@@ -3107,7 +3104,9 @@ textarea {
       if (bgEngine === b.dataset.engine) return;
       bgEngine = b.dataset.engine;
       syncBgEngineChips();
-      bgRecompute();
+      /* 엔진도 두 도구 공통 설정 */
+      if (bgState.srcCanvas) bgRecompute();
+      if (exState.srcCanvas) { exState.aiPred = null; exState.aiS = 0; exComputeAI(); }
     });
   });
 
@@ -3421,11 +3420,13 @@ textarea {
     toast('자동 인식 결과로 되돌렸어요.');
   });
   var bgParamTimer = null;
+  /* 인식 민감도는 배경 제거·요소 추출 공통 — 둘 다 다시 계산 */
   $('#bgTol').addEventListener('input', function () {
     $('#bgTolOut').textContent = this.value;
     clearTimeout(bgParamTimer);
     bgParamTimer = setTimeout(function () {
-      bgRecompute();
+      if (bgState.srcCanvas) bgRecompute();
+      if (exState.srcCanvas) exComputeWork();
     }, 250);
   });
   $('#bgFeather').addEventListener('input', function () {
@@ -3544,6 +3545,7 @@ textarea {
       exState.W = w; exState.H = h;
       exState.aiPred = null;
       exState.aiS = 0;
+      $('#cutShared').hidden = false;
       $('#exBody').hidden = false;
       $('#bgBody').hidden = true;
       exComputeWork();
@@ -3611,16 +3613,56 @@ textarea {
     return Infinity;
   }
 
+  /* bbox 안에서 성분에 완전히 둘러싸인 '구멍'을 메워 색 차이와 무관한 한 덩어리로 만든다 */
+  function exFillHoles(seen, w, minX, minY, maxX, maxY) {
+    var bw = maxX - minX + 1, bh = maxY - minY + 1;
+    if (bw < 3 || bh < 3) return;
+    var n = bw * bh;
+    var outr = new Uint8Array(n);
+    var stack = new Int32Array(n);
+    var sp = 0;
+    var seed = function (bx, by) {
+      var bi = by * bw + bx;
+      if (outr[bi] || seen[(minY + by) * w + (minX + bx)]) return;
+      outr[bi] = 1;
+      stack[sp++] = bi;
+    };
+    for (var x = 0; x < bw; x++) { seed(x, 0); seed(x, bh - 1); }
+    for (var y = 0; y < bh; y++) { seed(0, y); seed(bw - 1, y); }
+    while (sp > 0) {
+      var u = stack[--sp];
+      var ux = u % bw, uy = (u / bw) | 0;
+      if (ux > 0) seed(ux - 1, uy);
+      if (ux < bw - 1) seed(ux + 1, uy);
+      if (uy > 0) seed(ux, uy - 1);
+      if (uy < bh - 1) seed(ux, uy + 1);
+    }
+    for (var i = 0; i < n; i++) {
+      if (!outr[i]) seen[(minY + ((i / bw) | 0)) * w + (minX + (i % bw))] = 1;
+    }
+  }
+
   /* AI 전경맵에서 눌린 지점의 연결 성분 선택 (소프트 엣지 1픽셀 림 포함) */
   function exPickComponentAI(ax, ay) {
     if (!exState.aiPred) return null;
     var S = exState.aiS, pred = exState.aiPred;
     var n = S * S;
-    var tol = parseInt($('#exTol').value, 10);
+    var tol = parseInt($('#bgTol').value, 10);
     var thr = 0.15 + (tol - 3) / 57 * 0.7;
     var lo = Math.max(0, thr - 0.12);
     var start = Math.min(n - 1, Math.max(0, ay * S + ax));
-    if (pred[start] < thr) return null;
+    if (pred[start] < thr) {
+      /* 살짝 빗나간 클릭 보정 — 주변에서 가장 확신 높은 픽셀로 스냅 */
+      var rad = Math.max(2, S >> 6), best = -1, bv = thr;
+      for (var sy2 = Math.max(0, ay - rad); sy2 <= Math.min(S - 1, ay + rad); sy2++) {
+        for (var sx2 = Math.max(0, ax - rad); sx2 <= Math.min(S - 1, ax + rad); sx2++) {
+          var si = sy2 * S + sx2;
+          if (pred[si] >= bv) { bv = pred[si]; best = si; }
+        }
+      }
+      if (best < 0) return null;
+      start = best;
+    }
     var seen = new Uint8Array(n);
     var queue = new Int32Array(n);
     var depth = new Int32Array(n);
@@ -3649,6 +3691,7 @@ textarea {
       if (wy < minY) minY = wy;
       if (wy > maxY) maxY = wy;
     }
+    exFillHoles(seen, S, minX, minY, maxX, maxY); /* 색감 차이로 뚫린 내부를 메워 한 덩어리로 */
     /* 소프트 림: 성분에 인접한 완충 구간 픽셀을 부분 알파로 포함 */
     var alpha = new Uint8Array(n);
     for (var i = 0; i < n; i++) if (seen[i]) alpha[i] = 255;
@@ -3700,7 +3743,7 @@ textarea {
       }
       for (k = 0; k < K; k++) if (cnt[k]) cs[k] = [sum[k][0] / cnt[k], sum[k][1] / cnt[k], sum[k][2] / cnt[k]];
     }
-    var tol = parseInt($('#exTol').value, 10);
+    var tol = parseInt($('#bgTol').value, 10);
     var thr = 9 * Math.pow(tol * 2.55, 2);
     var n = ww * wh;
     var cand = new Uint8Array(n);
@@ -3746,7 +3789,7 @@ textarea {
     } else {
       var p0 = start * 4;
       var sr = data[p0], sg = data[p0 + 1], sb = data[p0 + 2];
-      var tol = parseInt($('#exTol').value, 10);
+      var tol = parseInt($('#bgTol').value, 10);
       var thr = 9 * Math.pow(tol * 2.55, 2);
       inSet = function (idx) {
         var p = idx * 4;
@@ -3785,6 +3828,7 @@ textarea {
       if (wy > maxY) maxY = wy;
     }
     if (area < 25) return null;
+    exFillHoles(seen, ww, minX, minY, maxX, maxY); /* 색감 차이로 뚫린 내부를 메워 한 덩어리로 */
     var mc = document.createElement('canvas');
     mc.width = ww; mc.height = wh;
     var mx = mc.getContext('2d');
@@ -4030,14 +4074,6 @@ textarea {
       toast(targets.length + '개 요소를 1920px 기준으로 압축했어요.');
     });
   });
-  var exTolTimer = null;
-  $('#exTol').addEventListener('input', function () {
-    $('#exTolOut').textContent = this.value;
-    clearTimeout(exTolTimer);
-    exTolTimer = setTimeout(function () {
-      if (exState.srcCanvas) exComputeWork();
-    }, 250);
-  });
   window.addEventListener('resize', function () {
     if (exState.dispImg && !$('#panel-bg').hidden && cutMode === 'extract') {
       exSetupDisplay();
@@ -4059,6 +4095,7 @@ textarea {
     });
     $('#bgBody').hidden = !(cutMode === 'bg' && bgState.srcCanvas);
     $('#exBody').hidden = !(cutMode === 'extract' && exState.srcCanvas);
+    $('#cutShared').hidden = $('#bgBody').hidden && $('#exBody').hidden;
   }
   document.querySelectorAll('#cutModeChips .chip').forEach(function (b) {
     b.addEventListener('click', function () {
