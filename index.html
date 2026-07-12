@@ -3046,6 +3046,7 @@ textarea {
       try {
         var res = vectorizeToSvg(svgState.source, svgOpts());
         if (seq !== svgState.seq) return;
+        var prevOptLevel = svgState.optLevel || 0;
         svgState.svg = res.svg;
         svgState.trace = res.trace;
         svgState.optLevel = 0;
@@ -3057,6 +3058,8 @@ textarea {
           ' → SVG ' + fmtBytes(res.svg.length) + ' · 색상 ' + res.colors + '개 · 패스 ' + res.loops + '개 · 조절점 ' + res.nodes + '개';
         svgDownload.disabled = svgCopy.disabled = svgZoom.disabled = false;
         $('#svgOptimize').disabled = false;
+        /* 설정을 바꿔도 '한 번 더 최적화' 단계는 유지 — 새 추적본에 같은 단계 재적용 */
+        if (prevOptLevel > 0) applyOptimizeLevel(prevOptLevel, true);
       } catch (e) {
         svgStats.textContent = (e && e.message) || 'SVG 변환에 실패했어요.';
       }
@@ -3109,11 +3112,36 @@ textarea {
     clearTimeout(svgOptTimer);
     svgOptTimer = setTimeout(runVectorize, 300);
   }
-  [svgColors, svgDetail, svgSimplify, svgNoise, svgGap].forEach(function (input) {
+  [svgColors, svgDetail, svgSimplify, svgNoise].forEach(function (input) {
     input.addEventListener('input', function () {
       syncSvgOutputs();
       scheduleVectorize();
     });
+  });
+  /* 빈틈 메우기는 추적 결과와 무관(스트로크 두께만) — 재변환 없이 즉시 적용,
+     '한 번 더 최적화' 단계도 그대로 유지된다 */
+  var svgGapTimer = null;
+  svgGap.addEventListener('input', function () {
+    syncSvgOutputs();
+    clearTimeout(svgGapTimer);
+    svgGapTimer = setTimeout(function () {
+      if (!svgState.trace) return;
+      var t = svgState.trace;
+      t.gap = parseFloat(svgGap.value);
+      /* 기준 용량도 새 gap 기준으로 갱신해 % 표시가 정확하게 */
+      svgState.baseLen = buildSvgFromEntries(t.entries, t.w, t.h, t.sw, t.sh, t.smooth, 0, t.gap).svg.length;
+      if (svgState.optLevel > 0) {
+        applyOptimizeLevel(svgState.optLevel, true);
+      } else {
+        var res = buildSvgFromEntries(t.entries, t.w, t.h, t.sw, t.sh, t.smooth, 0, t.gap);
+        svgState.svg = res.svg;
+        if (svgState.previewUrl) URL.revokeObjectURL(svgState.previewUrl);
+        svgState.previewUrl = URL.createObjectURL(new Blob([res.svg], { type: 'image/svg+xml' }));
+        svgPreview.src = svgState.previewUrl;
+        svgStats.textContent = (svgState.file.name || '이미지') + ' · ' + fmtBytes(svgState.file.size) +
+          ' → SVG ' + fmtBytes(res.svg.length) + ' · 색상 ' + res.colors + '개 · 패스 ' + res.loops + '개 · 조절점 ' + res.nodes + '개';
+      }
+    }, 150);
   });
   svgSmooth.addEventListener('change', scheduleVectorize);
 
@@ -3153,7 +3181,10 @@ textarea {
   function optimizeSvgOnce() {
     if (!svgState.trace) return;
     if (svgState.optLevel >= 5) { toast('최대 최적화 단계에 도달했어요.'); return; }
-    var Lv = svgState.optLevel + 1;
+    applyOptimizeLevel(svgState.optLevel + 1, false);
+  }
+  function applyOptimizeLevel(Lv, silent) {
+    if (!svgState.trace) return;
     var t = svgState.trace;
     var entries = t.entries.map(function (e) {
       return { color: e.color.slice(), loops: e.loops, count: e.count };
@@ -3191,7 +3222,7 @@ textarea {
         .filter(function (pts) { return pts.length >= 3 && Math.abs(polyArea(pts)) >= minA; });
     });
     entries = entries.filter(function (e) { return e.loops.length; });
-    if (!entries.length) { toast('더 줄이면 형태가 사라져요.'); return; }
+    if (!entries.length) { if (!silent) toast('더 줄이면 형태가 사라져요.'); return; }
     var res = buildSvgFromEntries(entries, t.w, t.h, t.sw, t.sh, t.smooth, 1, t.gap);
     svgState.optLevel = Lv;
     svgState.svg = res.svg;
@@ -3201,7 +3232,7 @@ textarea {
     var saved = Math.round((1 - res.svg.length / svgState.baseLen) * 100);
     svgStats.textContent = '🔧 한 번 더 최적화 ×' + Lv + ' — ' + fmtBytes(svgState.baseLen) + ' → ' + fmtBytes(res.svg.length) +
       ' (' + (saved >= 0 ? '−' : '+') + Math.abs(saved) + '%) · 색상 ' + res.colors + '개 · 패스 ' + res.loops + '개 · 조절점 ' + res.nodes + '개';
-    toast('SVG를 더 줄였어요 (' + fmtBytes(res.svg.length) + ')');
+    if (!silent) toast('SVG를 더 줄였어요 (' + fmtBytes(res.svg.length) + ')');
   }
   $('#svgOptimize').addEventListener('click', optimizeSvgOnce);
 
