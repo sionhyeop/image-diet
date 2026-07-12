@@ -374,6 +374,25 @@ textarea {
 .cmp-tag.right { right: 6px; }
 #svgCmpPos { width: 100%; margin-top: 8px; }
 .bg-wrap { max-width: 640px; }
+/* 슬라이딩 세그먼트 토글 — 하이라이트 박스가 좌우로 미끄러진다 */
+.seg-slide {
+  position: relative; display: flex; max-width: 420px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 4px;
+}
+.seg-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px);
+  background: var(--panel); border-radius: 9px;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, .18);
+  transition: transform .22s cubic-bezier(.3, .7, .3, 1);
+}
+.seg-slide.right .seg-thumb { transform: translateX(100%); }
+.seg-opt {
+  position: relative; flex: 1; padding: 9px 6px; border: 0; background: none;
+  font-weight: 700; font-size: 14.5px; color: var(--muted); border-radius: 9px;
+  cursor: pointer; transition: color .15s; touch-action: manipulation;
+}
+.seg-opt.on { color: var(--accent-strong); }
 /* 결과 박스를 이미지 크기에 딱 맞추고(=여백 없는 컷) 바깥 영역 가운데 정렬 */
 #bgBox { cursor: col-resize; width: -moz-fit-content; width: fit-content; max-width: 100%; margin-left: auto; margin-right: auto; }
 #bgBox.painting { cursor: crosshair; }
@@ -576,9 +595,10 @@ textarea {
     <div class="card b64-card">
       <h2>배경 제거 · 요소 추출</h2>
       <div class="field" style="margin-bottom:12px">
-        <div class="chips" id="cutModeChips">
-          <button type="button" class="chip on" data-cutmode="bg">🪄 배경 제거</button>
-          <button type="button" class="chip" data-cutmode="extract">✂️ 요소 추출 (물체 꾹 눌러 뽑기)</button>
+        <div class="seg-slide" id="cutModeSeg" role="tablist" aria-label="배경 제거 / 요소 추출 전환">
+          <div class="seg-thumb" aria-hidden="true"></div>
+          <button type="button" class="seg-opt on" data-cutmode="bg" role="tab" aria-selected="true">🪄 배경 제거</button>
+          <button type="button" class="seg-opt" data-cutmode="extract" role="tab" aria-selected="false">✂️ 요소 추출</button>
         </div>
       </div>
       <div class="dropzone dropzone-sm" id="bgDropzone" role="button" tabindex="0" aria-label="배경을 제거할 이미지 선택 또는 드래그하여 추가">
@@ -590,8 +610,7 @@ textarea {
         <div class="field svg-opts">
           <span class="field-label">인식 엔진 <span class="sub">— 배경 제거·요소 추출이 함께 쓰는 공통 설정</span></span>
           <div class="chips" id="bgEngineChips">
-            <button type="button" class="chip on" data-engine="precise">🎯 정밀 AI (권장)</button>
-            <button type="button" class="chip" data-engine="fast">⚡ 빠른 AI</button>
+            <button type="button" class="chip on" data-engine="fast">⚡ 빠른 AI (권장)</button>
             <button type="button" class="chip" data-engine="classic">🎨 색상 기반 (단색 배경)</button>
           </div>
         </div>
@@ -3287,45 +3306,25 @@ textarea {
     if (bgRevealRAF) { cancelAnimationFrame(bgRevealRAF); bgRevealRAF = null; }
   }
 
-  function loadBgFile(f) {
-    var seq = ++bgState.seq;
-    decodeToSource(f).then(function (dec) {
-      if (seq !== bgState.seq) {
-        if (dec.url) URL.revokeObjectURL(dec.url);
-        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
-        return;
-      }
-      var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
-      var lim = clampDims(w, h);
-      if (lim) { w = lim.w; h = lim.h; }
-      var cap = capTo1920(w, h);
-      if (cap) { w = cap.w; h = cap.h; }
-      bgState.srcCanvas = drawScaled(dec.source, w, h, null);
-      if (dec.url) URL.revokeObjectURL(dec.url);
-      if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
-      bgState.file = f;
-      bgState.W = w; bgState.H = h;
-      bgState.strokes = [];
-      bgState.divider = 50;
-      bgState.mask = null;
-      bgState.revealed = false;
-      bgStopReveal();
-      $('#cutShared').hidden = false;
-      $('#bgBody').hidden = false;
-      $('#exBody').hidden = true;
-      bgSetupDisplay();
-      bgRender();
-      bgRecompute();
-    }).catch(function () { toast('이미지를 열지 못했어요.'); });
+  /* 배경 제거 상태를 (공유) 캔버스로 초기화 — 디코드는 loadCutFile에서 1회만 */
+  function bgInitFromCanvas(f, canvas, w, h) {
+    bgState.seq++;
+    bgState.srcCanvas = canvas;
+    bgState.file = f;
+    bgState.W = w; bgState.H = h;
+    bgState.strokes = [];
+    bgState.divider = 50;
+    bgState.mask = null;
+    bgState.revealed = false;
+    bgStopReveal();
   }
 
-  /* ---------- AI 엔진 (온디바이스 ONNX: IS-Net 정밀 / U²-Net 빠름) ---------- */
+  /* ---------- AI 엔진 (온디바이스 ONNX: 경량 U²-Net-p만 — 큰 모델 다운로드 없음) ---------- */
   var AI_MODELS = {
-    precise: { file: 'models/isnet-quant.onnx', S: 1024, mean: [0.5, 0.5, 0.5], std: [1, 1, 1], label: 'IS-Net', mb: 44 },
     fast: { file: 'models/u2netp.onnx', S: 320, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225], label: 'U²-Net', mb: 4 }
   };
-  var bgEngine = 'precise'; /* 'precise' | 'fast' | 'classic' */
-  function aiModelKey() { return bgEngine === 'fast' ? 'fast' : 'precise'; }
+  var bgEngine = 'fast'; /* 'fast' | 'classic' */
+  function aiModelKey() { return 'fast'; }
   function syncBgEngineChips() {
     document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
       b.classList.toggle('on', b.dataset.engine === bgEngine);
@@ -3385,7 +3384,16 @@ textarea {
   }
 
   /* saliency 추론: 모델 해상도 S²(squashed)에서 0..1로 정규화한 전경맵 반환 */
+  /* 같은 캔버스·모델이면 추론을 1회만 — 배경 제거와 요소 추출이 결과를 공유 */
+  var salCache = { key: null, canvas: null, promise: null };
   function runSaliency(key, srcCanvas, onProgress) {
+    if (salCache.promise && salCache.key === key && salCache.canvas === srcCanvas) return salCache.promise;
+    var p = runSaliencyRaw(key, srcCanvas, onProgress);
+    salCache = { key: key, canvas: srcCanvas, promise: p };
+    p.catch(function () { if (salCache.promise === p) salCache = { key: null, canvas: null, promise: null }; });
+    return p;
+  }
+  function runSaliencyRaw(key, srcCanvas, onProgress) {
     var m = AI_MODELS[key];
     return loadModel(key, onProgress).then(function (sess) {
       var S = m.S;
@@ -4002,34 +4010,14 @@ textarea {
   var exCanvas = $('#exCanvas'), exBox = $('#exBox'), exGhost = $('#exGhost');
   var exGhostImg = exGhost.querySelector('img');
 
-  function loadExFile(f) {
-    var seq = ++exState.seq;
-    decodeToSource(f).then(function (dec) {
-      if (seq !== exState.seq) {
-        if (dec.url) URL.revokeObjectURL(dec.url);
-        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
-        return;
-      }
-      var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
-      var lim = clampDims(w, h);
-      if (lim) { w = lim.w; h = lim.h; }
-      var cap = capTo1920(w, h);
-      if (cap) { w = cap.w; h = cap.h; }
-      exState.srcCanvas = drawScaled(dec.source, w, h, null);
-      if (dec.url) URL.revokeObjectURL(dec.url);
-      if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
-      exState.file = f;
-      exState.W = w; exState.H = h;
-      exState.aiPred = null;
-      exState.aiS = 0;
-      $('#cutShared').hidden = false;
-      $('#exBody').hidden = false;
-      $('#bgBody').hidden = true;
-      exComputeWork();
-      exSetupDisplay();
-      exRender(null);
-      exComputeAI();
-    }).catch(function () { toast('이미지를 열지 못했어요.'); });
+  /* 요소 추출 상태를 (공유) 캔버스로 초기화 */
+  function exInitFromCanvas(f, canvas, w, h) {
+    exState.seq++;
+    exState.srcCanvas = canvas;
+    exState.file = f;
+    exState.W = w; exState.H = h;
+    exState.aiPred = null;
+    exState.aiS = 0;
   }
 
   /* AI 전경맵을 백그라운드에서 준비 — 준비되면 꾹 누르기가 AI 기반으로 동작 */
@@ -4558,33 +4546,57 @@ textarea {
   /* ---------- 배경제거/요소추출 모드 통합 ---------- */
   var cutMode = 'bg';
   var cutFile = null;
+  var cutSeq = 0;
+  /* 이미지를 1회만 디코드해 두 도구가 같은 캔버스를 공유 —
+     배경 제거↔요소 추출 전환이 재로딩 없이 즉시 이루어진다 */
   function loadCutFile(f) {
     cutFile = f;
-    if (cutMode === 'bg') loadBgFile(f);
-    else loadExFile(f);
+    var seq = ++cutSeq;
+    decodeToSource(f).then(function (dec) {
+      if (seq !== cutSeq) {
+        if (dec.url) URL.revokeObjectURL(dec.url);
+        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+        return;
+      }
+      var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
+      var lim = clampDims(w, h);
+      if (lim) { w = lim.w; h = lim.h; }
+      var cap = capTo1920(w, h);
+      if (cap) { w = cap.w; h = cap.h; }
+      var canvas = drawScaled(dec.source, w, h, null);
+      if (dec.url) URL.revokeObjectURL(dec.url);
+      if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+      bgInitFromCanvas(f, canvas, w, h);
+      exInitFromCanvas(f, canvas, w, h);
+      syncCutMode();
+      if (cutMode === 'bg') { bgSetupDisplay(); bgRender(); }
+      else { exSetupDisplay(); exRender(null); }
+      /* 양쪽 다 미리 준비 — AI 추론은 공유 캐시로 1회만 돈다 */
+      bgRecompute();
+      exComputeWork();
+      exComputeAI();
+    }).catch(function () { toast('이미지를 열지 못했어요.'); });
   }
   function syncCutMode() {
-    document.querySelectorAll('#cutModeChips .chip').forEach(function (b) {
-      b.classList.toggle('on', b.dataset.cutmode === cutMode);
+    var seg = $('#cutModeSeg');
+    seg.classList.toggle('right', cutMode === 'extract');
+    seg.querySelectorAll('.seg-opt').forEach(function (b) {
+      var on = b.dataset.cutmode === cutMode;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     $('#bgBody').hidden = !(cutMode === 'bg' && bgState.srcCanvas);
     $('#exBody').hidden = !(cutMode === 'extract' && exState.srcCanvas);
     $('#cutShared').hidden = $('#bgBody').hidden && $('#exBody').hidden;
   }
-  document.querySelectorAll('#cutModeChips .chip').forEach(function (b) {
+  document.querySelectorAll('#cutModeSeg .seg-opt').forEach(function (b) {
     b.addEventListener('click', function () {
       if (cutMode === b.dataset.cutmode) return;
       cutMode = b.dataset.cutmode;
       syncCutMode();
-      if (cutFile) {
-        if (cutMode === 'bg') {
-          if (bgState.file !== cutFile) loadBgFile(cutFile);
-          else { bgSetupDisplay(); bgRender(); }
-        } else {
-          if (exState.file !== cutFile) loadExFile(cutFile);
-          else { exSetupDisplay(); exRender(null); }
-        }
-      }
+      /* 상태는 이미 준비돼 있으므로 표시만 갱신 — 즉시 전환 */
+      if (cutMode === 'bg' && bgState.srcCanvas) { bgSetupDisplay(); bgRender(); }
+      else if (cutMode === 'extract' && exState.srcCanvas) { exSetupDisplay(); exRender(null); }
     });
   });
 
@@ -6985,10 +6997,9 @@ textarea {
     get bgState() { return bgState; },
     setBgEngine: function (e) { bgEngine = e; syncBgEngineChips(); },
     get bgEngine() { return bgEngine; },
-    loadBgFile: loadBgFile,
+    loadCutFile: loadCutFile,
     bgComposeFull: bgComposeFull,
-    get exState() { return exState; },
-    loadExFile: loadExFile
+    get exState() { return exState; }
   };
 
   /* ================= service worker ================= */
