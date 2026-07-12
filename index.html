@@ -719,6 +719,7 @@ textarea {
         <div class="btn-row">
           <button class="btn" id="svgZoom" type="button" disabled>미리보기</button>
           <button class="btn primary" id="svgDownload" type="button" disabled>SVG 다운로드</button>
+          <button class="btn" id="svgOptimize" type="button" disabled>🔧 한 번 더 최적화</button>
           <button class="btn" id="svgCopy" type="button" disabled>SVG 코드 복사</button>
         </div>
       </div>
@@ -2777,8 +2778,10 @@ textarea {
     return s / 2;
   }
 
-  function loopToPath(pts, smooth) {
-    var f = function (v) { return Math.round(v * 10) / 10; };
+  function loopToPath(pts, smooth, prec) {
+    var f = prec === 1
+      ? function (v) { return Math.round(v); } /* 최적화 패스: 정수 좌표로 용량 절감 */
+      : function (v) { return Math.round(v * 10) / 10; };
     var d, i;
     if (!smooth || pts.length < 4) {
       d = 'M' + f(pts[0][0]) + ' ' + f(pts[0][1]);
@@ -2913,26 +2916,40 @@ textarea {
         }
       }
     }
-    var paths = [];
-    var totalLoops = 0, totalNodes = 0;
+    var entries = [];
     for (var pc = 0; pc < palette.length; pc++) {
       var mask = new Uint8Array(w * h);
       var count = 0;
       for (var q = 0; q < idx.length; q++) if (idx[q] === pc) { mask[q] = 1; count++; }
       if (!count) continue;
       var loops = traceLoops(mask, w, h);
-      var d = '';
+      var keep = [];
       for (var L = 0; L < loops.length; L++) {
         var pts = simplifyLoop(loops[L], opts.tol);
         if (pts.length < 3) continue;
         if (Math.abs(polyArea(pts)) < opts.minArea) continue;
-        d += loopToPath(pts, opts.smooth);
+        keep.push(pts);
+      }
+      if (keep.length) entries.push({ color: palette[pc].slice(), loops: keep, count: count });
+    }
+    if (!entries.length) throw new Error('추적할 만한 색 면을 찾지 못했어요. 추적 정밀도를 높이거나 잡티 제거를 낮춰 보세요.');
+    var built = buildSvgFromEntries(entries, w, h, sw, sh, opts.smooth);
+    built.trace = { entries: entries, w: w, h: h, sw: sw, sh: sh, smooth: opts.smooth, tol: opts.tol };
+    return built;
+  }
+
+  /* 추적 데이터(색별 루프) → SVG 문자열. '한 번 더 최적화'에서도 재사용 */
+  function buildSvgFromEntries(entries, w, h, sw, sh, smooth, prec) {
+    var paths = [], totalLoops = 0, totalNodes = 0;
+    entries.forEach(function (e) {
+      var d = '';
+      e.loops.forEach(function (pts) {
+        d += loopToPath(pts, smooth, prec);
         totalLoops++;
         totalNodes += pts.length;
-      }
-      if (d) paths.push({ color: rgbHex(palette[pc]), d: d, area: count });
-    }
-    if (!paths.length) throw new Error('추적할 만한 색 면을 찾지 못했어요. 추적 정밀도를 높이거나 잡티 제거를 낮춰 보세요.');
+      });
+      if (d) paths.push({ color: rgbHex([Math.round(e.color[0]), Math.round(e.color[1]), Math.round(e.color[2])]), d: d, area: e.count });
+    });
     /* 면적 큰 색부터 그려 작은 디테일이 위에 오게 하고, 같은 색 스트로크로
        인접 패스를 1px씩 겹쳐 도형 사이 흰 틈(크랙)을 없앤다 */
     paths.sort(function (a, b3) { return b3.area - a.area; });
@@ -3012,18 +3029,23 @@ textarea {
     svgResult.hidden = false;
     svgStats.textContent = '변환 중…';
     svgDownload.disabled = svgCopy.disabled = svgZoom.disabled = true;
+    $('#svgOptimize').disabled = true;
     setTimeout(function () {
       if (seq !== svgState.seq) return;
       try {
         var res = vectorizeToSvg(svgState.source, svgOpts());
         if (seq !== svgState.seq) return;
         svgState.svg = res.svg;
+        svgState.trace = res.trace;
+        svgState.optLevel = 0;
+        svgState.baseLen = res.svg.length;
         if (svgState.previewUrl) URL.revokeObjectURL(svgState.previewUrl);
         svgState.previewUrl = URL.createObjectURL(new Blob([res.svg], { type: 'image/svg+xml' }));
         svgPreview.src = svgState.previewUrl;
         svgStats.textContent = (svgState.file.name || '이미지') + ' · ' + fmtBytes(svgState.file.size) +
           ' → SVG ' + fmtBytes(res.svg.length) + ' · 색상 ' + res.colors + '개 · 패스 ' + res.loops + '개 · 조절점 ' + res.nodes + '개';
         svgDownload.disabled = svgCopy.disabled = svgZoom.disabled = false;
+        $('#svgOptimize').disabled = false;
       } catch (e) {
         svgStats.textContent = (e && e.message) || 'SVG 변환에 실패했어요.';
       }
@@ -3102,6 +3124,76 @@ textarea {
       runVectorize();
     });
   });
+  function dpClosed(pts, tol) {
+    if (tol <= 0 || pts.length < 5) return pts;
+    var far = 0, fd = -1;
+    for (var j = 1; j < pts.length; j++) {
+      var dx = pts[j][0] - pts[0][0], dy = pts[j][1] - pts[0][1];
+      var d = dx * dx + dy * dy;
+      if (d > fd) { fd = d; far = j; }
+    }
+    var h1 = dpSimplify(pts.slice(0, far + 1), tol);
+    var h2 = dpSimplify(pts.slice(far).concat([pts[0]]), tol);
+    return h1.slice(0, -1).concat(h2.slice(0, -1));
+  }
+  /* '한 번 더 최적화' — 이미 벡터화된 추적 데이터에서 비슷한 색을 병합해
+     패스를 하나로 잇고, 조절점을 더 줄여 용량을 줄인다.
+     매번 원본 추적본에서 다시 계산하므로 반복해도 왜곡이 누적되지 않는다 */
+  function optimizeSvgOnce() {
+    if (!svgState.trace) return;
+    if (svgState.optLevel >= 5) { toast('최대 최적화 단계에 도달했어요.'); return; }
+    var Lv = svgState.optLevel + 1;
+    var t = svgState.trace;
+    var entries = t.entries.map(function (e) {
+      return { color: e.color.slice(), loops: e.loops, count: e.count };
+    });
+    /* 1) 비슷한 색 병합 — 같은 패스로 이어져 개수·용량 감소 */
+    var MERGE_T = [0, 420, 1000, 1900, 3100, 4600][Lv];
+    var guard = 0;
+    while (entries.length > 2 && guard++ < 64) {
+      var bi = -1, bj = -1, bd = MERGE_T;
+      for (var i = 0; i < entries.length; i++) {
+        for (var j2 = i + 1; j2 < entries.length; j2++) {
+          var dr = entries[i].color[0] - entries[j2].color[0];
+          var dg = entries[i].color[1] - entries[j2].color[1];
+          var db = entries[i].color[2] - entries[j2].color[2];
+          var d2 = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+          if (d2 < bd) { bd = d2; bi = i; bj = j2; }
+        }
+      }
+      if (bi < 0) break;
+      var A = entries[bi], B = entries[bj];
+      var tot2 = A.count + B.count;
+      A.color = [
+        (A.color[0] * A.count + B.color[0] * B.count) / tot2,
+        (A.color[1] * A.count + B.color[1] * B.count) / tot2,
+        (A.color[2] * A.count + B.color[2] * B.count) / tot2
+      ];
+      A.loops = A.loops.concat(B.loops);
+      A.count = tot2;
+      entries.splice(bj, 1);
+    }
+    /* 2) 조절점 추가 단순화 + 잔 루프 제거 */
+    var tol = (t.tol || 1) + 0.8 * Lv, minA = 2 * Lv; /* 원본 단순화보다 확실히 강하게 */
+    entries.forEach(function (e) {
+      e.loops = e.loops.map(function (pts) { return dpClosed(pts, tol); })
+        .filter(function (pts) { return pts.length >= 3 && Math.abs(polyArea(pts)) >= minA; });
+    });
+    entries = entries.filter(function (e) { return e.loops.length; });
+    if (!entries.length) { toast('더 줄이면 형태가 사라져요.'); return; }
+    var res = buildSvgFromEntries(entries, t.w, t.h, t.sw, t.sh, t.smooth, 1);
+    svgState.optLevel = Lv;
+    svgState.svg = res.svg;
+    if (svgState.previewUrl) URL.revokeObjectURL(svgState.previewUrl);
+    svgState.previewUrl = URL.createObjectURL(new Blob([res.svg], { type: 'image/svg+xml' }));
+    svgPreview.src = svgState.previewUrl;
+    var saved = Math.round((1 - res.svg.length / svgState.baseLen) * 100);
+    svgStats.textContent = '🔧 한 번 더 최적화 ×' + Lv + ' — ' + fmtBytes(svgState.baseLen) + ' → ' + fmtBytes(res.svg.length) +
+      ' (' + (saved >= 0 ? '−' : '+') + Math.abs(saved) + '%) · 색상 ' + res.colors + '개 · 패스 ' + res.loops + '개 · 조절점 ' + res.nodes + '개';
+    toast('SVG를 더 줄였어요 (' + fmtBytes(res.svg.length) + ')');
+  }
+  $('#svgOptimize').addEventListener('click', optimizeSvgOnce);
+
   svgDownload.addEventListener('click', function () {
     if (!svgState.svg) return;
     saveBlob(new Blob([svgState.svg], { type: 'image/svg+xml' }), baseName(svgState.file.name || 'image') + '.svg');
