@@ -457,6 +457,7 @@ textarea {
     <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
     <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경·요소</button>
     <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
+    <button class="tab" id="tabPdf" role="tab" aria-selected="false" aria-controls="panel-pdf" type="button">PDF 만들기</button>
     <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
     <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">메타데이터</button>
   </nav>
@@ -706,6 +707,35 @@ textarea {
     </div>
   </section>
 
+  <section id="panel-pdf" role="tabpanel" aria-labelledby="tabPdf" hidden>
+    <div class="card b64-card">
+      <h2>이미지 → PDF</h2>
+      <div class="dropzone dropzone-sm" id="pdfDropzone" role="button" tabindex="0" aria-label="PDF로 묶을 이미지 선택 또는 드래그하여 추가">
+        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">여러 장 지원 — 넣은 순서대로 한 장씩 PDF 페이지가 돼요 · Ctrl+V 붙여넣기 지원</p>
+        <input type="file" id="pdfFile" accept="image/*" multiple hidden>
+      </div>
+      <div id="pdfBody" hidden>
+        <p class="field-label" style="margin-top:16px">PDF 대기열 <output id="pdfCount"></output></p>
+        <ul id="pdfQueue" class="ex-queue"></ul>
+        <div class="settings-grid svg-opts">
+          <div class="field">
+            <label class="field-label" for="pdfName">파일 이름 <span class="sub">— 비워 두면 첫 이미지 이름으로 저장돼요</span></label>
+            <input type="text" id="pdfName" maxlength="120" placeholder="">
+          </div>
+          <div class="field">
+            <label class="field-label" for="pdfQ">이미지 품질 <output id="pdfQOut">85</output>%</label>
+            <input type="range" id="pdfQ" min="0.5" max="0.95" step="0.01" value="0.85">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="pdfExport" type="button">PDF로 내보내기</button>
+          <button class="btn" id="pdfClear" type="button">대기열 비우기</button>
+        </div>
+        <p class="muted" id="pdfStat" role="status"></p>
+      </div>
+    </div>
+  </section>
   <section id="panel-base64" role="tabpanel" aria-labelledby="tabBase64" hidden>
     <div class="card b64-card">
       <h2>이미지 → Base64 (Data URI)</h2>
@@ -932,6 +962,7 @@ textarea {
     { btn: $('#tabCompress'), panel: $('#panel-compress') },
     { btn: $('#tabBg'), panel: $('#panel-bg') },
     { btn: $('#tabSvg'), panel: $('#panel-svg') },
+    { btn: $('#tabPdf'), panel: $('#panel-pdf') },
     { btn: $('#tabBase64'), panel: $('#panel-base64') },
     { btn: $('#tabMeta'), panel: $('#panel-meta') }
   ];
@@ -1989,6 +2020,8 @@ textarea {
     } else if (!$('#panel-svg').hidden) {
       vectorizeFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
+    } else if (!$('#panel-pdf').hidden) {
+      addPdfImages(files);
     } else if (!$('#panel-base64').hidden) {
       encodeFileToBase64(files[0]);
       toast('이미지를 Base64 문자열로 변환했어요.');
@@ -2220,6 +2253,162 @@ textarea {
   });
   b64CompPreview.addEventListener('click', function () {
     if (compUrl) openLightbox(compUrl, fmtLabel(compBlob.type) + ' · ' + fmtBytes(compBlob.size));
+  });
+
+  /* ================= 이미지 → PDF ================= */
+  var pdfState = { queue: [] };
+
+  function addPdfImages(files) {
+    var added = 0;
+    Array.prototype.forEach.call(files, function (f) {
+      if (!/^image\//.test(f.type) && !/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(f.name || '')) return;
+      pdfState.queue.push({ file: f, url: URL.createObjectURL(f) });
+      added++;
+    });
+    if (!added) { toast('이미지 파일만 PDF로 만들 수 있어요.'); return; }
+    renderPdfQueue();
+    toast(added + '장을 PDF 대기열에 담았어요.');
+  }
+
+  function renderPdfQueue() {
+    var ul = $('#pdfQueue');
+    ul.textContent = '';
+    pdfState.queue.forEach(function (item, idx) {
+      var li = document.createElement('li');
+      li.className = 'ex-item';
+      var img = document.createElement('img');
+      img.className = 'ex-thumb';
+      img.src = item.url;
+      img.alt = item.file.name || ('이미지 ' + (idx + 1));
+      var p = document.createElement('p');
+      p.textContent = (idx + 1) + '. ' + (item.file.name || '이미지');
+      var btns = document.createElement('div');
+      btns.className = 'ex-btns';
+      var rm = document.createElement('button');
+      rm.className = 'btn';
+      rm.type = 'button';
+      rm.textContent = '✕';
+      rm.setAttribute('aria-label', '대기열에서 제거');
+      rm.addEventListener('click', function () {
+        URL.revokeObjectURL(item.url);
+        pdfState.queue.splice(pdfState.queue.indexOf(item), 1);
+        renderPdfQueue();
+      });
+      btns.appendChild(rm);
+      li.appendChild(img);
+      li.appendChild(p);
+      li.appendChild(btns);
+      ul.appendChild(li);
+    });
+    $('#pdfCount').textContent = pdfState.queue.length ? pdfState.queue.length + '장' : '';
+    $('#pdfBody').hidden = pdfState.queue.length === 0;
+    /* 파일 이름은 첫 이미지 이름을 옅은 placeholder로 제안 — 입력하면 그 이름으로 저장 */
+    $('#pdfName').placeholder = pdfState.queue.length ? baseName(pdfState.queue[0].file.name || 'images') : '';
+  }
+
+  /* 페이지 크기 = 이미지 픽셀 크기(포인트) · JPEG(DCTDecode)로 삽입하는 자체 PDF 라이터 */
+  function buildImagesPdf(pages, title) {
+    var enc = new TextEncoder();
+    var parts = [], pos = 0, offsets = [];
+    var push = function (d) {
+      if (typeof d === 'string') d = enc.encode(d);
+      parts.push(d);
+      pos += d.length;
+    };
+    var begin = function (n) { offsets[n] = pos; push(n + ' 0 obj\n'); };
+    push('%PDF-1.4\n');
+    push(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));
+    var kids = [];
+    for (var i = 0; i < pages.length; i++) kids.push((4 + i * 3) + ' 0 R');
+    begin(1);
+    push('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+    begin(2);
+    push('<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + pages.length + ' >>\nendobj\n');
+    begin(3);
+    push('<< /Title ' + pdfStrOut(title) + ' /Producer (Image Diet) >>\nendobj\n');
+    pages.forEach(function (pg, i2) {
+      var pn = 4 + i2 * 3, xn = pn + 1, cn = pn + 2;
+      begin(pn);
+      push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pg.w + ' ' + pg.h + '] /Resources << /XObject << /Im' + i2 + ' ' + xn + ' 0 R >> >> /Contents ' + cn + ' 0 R >>\nendobj\n');
+      begin(xn);
+      push('<< /Type /XObject /Subtype /Image /Width ' + pg.w + ' /Height ' + pg.h +
+        ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + pg.jpeg.length + ' >>\nstream\n');
+      push(pg.jpeg);
+      push('\nendstream\nendobj\n');
+      var cs = 'q ' + pg.w + ' 0 0 ' + pg.h + ' 0 0 cm /Im' + i2 + ' Do Q';
+      begin(cn);
+      push('<< /Length ' + cs.length + ' >>\nstream\n' + cs + '\nendstream\nendobj\n');
+    });
+    var total = 4 + pages.length * 3;
+    var xrefAt = pos;
+    var pad = function (n) { var t = String(n); while (t.length < 10) t = '0' + t; return t; };
+    var x = 'xref\n0 ' + total + '\n0000000000 65535 f \n';
+    for (var n2 = 1; n2 < total; n2++) x += pad(offsets[n2]) + ' 00000 n \n';
+    x += 'trailer\n<< /Size ' + total + ' /Root 1 0 R /Info 3 0 R >>\nstartxref\n' + xrefAt + '\n%%EOF\n';
+    push(x);
+    return new Blob(parts, { type: 'application/pdf' });
+  }
+
+  function exportPdfQueue() {
+    var q = pdfState.queue.slice();
+    if (!q.length) return;
+    var stat = $('#pdfStat');
+    var btn = $('#pdfExport');
+    btn.disabled = true;
+    var quality = parseFloat($('#pdfQ').value);
+    var pages = [];
+    var chain = Promise.resolve();
+    q.forEach(function (item, i) {
+      chain = chain.then(function () {
+        stat.textContent = (i + 1) + ' / ' + q.length + ' 이미지 변환 중…';
+        return decodeToSource(item.file).then(function (dec) {
+          var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
+          var lim = clampDims(w, h);
+          if (lim) { w = lim.w; h = lim.h; }
+          var c = drawScaled(dec.source, w, h, '#ffffff'); /* JPEG에는 투명이 없어 흰 배경 */
+          if (dec.url) URL.revokeObjectURL(dec.url);
+          if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+          return encodeCanvas(c, 'image/jpeg', quality).then(function (b) {
+            if (!b) throw new Error('jpeg');
+            return b.arrayBuffer();
+          }).then(function (ab) {
+            pages.push({ jpeg: new Uint8Array(ab), w: w, h: h });
+          });
+        });
+      });
+    });
+    chain.then(function () {
+      var name = ($('#pdfName').value.trim() || $('#pdfName').placeholder || 'images').replace(/\.pdf$/i, '');
+      var blob = buildImagesPdf(pages, name);
+      saveBlob(blob, name + '.pdf');
+      stat.textContent = 'PDF 저장 완료 — ' + q.length + '장 · ' + fmtBytes(blob.size);
+      btn.disabled = false;
+      toast('PDF로 저장했어요 (' + fmtBytes(blob.size) + ')');
+    }).catch(function () {
+      btn.disabled = false;
+      stat.textContent = '';
+      toast('PDF 생성에 실패했어요.');
+    });
+  }
+
+  $('#pdfFile').addEventListener('change', function () {
+    if (this.files && this.files.length) addPdfImages(this.files);
+    this.value = '';
+  });
+  $('#pdfDropzone').addEventListener('click', function () { $('#pdfFile').click(); });
+  $('#pdfDropzone').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#pdfFile').click(); }
+  });
+  $('#pdfQ').addEventListener('input', function () {
+    $('#pdfQOut').textContent = Math.round(parseFloat(this.value) * 100);
+  });
+  $('#pdfExport').addEventListener('click', exportPdfQueue);
+  $('#pdfClear').addEventListener('click', function () {
+    pdfState.queue.forEach(function (q) { URL.revokeObjectURL(q.url); });
+    pdfState.queue = [];
+    renderPdfQueue();
+    $('#pdfName').value = '';
+    $('#pdfStat').textContent = '';
   });
 
   /* ================= svg vectorizer =================
