@@ -640,6 +640,7 @@ textarea {
           <ul id="exQueue" class="ex-queue"></ul>
           <div class="btn-row">
             <button class="btn primary" id="exZip" type="button">ZIP으로 모두 저장</button>
+            <button class="btn" id="exOptim" type="button">⚡ 1920px 기준 압축</button>
             <button class="btn" id="exClear" type="button">대기열 비우기</button>
           </div>
         </div>
@@ -3386,6 +3387,41 @@ textarea {
     });
   }
 
+  /* 클릭 지점 기준 BFS 깊이별 링 크기를 보고 '목(neck)'을 찾는다.
+     같은 물체는 링이 두껍게 이어지지만, 다리처럼 가늘게 이어진 곁가지는
+     링이 급격히 가늘어지는 지점(목)이 생긴다 → 그 깊이에서 잘라 클릭한
+     물체 중심으로만 가져온다. 잘리는 양이 미미하면(경계 테이퍼) 자르지 않는다. */
+  function exNeckCutDepth(depth, order, count) {
+    if (count < 60) return Infinity;
+    var maxD = depth[order[count - 1]];
+    if (maxD < 12) return Infinity;
+    var ring = new Float64Array(maxD + 1);
+    for (var i = 0; i < count; i++) ring[depth[order[i]]]++;
+    var sm = new Float64Array(maxD + 1);
+    for (i = 0; i <= maxD; i++) {
+      sm[i] = (ring[Math.max(0, i - 1)] + ring[i] + ring[Math.min(maxD, i + 1)]) / 3;
+    }
+    /* 지금까지의 최대 링 대비 10% 이하로 가늘어진 상태가 이어지면 목으로 판정
+       (전역 최댓값이 아니라 누적 최댓값 — 작은 물체를 눌렀을 때 멀리 있는 큰
+       물체의 링에 휘둘리지 않는다) */
+    var runMax = 0, run = 0, need = Math.max(3, Math.round(maxD * 0.05));
+    for (i = 0; i <= maxD; i++) {
+      if (sm[i] > runMax) runMax = sm[i];
+      if (i > 2 && sm[i] <= Math.max(2, runMax * 0.10)) {
+        run++;
+        if (run >= need) {
+          var cut = i - run + 1;
+          var kept = 0;
+          for (var j = 0; j < count; j++) if (depth[order[j]] < cut) kept++;
+          /* 잘리는 픽셀이 6% 미만이면 물체 경계의 자연 테이퍼일 뿐 → 유지 */
+          if (count - kept < count * 0.06 || kept < 25) return Infinity;
+          return cut;
+        }
+      } else run = 0;
+    }
+    return Infinity;
+  }
+
   /* AI 전경맵에서 눌린 지점의 연결 성분 선택 (소프트 엣지 1픽셀 림 포함) */
   function exPickComponentAI(ax, ay) {
     if (!exState.aiPred) return null;
@@ -3398,24 +3434,32 @@ textarea {
     if (pred[start] < thr) return null;
     var seen = new Uint8Array(n);
     var queue = new Int32Array(n);
+    var depth = new Int32Array(n);
     var qh = 0, qt = 0;
     seen[start] = 1;
     queue[qt++] = start;
-    var minX = S, minY = S, maxX = 0, maxY = 0;
     while (qh < qt) {
       var u = queue[qh++];
-      var ux = u % S, uy = (u / S) | 0;
-      if (ux < minX) minX = ux;
-      if (ux > maxX) maxX = ux;
-      if (uy < minY) minY = uy;
-      if (uy > maxY) maxY = uy;
-      var grow = function (v) { if (!seen[v] && pred[v] >= thr) { seen[v] = 1; queue[qt++] = v; } };
+      var ux = u % S;
+      var grow = function (v) { if (!seen[v] && pred[v] >= thr) { seen[v] = 1; depth[v] = depth[u] + 1; queue[qt++] = v; } };
       if (ux > 0) grow(u - 1);
       if (ux < S - 1) grow(u + 1);
       if (u >= S) grow(u - S);
       if (u < n - S) grow(u + S);
     }
     if (qt < 8) return null;
+    /* 목(neck) 너머로 이어진 곁가지는 잘라 클릭한 물체만 남긴다 */
+    var cut = exNeckCutDepth(depth, queue, qt);
+    var minX = S, minY = S, maxX = 0, maxY = 0;
+    for (var qi = 0; qi < qt; qi++) {
+      var w = queue[qi];
+      if (depth[w] >= cut) { seen[w] = 0; continue; }
+      var wx = w % S, wy = (w / S) | 0;
+      if (wx < minX) minX = wx;
+      if (wx > maxX) maxX = wx;
+      if (wy < minY) minY = wy;
+      if (wy > maxY) maxY = wy;
+    }
     /* 소프트 림: 성분에 인접한 완충 구간 픽셀을 부분 알파로 포함 */
     var alpha = new Uint8Array(n);
     for (var i = 0; i < n; i++) if (seen[i]) alpha[i] = 255;
@@ -3524,23 +3568,32 @@ textarea {
     }
     var seen = new Uint8Array(n);
     var queue = new Int32Array(n);
+    var depth = new Int32Array(n);
     var qh = 0, qt = 0;
     seen[start] = 1;
     queue[qt++] = start;
-    var minX = ww, minY = wh, maxX = 0, maxY = 0, area = 0;
     while (qh < qt) {
       var u = queue[qh++];
-      area++;
-      var ux = u % ww, uy = (u / ww) | 0;
-      if (ux < minX) minX = ux;
-      if (ux > maxX) maxX = ux;
-      if (uy < minY) minY = uy;
-      if (uy > maxY) maxY = uy;
-      var tryAdd = function (v) { if (!seen[v] && inSet(v)) { seen[v] = 1; queue[qt++] = v; } };
+      var ux = u % ww;
+      var tryAdd = function (v) { if (!seen[v] && inSet(v)) { seen[v] = 1; depth[v] = depth[u] + 1; queue[qt++] = v; } };
       if (ux > 0) tryAdd(u - 1);
       if (ux < ww - 1) tryAdd(u + 1);
       if (u >= ww) tryAdd(u - ww);
       if (u < n - ww) tryAdd(u + ww);
+    }
+    if (qt < 25) return null;
+    /* 목(neck) 너머 곁가지 잘라내기 */
+    var cut = exNeckCutDepth(depth, queue, qt);
+    var minX = ww, minY = wh, maxX = 0, maxY = 0, area = 0;
+    for (var qi = 0; qi < qt; qi++) {
+      var w = queue[qi];
+      if (depth[w] >= cut) { seen[w] = 0; continue; }
+      area++;
+      var wx = w % ww, wy = (w / ww) | 0;
+      if (wx < minX) minX = wx;
+      if (wx > maxX) maxX = wx;
+      if (wy < minY) minY = wy;
+      if (wy > maxY) maxY = wy;
     }
     if (area < 25) return null;
     var mc = document.createElement('canvas');
@@ -3755,6 +3808,38 @@ textarea {
     exState.queue.forEach(function (q) { URL.revokeObjectURL(q.url); });
     exState.queue = [];
     exRenderQueue();
+  });
+  /* 대기열 요소를 1920px 기준으로 다운사이징 — 투명 PNG 유지, 이미 작으면 그대로 */
+  $('#exOptim').addEventListener('click', function () {
+    var targets = exState.queue.filter(function (q) { return Math.max(q.w, q.h) > 1920; });
+    if (!targets.length) { toast('모든 요소가 이미 1920px 이하예요.'); return; }
+    var btn = $('#exOptim');
+    btn.disabled = true;
+    Promise.all(targets.map(function (item) {
+      return new Promise(function (resolve) {
+        var img = new Image();
+        img.onload = function () {
+          var s = 1920 / Math.max(item.w, item.h);
+          var tw = Math.max(1, Math.round(item.w * s)), th = Math.max(1, Math.round(item.h * s));
+          var c = drawScaled(img, tw, th, null);
+          c.toBlob(function (b) {
+            if (b && b.size < item.blob.size) {
+              URL.revokeObjectURL(item.url);
+              item.blob = b;
+              item.url = URL.createObjectURL(b);
+              item.w = tw; item.h = th;
+            }
+            resolve();
+          }, 'image/png');
+        };
+        img.onerror = function () { resolve(); };
+        img.src = item.url;
+      });
+    })).then(function () {
+      btn.disabled = false;
+      exRenderQueue();
+      toast(targets.length + '개 요소를 1920px 기준으로 압축했어요.');
+    });
   });
   var exTolTimer = null;
   $('#exTol').addEventListener('input', function () {
