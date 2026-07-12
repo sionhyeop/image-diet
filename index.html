@@ -2617,6 +2617,75 @@ textarea {
       }
       idx[p] = best;
     }
+    /* 색 경계의 안티앨리어싱 픽셀이 자기들만의 '중간색(어두운) 실금' 클러스터를
+       만들어 도형 사이를 어두운 색으로 채우는 문제 — 면(interior)이 거의 없는
+       실금 클러스터를 찾아 주변 다수색으로 흡수시킨다 */
+    if (palette.length > 2) {
+      var tot = new Float64Array(palette.length);
+      var interior = new Float64Array(palette.length);
+      for (var sy = 0; sy < h; sy++) {
+        for (var sx = 0; sx < w; sx++) {
+          var sp2 = sy * w + sx;
+          var me = idx[sp2];
+          if (me < 0) continue;
+          tot[me]++;
+          if (sx > 0 && sx < w - 1 && sy > 0 && sy < h - 1) {
+            var same = 0;
+            for (var oy = -1; oy <= 1; oy++) {
+              for (var ox = -1; ox <= 1; ox++) {
+                if (idx[sp2 + oy * w + ox] === me) same++;
+              }
+            }
+            if (same === 9) interior[me]++;
+          }
+        }
+      }
+      var dissolved = [];
+      var anyDissolved = false, alive = 0;
+      for (var dc = 0; dc < palette.length; dc++) {
+        dissolved[dc] = tot[dc] > 0 && interior[dc] / tot[dc] < 0.12 && tot[dc] < w * h * 0.2;
+        if (dissolved[dc]) anyDissolved = true;
+        else if (tot[dc] > 0) alive++;
+      }
+      if (!alive) anyDissolved = false; /* 전부 실금 판정(세밀한 텍스처)이면 건드리지 않는다 */
+      if (anyDissolved) {
+        for (var pass = 0; pass < 3; pass++) {
+          var next = new Int16Array(idx);
+          var changed = false;
+          for (var pp2 = 0; pp2 < idx.length; pp2++) {
+            var cur = idx[pp2];
+            if (cur < 0 || !dissolved[cur]) continue;
+            var cx = pp2 % w, cy = (pp2 / w) | 0;
+            var votes = {};
+            var bestN = -1, bestC = 0;
+            for (var vy = Math.max(0, cy - 1); vy <= Math.min(h - 1, cy + 1); vy++) {
+              for (var vx = Math.max(0, cx - 1); vx <= Math.min(w - 1, cx + 1); vx++) {
+                var nv = idx[vy * w + vx];
+                if (nv < 0 || dissolved[nv]) continue;
+                votes[nv] = (votes[nv] || 0) + 1;
+                if (votes[nv] > bestC) { bestC = votes[nv]; bestN = nv; }
+              }
+            }
+            if (bestN >= 0) { next[pp2] = bestN; changed = true; }
+          }
+          idx = next;
+          if (!changed) break;
+        }
+        /* 다수색이 닿지 않은 잔여 픽셀은 원본 색에 가장 가까운 살아있는 색으로 */
+        for (var rp = 0, ri = 0; rp < idx.length; rp++, ri += 4) {
+          var rc = idx[rp];
+          if (rc < 0 || !dissolved[rc]) continue;
+          var rBest = -1, rBd = Infinity;
+          for (var rk = 0; rk < palette.length; rk++) {
+            if (dissolved[rk]) continue;
+            var rr = data[ri] - palette[rk][0], rg = data[ri + 1] - palette[rk][1], rb = data[ri + 2] - palette[rk][2];
+            var rd = 2 * rr * rr + 4 * rg * rg + 3 * rb * rb;
+            if (rd < rBd) { rBd = rd; rBest = rk; }
+          }
+          if (rBest >= 0) idx[rp] = rBest;
+        }
+      }
+    }
     var paths = [];
     var totalLoops = 0, totalNodes = 0;
     for (var pc = 0; pc < palette.length; pc++) {
@@ -3724,25 +3793,31 @@ textarea {
       if (wy > maxY) maxY = wy;
     }
     exFillHoles(seen, S, minX, minY, maxX, maxY); /* 색감 차이로 뚫린 내부를 메워 한 덩어리로 */
-    /* 소프트 림: 성분에 인접한 완충 구간 픽셀을 부분 알파로 포함 */
-    var alpha = new Uint8Array(n);
-    for (var i = 0; i < n; i++) if (seen[i]) alpha[i] = 255;
-    for (i = 0; i < n; i++) {
-      if (seen[i] || pred[i] <= lo) continue;
-      var ix = i % S;
-      var near = (ix > 0 && seen[i - 1]) || (ix < S - 1 && seen[i + 1]) || (i >= S && seen[i - S]) || (i < n - S && seen[i + S]);
-      if (!near) continue;
-      var tt = (pred[i] - lo) / (thr - lo);
-      tt = Math.max(0, Math.min(1, tt));
-      tt = tt * tt * (3 - 2 * tt);
-      alpha[i] = Math.round(255 * tt);
-      var jx = i % S, jy = (i / S) | 0;
-      if (jx < minX) minX = jx;
-      if (jx > maxX) maxX = jx;
-      if (jy < minY) minY = jy;
-      if (jy > maxY) maxY = jy;
-    }
+    /* 바깥 림 대신 1px 침식 + 경계 AA — 배경이 물려 오는 테두리 프린지 제거 */
+    var alpha = exErodeAlpha(seen, S, S);
     return { mask: alphaToMaskCanvas(alpha, S, S), minX: minX, minY: minY, maxX: maxX, maxY: maxY, gw: S, gh: S };
+  }
+
+  /* 마스크 경계 1px을 잘라내고(침식) 그 안쪽 링은 부분 알파로 —
+     추출물 테두리에 배경색 픽셀이 딸려 오는 것을 안쪽까지 빡세게 제거 */
+  function exErodeAlpha(seen, w, h) {
+    var n = w * h;
+    var alpha = new Uint8Array(n);
+    for (var i = 0; i < n; i++) {
+      if (!seen[i]) continue;
+      var x = i % w;
+      var edge = x === 0 || x === w - 1 || i < w || i >= n - w ||
+        !seen[i - 1] || !seen[i + 1] || !seen[i - w] || !seen[i + w];
+      alpha[i] = edge ? 0 : 255;
+    }
+    for (i = 0; i < n; i++) {
+      if (alpha[i] !== 255) continue;
+      var x2 = i % w;
+      var nearEdge = x2 === 0 || x2 === w - 1 || i < w || i >= n - w ||
+        !alpha[i - 1] || !alpha[i + 1] || !alpha[i - w] || !alpha[i + w];
+      if (nearEdge) alpha[i] = 140;
+    }
+    return alpha;
   }
 
   function exComputeWork() {
@@ -3861,17 +3936,8 @@ textarea {
     }
     if (area < 25) return null;
     exFillHoles(seen, ww, minX, minY, maxX, maxY); /* 색감 차이로 뚫린 내부를 메워 한 덩어리로 */
-    var mc = document.createElement('canvas');
-    mc.width = ww; mc.height = wh;
-    var mx = mc.getContext('2d');
-    var md = mx.createImageData(ww, wh);
-    for (var i = 0; i < n; i++) {
-      if (!seen[i]) continue;
-      var q = i * 4;
-      md.data[q] = 255; md.data[q + 1] = 255; md.data[q + 2] = 255; md.data[q + 3] = 255;
-    }
-    mx.putImageData(md, 0, 0);
-    return { mask: mc, minX: minX, minY: minY, maxX: maxX, maxY: maxY, area: area, gw: ww, gh: wh };
+    var alpha = exErodeAlpha(seen, ww, wh); /* 테두리 프린지 침식 */
+    return { mask: alphaToMaskCanvas(alpha, ww, wh), minX: minX, minY: minY, maxX: maxX, maxY: maxY, area: area, gw: ww, gh: wh };
   }
 
   function exCropComponent(comp) {
