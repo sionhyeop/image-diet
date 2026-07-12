@@ -745,8 +745,13 @@ textarea {
       <h2>이미지 → Base64 (Data URI)</h2>
       <div class="dropzone dropzone-sm" id="b64Dropzone" role="button" tabindex="0" aria-label="Base64로 변환할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · 압축 없이 원본 그대로 변환</p>
+        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · 기본은 원본 그대로 변환</p>
         <input type="file" id="b64File" accept="image/*,.svg" hidden>
+      </div>
+      <label class="check-label" style="margin-top:10px"><input type="checkbox" id="b64Compress"> 압축해서 변환 <span class="sub">— 최대 1920px로 줄이고 재인코딩한 뒤 Data URI 생성</span></label>
+      <div class="field" id="b64EncQField" hidden>
+        <label class="field-label" for="b64EncQ">압축 품질 <output id="b64EncQOut">80</output>%</label>
+        <input type="range" id="b64EncQ" min="0.4" max="0.95" step="0.01" value="0.8">
       </div>
       <div id="b64EncResult" hidden>
         <p id="b64EncStats" class="muted"></p>
@@ -2074,27 +2079,64 @@ textarea {
 
   function encodeFileToBase64(f) {
     var seq = ++b64EncSeq;
-    blobToDataURL(f).then(function (dataUrl) {
+    var label = f.name || '클립보드 이미지';
+    var finish = function (dataUrl, w, h, midNote) {
       if (seq !== b64EncSeq) return;
       b64Enc.dataUrl = dataUrl;
       b64Enc.file = f;
-      b64Enc.w = 0; b64Enc.h = 0;
-      var probe = new Image();
-      probe.onload = function () {
-        if (seq !== b64EncSeq) return;
-        b64Enc.w = probe.naturalWidth; b64Enc.h = probe.naturalHeight;
-      };
-      probe.src = dataUrl;
+      b64Enc.w = w || 0; b64Enc.h = h || 0;
+      if (!w) {
+        var probe = new Image();
+        probe.onload = function () {
+          if (seq !== b64EncSeq) return;
+          b64Enc.w = probe.naturalWidth; b64Enc.h = probe.naturalHeight;
+        };
+        probe.src = dataUrl;
+      }
       b64Out.value = dataUrl;
       setCharCount(b64OutCount, dataUrl.length);
       var growth = f.size > 0 ? Math.round((dataUrl.length / f.size - 1) * 100) : 0;
-      var label = f.name || '클립보드 이미지';
-      b64EncStats.textContent = label + ' · 원본 ' + fmtBytes(f.size) + ' → 문자열 ' + fmtBytes(dataUrl.length) + ' (+' + growth + '%)';
+      b64EncStats.textContent = label + ' · 원본 ' + fmtBytes(f.size) + (midNote || '') +
+        ' → 문자열 ' + fmtBytes(dataUrl.length) + ' (' + (growth >= 0 ? '+' : '−') + Math.abs(growth) + '%)';
       b64EncResult.hidden = false;
+    };
+    if (!$('#b64Compress').checked) {
+      blobToDataURL(f).then(function (dataUrl) { finish(dataUrl, 0, 0, ''); }).catch(function () {
+        if (seq === b64EncSeq) toast('파일을 읽지 못했어요.');
+      });
+      return;
+    }
+    /* 압축해서 변환 — 최대 1920px + 선택 품질로 재인코딩한 뒤 Data URI 생성 */
+    decodeToSource(f).then(function (dec) {
+      var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
+      var s = Math.min(1, 1920 / Math.max(w, h));
+      var tw = Math.max(1, Math.round(w * s)), th = Math.max(1, Math.round(h * s));
+      var type = supportsWebP ? 'image/webp' : 'image/jpeg';
+      var c = drawScaled(dec.source, tw, th, type === 'image/jpeg' ? '#ffffff' : null);
+      if (dec.url) URL.revokeObjectURL(dec.url);
+      if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+      return encodeCanvas(c, type, parseFloat($('#b64EncQ').value)).then(function (b) {
+        if (!b) throw new Error('enc');
+        return blobToDataURL(b).then(function (dataUrl) {
+          finish(dataUrl, tw, th, ' → 압축 ' + fmtBytes(b.size) + ' (' + tw + '×' + th + ')');
+        });
+      });
     }).catch(function () {
-      if (seq === b64EncSeq) toast('파일을 읽지 못했어요.');
+      if (seq === b64EncSeq) toast('압축 변환에 실패했어요.');
     });
   }
+  $('#b64Compress').addEventListener('change', function () {
+    $('#b64EncQField').hidden = !this.checked;
+    if (b64Enc.file) encodeFileToBase64(b64Enc.file);
+  });
+  $('#b64EncQ').addEventListener('input', function () {
+    $('#b64EncQOut').textContent = Math.round(parseFloat(this.value) * 100);
+    clearTimeout(b64EncQTimer);
+    b64EncQTimer = setTimeout(function () {
+      if (b64Enc.file && $('#b64Compress').checked) encodeFileToBase64(b64Enc.file);
+    }, 300);
+  });
+  var b64EncQTimer = null;
 
   b64File.addEventListener('change', function () {
     var f = b64File.files && b64File.files[0];
@@ -2600,23 +2642,34 @@ textarea {
       for (i = 1; i < pts.length; i++) d += 'L' + f(pts[i][0]) + ' ' + f(pts[i][1]);
       return d + 'Z';
     }
-    /* 반경 제한 코너 라운딩 — 단순 중점(Q) 스무딩은 긴 변의 모서리를 변 절반씩
+    /* 각도 적응형 코너 라운딩 — 단순 중점(Q) 스무딩은 긴 변의 모서리를 변 절반씩
        깎아 사각형을 원으로 만들고 도형 사이 큰 빈공간을 만든다.
-       라운딩을 R px로 제한해 계단 픽셀만 부드럽게, 직선 변·모서리는 유지 */
+       완만하게 꺾이는 점(연속 곡선의 일부)은 크게 둥글려 부드럽게,
+       급한 모서리(사각형 꼭짓점)는 살짝만 둥글려 형태·틈 모두 지킨다 */
     var n = pts.length;
-    var R = 2;
     var towards = function (from, to, dist) {
       var dx = to[0] - from[0], dy = to[1] - from[1];
       var len = Math.sqrt(dx * dx + dy * dy) || 1;
       var t = Math.min(0.5, dist / len);
       return [from[0] + dx * t, from[1] + dy * t];
     };
-    var start = towards(pts[0], pts[1], R);
+    var radiusAt = function (vi) {
+      var a = pts[(vi + n - 1) % n], v = pts[vi], c = pts[(vi + 1) % n];
+      var ax = v[0] - a[0], ay = v[1] - a[1], bx = c[0] - v[0], by = c[1] - v[1];
+      var la = Math.sqrt(ax * ax + ay * ay) || 1, lb = Math.sqrt(bx * bx + by * by) || 1;
+      var cos = (ax * bx + ay * by) / (la * lb);
+      if (cos > 0.92) return 6;   /* 거의 직진 — 곡선의 일부, 크게 부드럽게 */
+      if (cos > 0.5) return 3.5;  /* 완만한 꺾임 */
+      return 1.6;                 /* 급한 모서리 — 형태 유지 */
+    };
+    var start = towards(pts[0], pts[1], radiusAt(0));
     d = 'M' + f(start[0]) + ' ' + f(start[1]);
     for (i = 1; i <= n; i++) {
-      var v = pts[i % n];
-      var pin = towards(v, pts[(i - 1) % n], R);
-      var pout = towards(v, pts[(i + 1) % n], R);
+      var vi = i % n;
+      var v = pts[vi];
+      var R = radiusAt(vi);
+      var pin = towards(v, pts[(vi + n - 1) % n], R);
+      var pout = towards(v, pts[(vi + 1) % n], R);
       d += 'L' + f(pin[0]) + ' ' + f(pin[1]) + 'Q' + f(v[0]) + ' ' + f(v[1]) + ' ' + f(pout[0]) + ' ' + f(pout[1]);
     }
     return d + 'Z';
@@ -2673,7 +2726,8 @@ textarea {
       var dissolved = [];
       var anyDissolved = false, alive = 0;
       for (var dc = 0; dc < palette.length; dc++) {
-        dissolved[dc] = tot[dc] > 0 && interior[dc] / tot[dc] < 0.12 && tot[dc] < w * h * 0.2;
+        /* 임계 0.06 — 1~2px 실금만 흡수하고 사진의 자잘한 디테일 클러스터는 살린다 */
+        dissolved[dc] = tot[dc] > 0 && interior[dc] / tot[dc] < 0.06 && tot[dc] < w * h * 0.2;
         if (dissolved[dc]) anyDissolved = true;
         else if (tot[dc] > 0) alive++;
       }
