@@ -397,6 +397,9 @@ textarea {
 .check-label { display: flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; padding: 7px 0; }
 .check-label input { accent-color: var(--accent); width: 16px; height: 16px; }
 .dec-preview img { width: 100%; height: 100%; object-fit: contain; }
+.dec-compress { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+#b64CompStats { font-size: 13px; margin: 12px 0 0; }
+#b64CompStats.error { color: var(--danger); }
 #b64DecMsg { font-size: 13px; margin: 8px 0 0; }
 #b64DecMsg.error { color: var(--danger); }
 #b64EncStats, #b64DecStats { font-size: 13px; margin: 12px 0 0; }
@@ -489,6 +492,7 @@ textarea {
           <div class="target-row">
             <input type="number" id="targetKB" min="5" step="5" inputmode="numeric">
             <div class="chips" aria-label="자주 쓰는 목표 용량">
+              <button type="button" class="chip" data-kb="6">6</button>
               <button type="button" class="chip" data-kb="30">30</button>
               <button type="button" class="chip" data-kb="60">60</button>
               <button type="button" class="chip" data-kb="100">100</button>
@@ -731,7 +735,35 @@ textarea {
       <div id="b64DecResult" hidden>
         <div class="dec-preview"><img id="b64DecImg" alt="디코딩된 이미지 미리보기"></div>
         <p id="b64DecStats" class="muted"></p>
-        <button class="btn primary" id="b64DecSave" type="button">이미지로 저장</button>
+        <div class="btn-row">
+          <button class="btn primary" id="b64DecSave" type="button">이미지로 저장</button>
+          <button class="btn" id="b64DecPreview" type="button">미리보기</button>
+        </div>
+        <div class="dec-compress">
+          <p class="field-label" style="margin:0">간단 압축 <span class="sub">— 디코딩한 이미지를 더 가볍게</span></p>
+          <div class="settings-grid" style="margin-top:12px">
+            <div class="field">
+              <label class="field-label" for="b64Qual">품질 <output id="b64QualOut" for="b64Qual">80</output>%</label>
+              <input type="range" id="b64Qual" min="0.4" max="0.95" step="0.01" value="0.8">
+            </div>
+            <div class="field">
+              <label class="field-label" for="b64Fmt">형식</label>
+              <select id="b64Fmt">
+                <option value="auto">자동 (WebP 우선)</option>
+                <option value="webp">WebP</option>
+                <option value="jpeg">JPEG (배경 흰색)</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="b64CompRun" type="button">압축하기</button>
+          </div>
+          <p id="b64CompStats" class="muted"></p>
+          <div class="btn-row" id="b64CompActions" hidden>
+            <button class="btn primary" id="b64CompSave" type="button">압축본 저장</button>
+            <button class="btn" id="b64CompPreview" type="button">미리보기</button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -1119,6 +1151,12 @@ textarea {
   });
   el.keepMeta.addEventListener('change', function () {
     settings.keepMeta = el.keepMeta.checked;
+    /* 메타데이터(EXIF)는 JPEG에서 가장 널리·안정적으로 읽히므로, 켜면 출력 형식을 JPEG로 맞춘다 */
+    if (settings.keepMeta && settings.format !== 'jpeg') {
+      settings.format = 'jpeg';
+      el.format.value = 'jpeg';
+      syncSettingsUI();
+    }
     scheduleReprocess();
   });
 
@@ -2053,9 +2091,28 @@ textarea {
   var b64DecImg = $('#b64DecImg');
   var b64DecStats = $('#b64DecStats');
   var b64DecSave = $('#b64DecSave');
+  var b64DecPreview = $('#b64DecPreview');
+  var b64Qual = $('#b64Qual');
+  var b64QualOut = $('#b64QualOut');
+  var b64Fmt = $('#b64Fmt');
+  var b64CompRun = $('#b64CompRun');
+  var b64CompStats = $('#b64CompStats');
+  var b64CompActions = $('#b64CompActions');
+  var b64CompSave = $('#b64CompSave');
+  var b64CompPreview = $('#b64CompPreview');
   var decBlob = null;
   var decUrl = null;
   var decTimer = null;
+  var compBlob = null;
+  var compUrl = null;
+
+  function resetB64Comp() {
+    if (compUrl) { URL.revokeObjectURL(compUrl); compUrl = null; }
+    compBlob = null;
+    b64CompActions.hidden = true;
+    b64CompStats.textContent = '';
+    b64CompStats.className = 'muted';
+  }
 
   function sniffMime(bytes, text) {
     if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'image/jpeg';
@@ -2074,6 +2131,7 @@ textarea {
     if (decUrl) { URL.revokeObjectURL(decUrl); decUrl = null; }
     decBlob = null;
     b64DecResult.hidden = true;
+    resetB64Comp();
     if (!text) { b64DecMsg.textContent = ''; return; }
     try {
       var mime = '';
@@ -2118,6 +2176,48 @@ textarea {
   b64DecSave.addEventListener('click', function () {
     if (!decBlob) return;
     saveBlob(decBlob, 'decoded.' + extFor(decBlob.type));
+  });
+  b64DecPreview.addEventListener('click', function () {
+    if (decUrl) openLightbox(decUrl, b64DecStats.textContent || '디코딩한 이미지');
+  });
+
+  b64Qual.addEventListener('input', function () {
+    b64QualOut.textContent = Math.round(parseFloat(b64Qual.value) * 100);
+  });
+
+  b64CompRun.addEventListener('click', function () {
+    if (!decBlob || !b64DecImg.naturalWidth) return;
+    var w = b64DecImg.naturalWidth, h = b64DecImg.naturalHeight;
+    var sel = b64Fmt.value;
+    var type = sel === 'jpeg' ? 'image/jpeg'
+      : (supportsWebP ? 'image/webp' : 'image/jpeg'); /* webp·auto 모두 WebP 우선, 미지원 시 JPEG */
+    var q = parseFloat(b64Qual.value);
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var cx = cv.getContext('2d');
+    if (type === 'image/jpeg') { cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, w, h); }
+    cx.drawImage(b64DecImg, 0, 0);
+    b64CompRun.disabled = true;
+    b64CompStats.className = 'muted';
+    b64CompStats.textContent = '압축 중…';
+    encodeCanvas(cv, type, q).then(function (b) {
+      b64CompRun.disabled = false;
+      if (!b) { b64CompStats.className = 'error'; b64CompStats.textContent = '이 브라우저에서 지원하지 않는 형식이에요.'; return; }
+      if (compUrl) URL.revokeObjectURL(compUrl);
+      compBlob = b; compUrl = URL.createObjectURL(b);
+      var base = decBlob.size;
+      var diff = base > 0 ? Math.round((1 - b.size / base) * 100) : 0;
+      var change = diff >= 0 ? ('−' + diff + '%') : ('+' + (-diff) + '%');
+      b64CompStats.textContent = fmtLabel(type) + ' · ' + fmtBytes(base) + ' → ' + fmtBytes(b.size) + ' (' + change + ')';
+      b64CompActions.hidden = false;
+    });
+  });
+  b64CompSave.addEventListener('click', function () {
+    if (!compBlob) return;
+    saveBlob(compBlob, 'compressed.' + extFor(compBlob.type));
+  });
+  b64CompPreview.addEventListener('click', function () {
+    if (compUrl) openLightbox(compUrl, fmtLabel(compBlob.type) + ' · ' + fmtBytes(compBlob.size));
   });
 
   /* ================= svg vectorizer =================
