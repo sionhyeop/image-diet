@@ -839,30 +839,37 @@ textarea {
         <input type="file" id="metaFile" hidden>
       </div>
       <div id="metaBody" hidden>
+        <div class="dec-preview svg-opts" id="metaPreviewWrap" role="button" tabindex="0" aria-label="크게 미리보기" hidden>
+          <img id="metaPreview" alt="파일 미리보기">
+        </div>
         <p id="metaSummary" class="muted svg-opts"></p>
         <div id="metaList" class="meta-list"></div>
         <div class="settings-grid svg-opts">
           <div class="field field-wide" id="metaCamField">
-            <span class="field-label">카메라 <span class="sub">— 선택하면 실제 기종의 EXIF 표기 형식으로 채워져요</span></span>
-            <div class="chips" id="metaCamChips"></div>
+            <span class="field-label">카메라 <span class="sub">— 기종을 고르면 실제 EXIF 표기 형식(Make/Model/소프트웨어)으로 채워져요</span></span>
+            <select id="metaCamSel"></select>
             <div class="pair-row svg-opts" style="margin-top:8px">
               <input type="text" id="metaMake" maxlength="100" placeholder="제조사 (Make) — 직접 입력" aria-label="카메라 제조사">
               <input type="text" id="metaModel" maxlength="100" placeholder="모델 (Model) — 직접 입력" aria-label="카메라 모델">
             </div>
           </div>
-          <div class="field field-wide" id="metaOriField">
-            <span class="field-label">방향 (Orientation) <span class="sub">— 픽셀은 그대로, 뷰어의 표시 회전만 바뀌어요</span></span>
-            <div class="chips" id="metaOriChips">
-              <button type="button" class="chip" data-ori="1">정상</button>
-              <button type="button" class="chip" data-ori="6">시계 90°</button>
-              <button type="button" class="chip" data-ori="3">180°</button>
-              <button type="button" class="chip" data-ori="8">반시계 90°</button>
-              <button type="button" class="chip" data-ori="0">태그 없음</button>
-            </div>
+          <div class="field" id="metaOriField">
+            <label class="field-label" for="metaOriSel">방향 (Orientation) <span class="sub">— 뷰어의 표시 회전</span></label>
+            <select id="metaOriSel">
+              <option value="0">태그 없음</option>
+              <option value="1">1 — 정상</option>
+              <option value="2">2 — 좌우 반전</option>
+              <option value="3">3 — 180° 회전</option>
+              <option value="4">4 — 상하 반전</option>
+              <option value="5">5 — 좌우 반전 + 반시계 90°</option>
+              <option value="6">6 — 시계 90° 회전</option>
+              <option value="7">7 — 좌우 반전 + 시계 90°</option>
+              <option value="8">8 — 반시계 90° 회전</option>
+            </select>
           </div>
-          <div class="field field-wide">
-            <span class="field-label">소프트웨어</span>
-            <div class="chips" id="metaSwChips"></div>
+          <div class="field">
+            <label class="field-label" for="metaSwSel">소프트웨어</label>
+            <select id="metaSwSel"></select>
             <input type="text" id="metaSoftware" maxlength="200" placeholder="직접 입력" style="margin-top:8px">
           </div>
           <div class="field">
@@ -5833,24 +5840,83 @@ textarea {
   }
 
   var metaState = { file: null, bytes: null, kind: null, parsed: null };
+  var metaPrevUrl = null;
   var metaMake = $('#metaMake'), metaModel = $('#metaModel'), metaSoftware = $('#metaSoftware');
   var metaOri = 0;
-  /* 실제 기종이 EXIF에 쓰는 표기 형식 그대로 (Make/Model/Software) */
+  /* 실제 기종이 EXIF에 쓰는 표기 형식 그대로 (Make/Model/Software) — 브랜드별 그룹 */
   var CAM_PRESETS = [
-    { id: 'iphone', label: '아이폰 15 Pro', make: 'Apple', model: 'iPhone 15 Pro', software: '17.5.1' },
-    { id: 'galaxy', label: '갤럭시 S24 Ultra', make: 'samsung', model: 'SM-S928N', software: 'S928NKSU3AXCA' },
-    { id: 'canon', label: '캐논 EOS R5', make: 'Canon', model: 'Canon EOS R5', software: 'Firmware Version 1.9.0' },
-    { id: 'sony', label: '소니 A7 IV', make: 'SONY', model: 'ILCE-7M4', software: 'ILCE-7M4 v2.00' },
-    { id: 'nikon', label: '니콘 Z6 II', make: 'NIKON CORPORATION', model: 'NIKON Z 6_2', software: 'Ver.01.10' },
-    { id: 'fuji', label: '후지필름 X-T5', make: 'FUJIFILM', model: 'X-T5', software: 'Digital Camera X-T5 Ver1.11' }
+    { id: 'ip16p', brand: 'Apple', label: '아이폰 16 Pro', make: 'Apple', model: 'iPhone 16 Pro', software: '18.1' },
+    { id: 'ip15p', brand: 'Apple', label: '아이폰 15 Pro', make: 'Apple', model: 'iPhone 15 Pro', software: '17.5.1' },
+    { id: 'ip14', brand: 'Apple', label: '아이폰 14', make: 'Apple', model: 'iPhone 14', software: '16.6' },
+    { id: 'ip13m', brand: 'Apple', label: '아이폰 13 mini', make: 'Apple', model: 'iPhone 13 mini', software: '15.6.1' },
+    { id: 's24u', brand: '삼성', label: '갤럭시 S24 Ultra', make: 'samsung', model: 'SM-S928N', software: 'S928NKSU3AXCA' },
+    { id: 's23', brand: '삼성', label: '갤럭시 S23', make: 'samsung', model: 'SM-S911N', software: 'S911NKSU3CXK1' },
+    { id: 's21u', brand: '삼성', label: '갤럭시 S21 Ultra', make: 'samsung', model: 'SM-G998N', software: 'G998NKSU7FXG2' },
+    { id: 'zflip6', brand: '삼성', label: '갤럭시 Z 플립6', make: 'samsung', model: 'SM-F741N', software: 'F741NKSU1AXG3' },
+    { id: 'pixel8p', brand: 'Google', label: '픽셀 8 Pro', make: 'Google', model: 'Pixel 8 Pro', software: 'HDR+ 1.0.617869637zd' },
+    { id: 'eosr5', brand: '캐논', label: '캐논 EOS R5', make: 'Canon', model: 'Canon EOS R5', software: 'Firmware Version 1.9.0' },
+    { id: 'eosr6m2', brand: '캐논', label: '캐논 EOS R6 Mark II', make: 'Canon', model: 'Canon EOS R6m2', software: 'Firmware Version 1.3.0' },
+    { id: 'eos90d', brand: '캐논', label: '캐논 EOS 90D', make: 'Canon', model: 'Canon EOS 90D', software: 'Firmware Version 1.1.1' },
+    { id: 'a7m4', brand: '소니', label: '소니 A7 IV', make: 'SONY', model: 'ILCE-7M4', software: 'ILCE-7M4 v2.00' },
+    { id: 'a7m3', brand: '소니', label: '소니 A7 III', make: 'SONY', model: 'ILCE-7M3', software: 'ILCE-7M3 v3.10' },
+    { id: 'a6400', brand: '소니', label: '소니 A6400', make: 'SONY', model: 'ILCE-6400', software: 'ILCE-6400 v2.00' },
+    { id: 'zve10', brand: '소니', label: '소니 ZV-E10', make: 'SONY', model: 'ZV-E10', software: 'ZV-E10 v2.01' },
+    { id: 'z8', brand: '니콘', label: '니콘 Z8', make: 'NIKON CORPORATION', model: 'NIKON Z 8', software: 'Ver.02.01' },
+    { id: 'z6ii', brand: '니콘', label: '니콘 Z6 II', make: 'NIKON CORPORATION', model: 'NIKON Z 6_2', software: 'Ver.01.10' },
+    { id: 'd850', brand: '니콘', label: '니콘 D850', make: 'NIKON CORPORATION', model: 'NIKON D850', software: 'Ver.1.30' },
+    { id: 'xt5', brand: '후지필름', label: '후지필름 X-T5', make: 'FUJIFILM', model: 'X-T5', software: 'Digital Camera X-T5 Ver1.11' },
+    { id: 'x100v', brand: '후지필름', label: '후지필름 X100V', make: 'FUJIFILM', model: 'X100V', software: 'Digital Camera X100V Ver2.11' },
+    { id: 'hero12', brand: '액션캠·드론', label: 'GoPro HERO12', make: 'GoPro', model: 'HERO12 Black', software: 'H23.01.02.32.00' },
+    { id: 'mini3p', brand: '액션캠·드론', label: 'DJI Mini 3 Pro', make: 'DJI', model: 'FC3582', software: 'v01.00.0500' }
   ];
   var SW_PRESETS = [
-    { id: 'cam', label: '카메라 기본값', value: null },
-    { id: 'lr', label: 'Lightroom', value: 'Adobe Lightroom 7.4 (Windows)' },
-    { id: 'ps', label: 'Photoshop', value: 'Adobe Photoshop 25.9 (Windows)' },
+    { id: 'cam', label: '카메라 기본값 (기종 선택 시)', value: null },
+    { id: 'lrw', label: 'Lightroom (Windows)', value: 'Adobe Lightroom 7.4 (Windows)' },
+    { id: 'lrm', label: 'Lightroom (Mac)', value: 'Adobe Lightroom 7.4 (Macintosh)' },
+    { id: 'lri', label: 'Lightroom (iOS)', value: 'Adobe Lightroom 9.3 (iOS)' },
+    { id: 'psw', label: 'Photoshop (Windows)', value: 'Adobe Photoshop 25.9 (Windows)' },
+    { id: 'psm', label: 'Photoshop (Mac)', value: 'Adobe Photoshop 25.9 (Macintosh)' },
+    { id: 'c1', label: 'Capture One', value: 'Capture One 23 Windows' },
+    { id: 'affinity', label: 'Affinity Photo', value: 'Affinity Photo 2 2.5.3' },
+    { id: 'gimp', label: 'GIMP', value: 'GIMP 2.10.38' },
     { id: 'snap', label: 'Snapseed', value: 'Snapseed 2.0' },
-    { id: 'swnone', label: '없음', value: '' }
+    { id: 'vsco', label: 'VSCO', value: 'VSCO' },
+    { id: 'insta', label: 'Instagram', value: 'Instagram' },
+    { id: 'picsart', label: 'PicsArt', value: 'PicsArt' },
+    { id: 'snow', label: 'SNOW', value: 'SNOW' },
+    { id: 'gphotos', label: 'Google 포토', value: 'Google' },
+    { id: 'sgallery', label: '삼성 갤러리 편집기', value: 'Samsung Photo Editor' },
+    { id: 'swnone', label: '없음 (지우기)', value: '' }
   ];
+  var metaCamSel = $('#metaCamSel'), metaSwSel = $('#metaSwSel'), metaOriSel = $('#metaOriSel');
+  (function buildPresetSelects() {
+    var opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = '기종 선택 — 또는 아래에 직접 입력';
+    metaCamSel.appendChild(opt0);
+    var groups = {};
+    CAM_PRESETS.forEach(function (cp) {
+      if (!groups[cp.brand]) {
+        groups[cp.brand] = document.createElement('optgroup');
+        groups[cp.brand].label = cp.brand;
+        metaCamSel.appendChild(groups[cp.brand]);
+      }
+      var o = document.createElement('option');
+      o.value = cp.id;
+      o.textContent = cp.label;
+      groups[cp.brand].appendChild(o);
+    });
+    var so0 = document.createElement('option');
+    so0.value = '';
+    so0.textContent = '프로그램 선택 — 또는 아래에 직접 입력';
+    metaSwSel.appendChild(so0);
+    SW_PRESETS.forEach(function (sp) {
+      var o = document.createElement('option');
+      o.value = sp.id;
+      o.textContent = sp.label;
+      metaSwSel.appendChild(o);
+    });
+  })();
   function matchedCam() {
     for (var i = 0; i < CAM_PRESETS.length; i++) {
       if (CAM_PRESETS[i].make === metaMake.value.trim() && CAM_PRESETS[i].model === metaModel.value.trim()) return CAM_PRESETS[i];
@@ -5859,61 +5925,41 @@ textarea {
   }
   function syncMetaChips() {
     var cam = matchedCam();
-    document.querySelectorAll('#metaCamChips .chip').forEach(function (b) {
-      b.classList.toggle('on', !!cam && b.dataset.cam === cam.id);
-    });
+    metaCamSel.value = cam ? cam.id : '';
     var sw = metaSoftware.value.trim();
-    document.querySelectorAll('#metaSwChips .chip').forEach(function (b) {
-      var sp = SW_PRESETS.filter(function (s) { return s.id === b.dataset.sw; })[0];
-      var on = sp.value === null
-        ? (!!cam && sw !== '' && sw === cam.software)
-        : (sp.value === '' ? sw === '' : sw === sp.value);
-      b.classList.toggle('on', on);
-    });
-    document.querySelectorAll('#metaOriChips .chip').forEach(function (b) {
-      var on = parseInt(b.dataset.ori, 10) === metaOri;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-  }
-  CAM_PRESETS.forEach(function (cp) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'chip';
-    b.textContent = cp.label;
-    b.dataset.cam = cp.id;
-    b.addEventListener('click', function () {
-      metaMake.value = cp.make;
-      metaModel.value = cp.model;
-      metaSoftware.value = cp.software;
-      syncMetaChips();
-    });
-    $('#metaCamChips').appendChild(b);
-  });
-  SW_PRESETS.forEach(function (sp) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'chip';
-    b.textContent = sp.label;
-    b.dataset.sw = sp.id;
-    b.addEventListener('click', function () {
-      if (sp.value === null) {
-        var cam = matchedCam();
-        if (!cam) { toast('먼저 카메라 기종을 선택해 주세요.'); return; }
-        metaSoftware.value = cam.software;
-      } else {
-        metaSoftware.value = sp.value;
+    var swId = '';
+    if (cam && sw !== '' && sw === cam.software) swId = 'cam';
+    else {
+      for (var i = 0; i < SW_PRESETS.length; i++) {
+        if (SW_PRESETS[i].value !== null && SW_PRESETS[i].value !== '' && SW_PRESETS[i].value === sw) { swId = SW_PRESETS[i].id; break; }
       }
-      syncMetaChips();
-    });
-    $('#metaSwChips').appendChild(b);
+      if (!swId && sw === '') swId = '';
+    }
+    metaSwSel.value = swId;
+    metaOriSel.value = String(metaOri || 0);
+  }
+  metaCamSel.addEventListener('change', function () {
+    var cp = CAM_PRESETS.filter(function (c) { return c.id === metaCamSel.value; })[0];
+    if (!cp) return;
+    metaMake.value = cp.make;
+    metaModel.value = cp.model;
+    metaSoftware.value = cp.software;
+    syncMetaChips();
   });
-  document.querySelectorAll('#metaOriChips .chip').forEach(function (b) {
-    b.setAttribute('aria-pressed', 'false');
-    b.addEventListener('click', function () {
-      metaOri = parseInt(b.dataset.ori, 10);
-      syncMetaChips();
-    });
+  metaSwSel.addEventListener('change', function () {
+    var sp = SW_PRESETS.filter(function (s) { return s.id === metaSwSel.value; })[0];
+    if (!sp) return;
+    if (sp.value === null) {
+      var cam = matchedCam();
+      if (!cam) { toast('먼저 카메라 기종을 선택해 주세요.'); syncMetaChips(); return; }
+      metaSoftware.value = cam.software;
+    } else {
+      metaSoftware.value = sp.value;
+    }
+    syncMetaChips();
+  });
+  metaOriSel.addEventListener('change', function () {
+    metaOri = parseInt(metaOriSel.value, 10) || 0;
   });
   [metaMake, metaModel, metaSoftware].forEach(function (inp) {
     inp.addEventListener('input', syncMetaChips);
@@ -6383,7 +6429,26 @@ textarea {
     $('#metaArtist').value = m.artist || '';
     $('#metaCopyright').value = m.copyright || '';
     metaSoftware.value = m.software || '';
-    $('#metaDate').value = m.date || '';
+    /* 촬영 일시 — 파일에 값이 없으면 오늘 날짜·시각을 자동으로 채운다 (수정 가능) */
+    var nowStr = '';
+    if (st.editable && caps.date !== false && !m.date) {
+      var nd = new Date();
+      var z2 = function (n2) { return (n2 < 10 ? '0' : '') + n2; };
+      nowStr = nd.getFullYear() + '-' + z2(nd.getMonth() + 1) + '-' + z2(nd.getDate()) +
+        'T' + z2(nd.getHours()) + ':' + z2(nd.getMinutes()) + ':' + z2(nd.getSeconds());
+    }
+    $('#metaDate').value = m.date || nowStr;
+    /* 이미지 형식이면 미리보기 표시 */
+    var isImgKind = st.kind === 'jpeg' || st.kind === 'png' || st.kind === 'webp' || st.kind === 'svgx';
+    if (metaPrevUrl) { URL.revokeObjectURL(metaPrevUrl); metaPrevUrl = null; }
+    if (isImgKind) {
+      var pvMime = st.kind === 'jpeg' ? 'image/jpeg' : st.kind === 'png' ? 'image/png' : st.kind === 'webp' ? 'image/webp' : 'image/svg+xml';
+      metaPrevUrl = URL.createObjectURL(new Blob([st.bytes], { type: pvMime }));
+      $('#metaPreview').src = metaPrevUrl;
+    } else {
+      $('#metaPreview').removeAttribute('src');
+    }
+    $('#metaPreviewWrap').hidden = !isImgKind;
     $('#metaLat').value = typeof m.lat === 'number' ? String(Math.round(m.lat * 1e6) / 1e6) : '';
     $('#metaLon').value = typeof m.lon === 'number' ? String(Math.round(m.lon * 1e6) / 1e6) : '';
     metaMake.value = m.make || '';
@@ -6393,8 +6458,8 @@ textarea {
     var ed = !!st.editable;
     var canCam = ed && !!caps.cam;
     metaMake.disabled = metaModel.disabled = !canCam;
-    document.querySelectorAll('#metaCamChips .chip').forEach(function (b) { b.disabled = !canCam; });
-    document.querySelectorAll('#metaOriChips .chip').forEach(function (b) { b.disabled = !(ed && caps.ori); });
+    $('#metaCamSel').disabled = !canCam;
+    $('#metaOriSel').disabled = !(ed && caps.ori);
     var gpsOk = ed && !!caps.gps;
     $('#metaLat').disabled = $('#metaLon').disabled = !gpsOk;
     $('#mapPick').disabled = !gpsOk;
@@ -6415,7 +6480,7 @@ textarea {
     $('#metaCopyright').disabled = !(ed && caps.copyright);
     var swOk = ed && caps.software !== false && !st.noSoftware;
     metaSoftware.disabled = !swOk;
-    document.querySelectorAll('#metaSwChips .chip').forEach(function (b) { b.disabled = !swOk; });
+    $('#metaSwSel').disabled = !swOk;
     $('#metaSave').disabled = !ed;
     $('#metaStrip').disabled = !ed;
     $('#metaGpsNote').textContent = st.note || '';
@@ -6436,6 +6501,9 @@ textarea {
     var f = this.files && this.files[0];
     this.value = '';
     if (f) loadMetaFile(f);
+  });
+  $('#metaPreviewWrap').addEventListener('click', function () {
+    if (metaPrevUrl) openLightbox(metaPrevUrl, (metaState.file && metaState.file.name) || '미리보기');
   });
   var metaDropzone = $('#metaDropzone');
   metaDropzone.addEventListener('click', function () { $('#metaFile').click(); });
