@@ -772,10 +772,10 @@ textarea {
   <section id="panel-meta" role="tabpanel" aria-labelledby="tabMeta" hidden>
     <div class="card b64-card">
       <h2>메타데이터 보기·편집</h2>
-      <div class="dropzone dropzone-sm" id="metaDropzone" role="button" tabindex="0" aria-label="메타데이터를 편집할 이미지 선택 또는 드래그하여 추가">
-        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-        <p class="dz-hint">JPG · PNG 지원 · Ctrl+V 붙여넣기 지원</p>
-        <input type="file" id="metaFile" accept="image/jpeg,image/png,.jpg,.jpeg,.png" hidden>
+      <div class="dropzone dropzone-sm" id="metaDropzone" role="button" tabindex="0" aria-label="메타데이터를 편집할 파일 선택 또는 드래그하여 추가">
+        <p class="dz-main">파일을 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">이미지(JPG·PNG·WebP) · MP3 · MP4 · PDF · Office 문서(docx·xlsx·pptx·odt…) · Ctrl+V 붙여넣기 지원</p>
+        <input type="file" id="metaFile" hidden>
       </div>
       <div id="metaBody" hidden>
         <p id="metaSummary" class="muted svg-opts"></p>
@@ -4166,6 +4166,594 @@ textarea {
   }
 
   /* ---------- metadata tab UI ---------- */
+  /* ================= 메타데이터: 형식별 핸들러 =================
+     JPEG·PNG 외에 WebP(EXIF)·MP3(ID3v2)·MP4(iTunes 태그)·PDF(Info 사전)·
+     Office(OOXML core.xml / ODF meta.xml)를 자체 파서로 읽고 다시 쓴다. */
+  var META_CAPS = {
+    jpeg:  { label: 'JPEG (EXIF)', cam: 1, ori: 1, gps: 1, copyright: 1, ext: '.jpg' },
+    webp:  { label: 'WebP (EXIF)', cam: 1, ori: 1, gps: 1, copyright: 1, ext: '.webp' },
+    png:   { label: 'PNG (텍스트 청크)', copyright: 1, ext: '.png' },
+    mp3:   { label: 'MP3 (ID3 태그)', copyright: 1, ext: '.mp3' },
+    mp4:   { label: 'MP4/M4A (iTunes 태그)', copyright: 1, ext: '.mp4' },
+    pdf:   { label: 'PDF (문서 정보)', ext: '.pdf' },
+    ooxml: { label: 'Office 문서 (핵심 속성)', ext: '' },
+    odf:   { label: 'ODF 문서 (meta.xml)', ext: '' },
+    other: { label: '일반 파일', ext: '' }
+  };
+
+  function metaSniff(bytes, name) {
+    var t4 = function (p) { return String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3]); };
+    if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'jpeg';
+    if (bytes.length >= 4 && bytes[0] === 0x89 && t4(1).slice(0, 3) === 'PNG') return 'png';
+    if (bytes.length >= 12 && t4(0) === 'RIFF' && t4(8) === 'WEBP') return 'webp';
+    if (bytes.length >= 12 && t4(4) === 'ftyp') return 'mp4';
+    if (bytes.length >= 5 && t4(0) === '%PDF') return 'pdf';
+    if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return 'mp3';
+    if (bytes.length >= 2 && bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0 && /\.mp3$/i.test(name || '')) return 'mp3';
+    if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 3 && bytes[3] === 4) return 'zip';
+    return 'other';
+  }
+
+  /* ---------- WebP ---------- */
+  function webpChunks(bytes) {
+    var t4 = function (p) { return String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3]); };
+    if (bytes.length < 12 || t4(0) !== 'RIFF' || t4(8) !== 'WEBP') return null;
+    var out = [], i = 12;
+    while (i + 8 <= bytes.length) {
+      var size = (bytes[i + 4] | (bytes[i + 5] << 8) | (bytes[i + 6] << 16) | (bytes[i + 7] << 24)) >>> 0;
+      out.push({ tag: t4(i), start: i, payloadStart: i + 8, size: size });
+      i += 8 + size + (size & 1);
+    }
+    return out;
+  }
+  function webpDims(bytes, chunks) {
+    for (var i = 0; i < chunks.length; i++) {
+      var c = chunks[i], p = c.payloadStart;
+      if (c.tag === 'VP8X' && c.size >= 10) {
+        return { w: 1 + (bytes[p + 4] | (bytes[p + 5] << 8) | (bytes[p + 6] << 16)), h: 1 + (bytes[p + 7] | (bytes[p + 8] << 8) | (bytes[p + 9] << 16)) };
+      }
+      if (c.tag === 'VP8L' && c.size >= 5 && bytes[p] === 0x2F) {
+        var v = (bytes[p + 1] | (bytes[p + 2] << 8) | (bytes[p + 3] << 16) | (bytes[p + 4] << 24)) >>> 0;
+        return { w: (v & 0x3FFF) + 1, h: ((v >> 14) & 0x3FFF) + 1 };
+      }
+      if (c.tag === 'VP8 ' && c.size >= 10 && bytes[p + 3] === 0x9D && bytes[p + 4] === 0x01 && bytes[p + 5] === 0x2A) {
+        return { w: (bytes[p + 6] | (bytes[p + 7] << 8)) & 0x3FFF, h: (bytes[p + 8] | (bytes[p + 9] << 8)) & 0x3FFF };
+      }
+    }
+    return { w: 0, h: 0 };
+  }
+  function stripWebpMeta(bytes) {
+    var chunks = webpChunks(bytes);
+    if (!chunks) return null;
+    var parts = [];
+    chunks.forEach(function (c) {
+      if (c.tag === 'EXIF' || c.tag === 'XMP ') return;
+      var end = Math.min(c.payloadStart + c.size + (c.size & 1), bytes.length);
+      var seg = bytes.subarray(c.start, end);
+      if (c.tag === 'VP8X') { seg = seg.slice(); seg[8] &= ~0x0C; } /* EXIF·XMP 플래그 해제 */
+      parts.push(seg);
+    });
+    var total = 4;
+    parts.forEach(function (p) { total += p.length; });
+    var out = new Uint8Array(8 + total);
+    out.set([0x52, 0x49, 0x46, 0x46], 0);
+    out[4] = total & 0xFF; out[5] = (total >> 8) & 0xFF; out[6] = (total >> 16) & 0xFF; out[7] = (total >> 24) & 0xFF;
+    out.set([0x57, 0x45, 0x42, 0x50], 8);
+    var off = 12;
+    parts.forEach(function (p) { out.set(p, off); off += p.length; });
+    return new Blob([out], { type: 'image/webp' });
+  }
+
+  /* ---------- MP3 (ID3v2.3 / v2.4) ---------- */
+  function id3SyncSafe(b, p) { return ((b[p] & 0x7F) << 21) | ((b[p + 1] & 0x7F) << 14) | ((b[p + 2] & 0x7F) << 7) | (b[p + 3] & 0x7F); }
+  function id3Parse(bytes) {
+    if (!(bytes.length > 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33)) {
+      return { ver: 3, tagEnd: 0, frames: [], none: true };
+    }
+    var ver = bytes[3], flags = bytes[5];
+    var size = id3SyncSafe(bytes, 6);
+    var tagEnd = Math.min(bytes.length, 10 + size + ((flags & 0x10) ? 10 : 0));
+    if (ver < 3 || ver > 4 || (flags & 0x80)) return { ver: ver, tagEnd: tagEnd, frames: [], locked: true };
+    var p = 10;
+    if (flags & 0x40) {
+      p += ver === 4 ? id3SyncSafe(bytes, p)
+        : (((bytes[p] << 24) | (bytes[p + 1] << 16) | (bytes[p + 2] << 8) | bytes[p + 3]) >>> 0) + 4;
+    }
+    var frames = [], limit = Math.min(bytes.length, 10 + size);
+    while (p + 10 <= limit) {
+      var id = String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3]);
+      if (!/^[A-Z0-9]{4}$/.test(id)) break;
+      var fsz = ver === 4 ? id3SyncSafe(bytes, p + 4)
+        : ((bytes[p + 4] << 24) | (bytes[p + 5] << 16) | (bytes[p + 6] << 8) | bytes[p + 7]) >>> 0;
+      if (fsz < 0 || p + 10 + fsz > limit) break;
+      frames.push({ id: id, raw: bytes.slice(p, p + 10 + fsz) });
+      p += 10 + fsz;
+    }
+    return { ver: ver, tagEnd: tagEnd, frames: frames };
+  }
+  function id3Text(frame) {
+    if (frame.raw[8] | frame.raw[9]) return ''; /* 압축·암호화 등 특수 플래그 프레임은 건너뛴다 */
+    var d = frame.raw.subarray(10);
+    if (!d.length) return '';
+    var enc = d[0], body = d.subarray(1);
+    try {
+      var cs = enc === 0 ? 'windows-1252' : enc === 1 ? 'utf-16' : enc === 2 ? 'utf-16be' : 'utf-8';
+      return new TextDecoder(cs).decode(body).replace(/\0+$/, '').replace(/^﻿/, '');
+    } catch (e) { return ''; }
+  }
+  function id3MakeFrame(ver, id, text) {
+    var body, enc, i;
+    if (ver === 4) { body = new TextEncoder().encode(text); enc = 3; }
+    else {
+      body = new Uint8Array(2 + text.length * 2);
+      body[0] = 0xFF; body[1] = 0xFE;
+      for (i = 0; i < text.length; i++) {
+        var c = text.charCodeAt(i);
+        body[2 + i * 2] = c & 0xFF; body[3 + i * 2] = c >> 8;
+      }
+      enc = 1;
+    }
+    var out = new Uint8Array(11 + body.length);
+    for (i = 0; i < 4; i++) out[i] = id.charCodeAt(i);
+    var sz = 1 + body.length;
+    if (ver === 4) { out[4] = (sz >>> 21) & 0x7F; out[5] = (sz >>> 14) & 0x7F; out[6] = (sz >>> 7) & 0x7F; out[7] = sz & 0x7F; }
+    else { out[4] = (sz >>> 24) & 0xFF; out[5] = (sz >>> 16) & 0xFF; out[6] = (sz >>> 8) & 0xFF; out[7] = sz & 0xFF; }
+    out[10] = enc;
+    out.set(body, 11);
+    return out;
+  }
+  var ID3_MANAGED = { TIT2: 1, TPE1: 1, TCOP: 1, TSSE: 1, TDRC: 1, TYER: 1, TDAT: 1, TIME: 1 };
+  function id3Build(parsed, f, audio) {
+    var ver = parsed.ver === 4 ? 4 : 3;
+    var parts = [];
+    if (f.desc) parts.push(id3MakeFrame(ver, 'TIT2', f.desc));
+    if (f.artist) parts.push(id3MakeFrame(ver, 'TPE1', f.artist));
+    if (f.copyright) parts.push(id3MakeFrame(ver, 'TCOP', f.copyright));
+    if (f.software) parts.push(id3MakeFrame(ver, 'TSSE', f.software));
+    if (f.date) {
+      var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(f.date);
+      if (ver === 4) parts.push(id3MakeFrame(4, 'TDRC', f.date));
+      else if (m) {
+        parts.push(id3MakeFrame(3, 'TYER', m[1]));
+        parts.push(id3MakeFrame(3, 'TDAT', m[3] + m[2]));
+        parts.push(id3MakeFrame(3, 'TIME', m[4] + m[5]));
+      }
+    }
+    parsed.frames.forEach(function (fr) { if (!ID3_MANAGED[fr.id]) parts.push(fr.raw); });
+    var bodyLen = 0;
+    parts.forEach(function (p) { bodyLen += p.length; });
+    var size = bodyLen + 256; /* 여유 패딩 */
+    var out = new Uint8Array(10 + size + audio.length);
+    out[0] = 0x49; out[1] = 0x44; out[2] = 0x33; out[3] = ver;
+    out[6] = (size >>> 21) & 0x7F; out[7] = (size >>> 14) & 0x7F; out[8] = (size >>> 7) & 0x7F; out[9] = size & 0x7F;
+    var off = 10;
+    parts.forEach(function (p) { out.set(p, off); off += p.length; });
+    out.set(audio, 10 + size);
+    return new Blob([out], { type: 'audio/mpeg' });
+  }
+  function id3StripV1(bytes) {
+    var n = bytes.length;
+    if (n >= 128 && bytes[n - 128] === 0x54 && bytes[n - 127] === 0x41 && bytes[n - 126] === 0x47) return bytes.subarray(0, n - 128);
+    return bytes;
+  }
+
+  /* ---------- MP4 / M4A / MOV ---------- */
+  function mp4Boxes(bytes, start, end) {
+    var out = [], p = start;
+    while (p + 8 <= end) {
+      var sz = ((bytes[p] << 24) | (bytes[p + 1] << 16) | (bytes[p + 2] << 8) | bytes[p + 3]) >>> 0;
+      var type = String.fromCharCode(bytes[p + 4], bytes[p + 5], bytes[p + 6], bytes[p + 7]);
+      var hdr = 8, real = sz;
+      if (sz === 1) {
+        if (p + 16 > end) break;
+        var hi = ((bytes[p + 8] << 24) | (bytes[p + 9] << 16) | (bytes[p + 10] << 8) | bytes[p + 11]) >>> 0;
+        var lo = ((bytes[p + 12] << 24) | (bytes[p + 13] << 16) | (bytes[p + 14] << 8) | bytes[p + 15]) >>> 0;
+        real = hi * 4294967296 + lo;
+        hdr = 16;
+      } else if (sz === 0) real = end - p;
+      if (real < hdr || p + real > end) break;
+      out.push({ type: type, start: p, size: real, hdr: hdr });
+      p += real;
+    }
+    return out;
+  }
+  function mp4Find(boxes, type) {
+    for (var i = 0; i < boxes.length; i++) if (boxes[i].type === type) return boxes[i];
+    return null;
+  }
+  function mp4Children(bytes, box, extra) {
+    return mp4Boxes(bytes, box.start + box.hdr + (extra || 0), box.start + box.size);
+  }
+  var MP4_TAGS = { desc: '©nam', artist: '©ART', copyright: 'cprt', software: '©too', date: '©day' };
+  function mp4Read(bytes) {
+    var moov = mp4Find(mp4Boxes(bytes, 0, bytes.length), 'moov');
+    if (!moov) return null;
+    var res = { moov: moov, tags: {}, others: [], udtaOthers: [], hdlrRaw: null };
+    var udta = mp4Find(mp4Children(bytes, moov), 'udta');
+    if (udta) {
+      mp4Children(bytes, udta).forEach(function (c) { if (c.type !== 'meta') res.udtaOthers.push(bytes.slice(c.start, c.start + c.size)); });
+      var meta = mp4Find(mp4Children(bytes, udta), 'meta');
+      if (meta) {
+        var mc = mp4Children(bytes, meta, 4);
+        var hd = mp4Find(mc, 'hdlr');
+        if (hd) res.hdlrRaw = bytes.slice(hd.start, hd.start + hd.size);
+        var ilst = mp4Find(mc, 'ilst');
+        if (ilst) {
+          mp4Children(bytes, ilst).forEach(function (e) {
+            var key = null;
+            for (var k in MP4_TAGS) if (MP4_TAGS[k] === e.type) key = k;
+            if (key) {
+              var db = mp4Find(mp4Children(bytes, e), 'data');
+              if (db && db.size > 16) {
+                try { res.tags[key] = new TextDecoder().decode(bytes.subarray(db.start + 16, db.start + db.size)); } catch (er) {}
+              }
+            } else res.others.push(bytes.slice(e.start, e.start + e.size));
+          });
+        }
+      }
+    }
+    return res;
+  }
+  function mp4Box(type, parts) {
+    var len = 8;
+    parts.forEach(function (p) { len += p.length; });
+    var out = new Uint8Array(len);
+    out[0] = (len >>> 24) & 255; out[1] = (len >>> 16) & 255; out[2] = (len >>> 8) & 255; out[3] = len & 255;
+    for (var i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i) & 255;
+    var off = 8;
+    parts.forEach(function (p) { out.set(p, off); off += p.length; });
+    return out;
+  }
+  function mp4DataEntry(tag, text) {
+    var tb = new TextEncoder().encode(text);
+    var payload = new Uint8Array(8 + tb.length);
+    payload[3] = 1; /* UTF-8 텍스트 */
+    payload.set(tb, 8);
+    return mp4Box(tag, [mp4Box('data', [payload])]);
+  }
+  function mp4DefaultHdlr() {
+    var p = new Uint8Array(25);
+    'mdir'.split('').forEach(function (c, i) { p[8 + i] = c.charCodeAt(0); });
+    'appl'.split('').forEach(function (c, i) { p[12 + i] = c.charCodeAt(0); });
+    return mp4Box('hdlr', [p]);
+  }
+  /* 원본 moov를 'free'로 바꾸고 수정한 moov를 파일 끝에 붙인다 —
+     mdat 위치가 그대로라 chunk offset(stco)이 안 깨진다 */
+  function mp4BuildBlob(bytes, sub, f, strip, mime) {
+    var parts = [];
+    mp4Children(bytes, sub.moov).forEach(function (c) {
+      if (c.type !== 'udta') parts.push(bytes.subarray(c.start, c.start + c.size));
+    });
+    if (!strip) {
+      var entries = [];
+      for (var k in MP4_TAGS) if (f[k]) entries.push(mp4DataEntry(MP4_TAGS[k], f[k]));
+      sub.others.forEach(function (o) { entries.push(o); });
+      var udtaParts = sub.udtaOthers.slice();
+      if (entries.length) {
+        udtaParts.push(mp4Box('meta', [new Uint8Array(4), sub.hdlrRaw || mp4DefaultHdlr(), mp4Box('ilst', entries)]));
+      }
+      if (udtaParts.length) parts.push(mp4Box('udta', udtaParts));
+    }
+    var newMoov = mp4Box('moov', parts);
+    return new Blob([
+      bytes.subarray(0, sub.moov.start + 4),
+      new Uint8Array([0x66, 0x72, 0x65, 0x65]),
+      bytes.subarray(sub.moov.start + 8),
+      newMoov
+    ], { type: mime || 'video/mp4' });
+  }
+
+  /* ---------- PDF (Info 사전 · 증분 업데이트) ---------- */
+  function pdfParse(bytes) {
+    var s;
+    try { s = new TextDecoder('latin1').decode(bytes); } catch (e) { return null; }
+    var res = { ok: false };
+    var mm, re = /startxref\s+(\d+)/g, sx = null;
+    while ((mm = re.exec(s))) sx = +mm[1];
+    var root = null; re = /\/Root\s+(\d+)\s+(\d+)\s+R/g;
+    while ((mm = re.exec(s))) root = mm[1] + ' ' + mm[2];
+    var size = null; re = /\/Size\s+(\d+)/g;
+    while ((mm = re.exec(s))) size = +mm[1];
+    var info = null; re = /\/Info\s+(\d+)\s+(\d+)\s+R/g;
+    while ((mm = re.exec(s))) info = [+mm[1], +mm[2]];
+    res.encrypted = /\/Encrypt\s+\d+\s+\d+\s+R/.test(s);
+    res.hasXmp = /\/Metadata\s+\d+\s+\d+\s+R/.test(s);
+    if (sx == null || !root || !size) return res;
+    res.prevXref = sx; res.root = root; res.size = size;
+    res.xrefStream = !/^\s*xref/.test(s.slice(sx, sx + 12));
+    res.infoNum = info ? info[0] : null;
+    res.infoGen = info ? info[1] : 0;
+    res.dict = '';
+    if (info) {
+      var or2 = new RegExp('(?:^|[^0-9])(' + info[0] + '\\s+' + info[1] + '\\s+obj)', 'g');
+      var pos = -1;
+      while ((mm = or2.exec(s))) pos = mm.index + mm[0].length;
+      if (pos >= 0) {
+        var e2 = s.indexOf('endobj', pos);
+        if (e2 > pos) res.dict = s.slice(pos, e2);
+      }
+    }
+    res.ok = true;
+    return res;
+  }
+  function pdfStr(dict, key) {
+    var i = dict.indexOf('/' + key);
+    if (i < 0) return '';
+    i += key.length + 1;
+    while (i < dict.length && /[\s]/.test(dict[i])) i++;
+    if (dict[i] === '(') {
+      var depth = 1, out = '', j = i + 1;
+      while (j < dict.length && depth > 0) {
+        var c = dict[j];
+        if (c === '\\') {
+          var n = dict[j + 1];
+          if (n === 'n') out += '\n'; else if (n === 'r') out += '\r'; else if (n === 't') out += '\t';
+          else if (n >= '0' && n <= '7') {
+            var oct = /^[0-7]{1,3}/.exec(dict.slice(j + 1))[0];
+            out += String.fromCharCode(parseInt(oct, 8));
+            j += oct.length - 1;
+          } else out += n;
+          j += 2;
+        } else if (c === '(') { depth++; out += c; j++; }
+        else if (c === ')') { depth--; if (depth > 0) out += c; j++; }
+        else { out += c; j++; }
+      }
+      if (out.charCodeAt(0) === 0xFE && out.charCodeAt(1) === 0xFF) {
+        var r = '';
+        for (var k = 2; k + 1 < out.length; k += 2) r += String.fromCharCode((out.charCodeAt(k) << 8) | out.charCodeAt(k + 1));
+        return r;
+      }
+      return out;
+    }
+    if (dict[i] === '<' && dict[i + 1] !== '<') {
+      var e = dict.indexOf('>', i);
+      var hex = dict.slice(i + 1, e).replace(/\s+/g, '');
+      var bs = [];
+      for (var h = 0; h + 1 < hex.length; h += 2) bs.push(parseInt(hex.substr(h, 2), 16));
+      if (bs[0] === 0xFE && bs[1] === 0xFF) {
+        var r2 = '';
+        for (h = 2; h + 1 < bs.length; h += 2) r2 += String.fromCharCode((bs[h] << 8) | bs[h + 1]);
+        return r2;
+      }
+      return bs.map(function (b) { return String.fromCharCode(b); }).join('');
+    }
+    return '';
+  }
+  function pdfStrOut(s) {
+    var ascii = true;
+    for (var i = 0; i < s.length; i++) if (s.charCodeAt(i) < 32 || s.charCodeAt(i) > 126) { ascii = false; break; }
+    if (ascii) return '(' + s.replace(/([\\()])/g, '\\$1') + ')';
+    var hex = 'FEFF';
+    for (i = 0; i < s.length; i++) hex += ('0000' + s.charCodeAt(i).toString(16).toUpperCase()).slice(-4);
+    return '<' + hex + '>';
+  }
+  function pdfDateToInput(s) {
+    var m = /D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?/.exec(s || '');
+    if (!m) return isoToInput(s);
+    return m[1] + '-' + (m[2] || '01') + '-' + (m[3] || '01') + 'T' + (m[4] || '00') + ':' + (m[5] || '00') + ':' + (m[6] || '00');
+  }
+  function inputToPdfDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s || '');
+    return m ? 'D:' + m[1] + m[2] + m[3] + m[4] + m[5] + (m[6] || '00') : '';
+  }
+  function pdfBuildUpdate(bytes, P, f) {
+    var infoNum = P.infoNum != null ? P.infoNum : P.size;
+    var infoGen = P.infoNum != null ? P.infoGen : 0;
+    var newSize = Math.max(P.size, infoNum + 1);
+    var dict = '<<';
+    if (f.desc) dict += ' /Title ' + pdfStrOut(f.desc);
+    if (f.artist) dict += ' /Author ' + pdfStrOut(f.artist);
+    if (f.software) dict += ' /Creator ' + pdfStrOut(f.software);
+    if (f.date) dict += ' /CreationDate ' + pdfStrOut(inputToPdfDate(f.date));
+    dict += ' >>';
+    var objText = '\n' + infoNum + ' ' + infoGen + ' obj\n' + dict + '\nendobj\n';
+    var base = bytes.length;
+    var objOffset = base + 1;
+    var tailText;
+    if (!P.xrefStream) {
+      var xrefOffset = base + objText.length;
+      var pad10 = function (n) { var t = String(n); while (t.length < 10) t = '0' + t; return t; };
+      var pad5 = function (n) { var t = String(n); while (t.length < 5) t = '0' + t; return t; };
+      tailText = 'xref\n' + infoNum + ' 1\n' + pad10(objOffset) + ' ' + pad5(infoGen) + ' n \n' +
+        'trailer\n<< /Size ' + newSize + ' /Root ' + P.root + ' R /Prev ' + P.prevXref +
+        ' /Info ' + infoNum + ' ' + infoGen + ' R >>\nstartxref\n' + xrefOffset + '\n%%EOF\n';
+      return new Blob([bytes, new TextEncoder().encode(objText + tailText)], { type: 'application/pdf' });
+    }
+    /* xref 스트림 기반 PDF: 무압축 xref 스트림으로 증분 업데이트 */
+    var xrefNum = Math.max(newSize, infoNum + 1);
+    newSize = xrefNum + 1;
+    var xrefOffset2 = base + objText.length;
+    var entry = function (off, gen) {
+      return [1, (off >>> 24) & 255, (off >>> 16) & 255, (off >>> 8) & 255, off & 255, (gen >>> 8) & 255, gen & 255];
+    };
+    var stream = new Uint8Array([].concat(entry(objOffset, infoGen), entry(xrefOffset2, 0)));
+    var head = xrefNum + ' 0 obj\n<< /Type /XRef /Size ' + newSize +
+      ' /Index [' + infoNum + ' 1 ' + xrefNum + ' 1] /W [1 4 2] /Root ' + P.root + ' R' +
+      ' /Info ' + infoNum + ' ' + infoGen + ' R /Prev ' + P.prevXref + ' /Length ' + stream.length + ' >>\nstream\n';
+    var tail = '\nendstream\nendobj\nstartxref\n' + xrefOffset2 + '\n%%EOF\n';
+    return new Blob([bytes, new TextEncoder().encode(objText + head), stream, new TextEncoder().encode(tail)], { type: 'application/pdf' });
+  }
+
+  /* ---------- ZIP (OOXML docx·xlsx·pptx / ODF odt·ods·odp) ---------- */
+  function zipParse(bytes) {
+    var n = bytes.length, e = -1;
+    for (var i = n - 22; i >= Math.max(0, n - 22 - 65535); i--) {
+      if (bytes[i] === 0x50 && bytes[i + 1] === 0x4B && bytes[i + 2] === 5 && bytes[i + 3] === 6) { e = i; break; }
+    }
+    if (e < 0) return null;
+    var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var count = dv.getUint16(e + 10, true);
+    var cdOff = dv.getUint32(e + 16, true);
+    if (count === 0xFFFF || cdOff === 0xFFFFFFFF) return null; /* zip64 미지원 */
+    var entries = [], p = cdOff;
+    for (var k = 0; k < count; k++) {
+      if (p + 46 > n || !(bytes[p] === 0x50 && bytes[p + 1] === 0x4B && bytes[p + 2] === 1 && bytes[p + 3] === 2)) return null;
+      var nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+      entries.push({
+        name: new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nl)),
+        method: dv.getUint16(p + 10, true),
+        time: dv.getUint16(p + 12, true), date: dv.getUint16(p + 14, true),
+        crc: dv.getUint32(p + 16, true), csz: dv.getUint32(p + 20, true), usz: dv.getUint32(p + 24, true),
+        localOff: dv.getUint32(p + 42, true)
+      });
+      p += 46 + nl + el + cl;
+    }
+    return { entries: entries };
+  }
+  function zipEntry(zip, name) {
+    for (var i = 0; i < zip.entries.length; i++) if (zip.entries[i].name === name) return zip.entries[i];
+    return null;
+  }
+  function zipEntryRaw(bytes, ent) {
+    var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var p = ent.localOff;
+    if (!(bytes[p] === 0x50 && bytes[p + 1] === 0x4B && bytes[p + 2] === 3 && bytes[p + 3] === 4)) return null;
+    var ds = p + 30 + dv.getUint16(p + 26, true) + dv.getUint16(p + 28, true);
+    return bytes.subarray(ds, ds + ent.csz);
+  }
+  function zipInflate(bytes, ent) {
+    var raw = zipEntryRaw(bytes, ent);
+    if (!raw) return Promise.reject(new Error('zip'));
+    if (ent.method === 0) return Promise.resolve(raw);
+    if (ent.method !== 8 || typeof DecompressionStream === 'undefined') return Promise.reject(new Error('unzip'));
+    return new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw')))
+      .arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+  }
+  /* 수정할 항목만 STORE로 교체, 나머지는 압축 데이터를 그대로 복사해 재조립 */
+  function zipRebuild(bytes, zip, replacements) {
+    var enc = new TextEncoder();
+    var parts = [], central = [], off = 0;
+    zip.entries.forEach(function (ent) {
+      var nameB = enc.encode(ent.name);
+      var rep = replacements[ent.name];
+      var method, crc, csz, usz, data;
+      if (rep) { method = 0; crc = crc32(rep); csz = usz = rep.length; data = rep; }
+      else { method = ent.method; crc = ent.crc; csz = ent.csz; usz = ent.usz; data = zipEntryRaw(bytes, ent); }
+      var lh = new Uint8Array(30 + nameB.length);
+      var dv = new DataView(lh.buffer);
+      dv.setUint32(0, 0x04034b50, true);
+      dv.setUint16(4, 20, true);
+      dv.setUint16(6, 0x0800, true);
+      dv.setUint16(8, method, true);
+      dv.setUint16(10, ent.time, true); dv.setUint16(12, ent.date, true);
+      dv.setUint32(14, crc, true); dv.setUint32(18, csz, true); dv.setUint32(22, usz, true);
+      dv.setUint16(26, nameB.length, true);
+      lh.set(nameB, 30);
+      var entryOff = off;
+      parts.push(lh, data);
+      off += lh.length + data.length;
+      var ce = new Uint8Array(46 + nameB.length);
+      var dc = new DataView(ce.buffer);
+      dc.setUint32(0, 0x02014b50, true);
+      dc.setUint16(4, 20, true); dc.setUint16(6, 20, true);
+      dc.setUint16(8, 0x0800, true);
+      dc.setUint16(10, method, true);
+      dc.setUint16(12, ent.time, true); dc.setUint16(14, ent.date, true);
+      dc.setUint32(16, crc, true); dc.setUint32(20, csz, true); dc.setUint32(24, usz, true);
+      dc.setUint16(28, nameB.length, true);
+      dc.setUint32(42, entryOff, true);
+      ce.set(nameB, 46);
+      central.push(ce);
+    });
+    var cdOff = off, cdLen = 0;
+    central.forEach(function (c) { parts.push(c); cdLen += c.length; });
+    var eocd = new Uint8Array(22);
+    var de = new DataView(eocd.buffer);
+    de.setUint32(0, 0x06054b50, true);
+    de.setUint16(8, zip.entries.length, true);
+    de.setUint16(10, zip.entries.length, true);
+    de.setUint32(12, cdLen, true);
+    de.setUint32(16, cdOff, true);
+    parts.push(eocd);
+    return new Blob(parts);
+  }
+  var OOXML_NS = {
+    cp: 'http://schemas.openxmlformats.org/package/2006/metadata/core-properties',
+    dc: 'http://purl.org/dc/elements/1.1/',
+    dcterms: 'http://purl.org/dc/terms/',
+    xsi: 'http://www.w3.org/2001/XMLSchema-instance'
+  };
+  var ODF_NS = {
+    office: 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+    meta: 'urn:oasis:names:tc:opendocument:xmlns:meta:1.0',
+    dc: 'http://purl.org/dc/elements/1.1/'
+  };
+  function xmlParseDoc(text) {
+    var doc = new DOMParser().parseFromString(text, 'application/xml');
+    return doc.getElementsByTagName('parsererror').length ? null : doc;
+  }
+  function xmlText(doc, ns, tag) {
+    var el = doc.getElementsByTagNameNS(ns, tag)[0];
+    return el ? el.textContent : '';
+  }
+  function inputToIso(s) {
+    var m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2}))?/.exec(s || '');
+    return m ? m[1] + ':' + (m[2] || '00') : '';
+  }
+  function ooxmlCoreEdit(xml, f, strip) {
+    var doc = xmlParseDoc(xml);
+    if (!doc) return null;
+    var root = doc.documentElement;
+    var put = function (ns, prefix, tag, val, dtf) {
+      var el = doc.getElementsByTagNameNS(OOXML_NS[ns], tag)[0];
+      if (val) {
+        if (!el) { el = doc.createElementNS(OOXML_NS[ns], prefix + ':' + tag); root.appendChild(el); }
+        el.textContent = val;
+        if (dtf && !el.getAttributeNS(OOXML_NS.xsi, 'type')) el.setAttributeNS(OOXML_NS.xsi, 'xsi:type', 'dcterms:W3CDTF');
+      } else if (el) el.textContent = '';
+    };
+    if (strip) {
+      ['title', 'subject', 'description', 'creator'].forEach(function (t) { put('dc', 'dc', t, ''); });
+      ['keywords', 'lastModifiedBy', 'category', 'contentStatus', 'revision'].forEach(function (t) { put('cp', 'cp', t, ''); });
+      ['created', 'modified'].forEach(function (t) { put('dcterms', 'dcterms', t, ''); });
+    } else {
+      put('dc', 'dc', 'title', f.desc);
+      put('dc', 'dc', 'creator', f.artist);
+      put('dcterms', 'dcterms', 'created', f.date ? inputToIso(f.date) + 'Z' : '', true);
+    }
+    return new XMLSerializer().serializeToString(doc);
+  }
+  function ooxmlAppEdit(xml, software) {
+    var doc = xmlParseDoc(xml);
+    if (!doc) return null;
+    var els = doc.getElementsByTagName('Application');
+    var el = els.length ? els[0] : null;
+    if (!el) {
+      el = doc.createElementNS(doc.documentElement.namespaceURI, 'Application');
+      doc.documentElement.appendChild(el);
+    }
+    el.textContent = software;
+    return new XMLSerializer().serializeToString(doc);
+  }
+  function odfMetaEdit(xml, f, strip) {
+    var doc = xmlParseDoc(xml);
+    if (!doc) return null;
+    var meta = doc.getElementsByTagNameNS(ODF_NS.office, 'meta')[0];
+    if (!meta) {
+      meta = doc.createElementNS(ODF_NS.office, 'office:meta');
+      doc.documentElement.appendChild(meta);
+    }
+    var put = function (ns, qname, tag, val) {
+      var el = doc.getElementsByTagNameNS(ns, tag)[0];
+      if (val) {
+        if (!el) { el = doc.createElementNS(ns, qname); meta.appendChild(el); }
+        el.textContent = val;
+      } else if (el && el.parentNode) el.parentNode.removeChild(el);
+    };
+    if (strip) {
+      ['title', 'creator', 'subject', 'description', 'date'].forEach(function (t) { put(ODF_NS.dc, 'dc:' + t, t, ''); });
+      ['initial-creator', 'creation-date', 'generator', 'keyword', 'editing-cycles', 'editing-duration', 'user-defined']
+        .forEach(function (t) { put(ODF_NS.meta, 'meta:' + t, t, ''); });
+    } else {
+      put(ODF_NS.dc, 'dc:title', 'title', f.desc);
+      put(ODF_NS.meta, 'meta:initial-creator', 'initial-creator', f.artist);
+      put(ODF_NS.dc, 'dc:creator', 'creator', f.artist);
+      put(ODF_NS.meta, 'meta:creation-date', 'creation-date', f.date ? inputToIso(f.date) : '');
+      put(ODF_NS.meta, 'meta:generator', 'generator', f.software);
+    }
+    return new XMLSerializer().serializeToString(doc);
+  }
+
   var metaState = { file: null, bytes: null, kind: null, parsed: null };
   var metaMake = $('#metaMake'), metaModel = $('#metaModel'), metaSoftware = $('#metaSoftware');
   var metaOri = 0;
@@ -4280,75 +4868,280 @@ textarea {
     box.appendChild(div);
   }
 
+  var META_OTHER_NOTE = '이 형식은 메타데이터 편집을 지원하지 않아요 — 이미지(JPG·PNG·WebP)·MP3·MP4·PDF·Office 문서에서 편집할 수 있어요.';
+
   function loadMetaFile(f) {
-    var isJpeg = f.type === 'image/jpeg' || /\.jpe?g$/i.test(f.name || '');
-    var isPng = f.type === 'image/png' || /\.png$/i.test(f.name || '');
-    if (!isJpeg && !isPng) { toast('메타데이터 편집은 JPEG·PNG만 지원해요.'); return; }
     f.arrayBuffer().then(function (ab) {
       var bytes = new Uint8Array(ab);
-      var okSig = isJpeg ? (bytes[0] === 0xFF && bytes[1] === 0xD8) : (bytes[0] === 0x89 && bytes[1] === 0x50);
-      if (!okSig) { toast('파일 내용이 ' + (isJpeg ? 'JPEG' : 'PNG') + ' 형식이 아니에요.'); return; }
-      metaState = { file: f, bytes: bytes, kind: isJpeg ? 'jpeg' : 'png', parsed: null };
+      return metaPrepare(f, bytes, metaSniff(bytes, f.name));
+    }).then(function (st) {
+      if (!st) { toast('파일을 읽지 못했어요.'); return; }
+      metaState = st;
       renderMeta();
     }).catch(function () { toast('파일을 읽지 못했어요.'); });
   }
 
-  function renderMeta() {
-    var bytes = metaState.bytes;
-    var listEl = $('#metaList');
-    listEl.textContent = '';
-    var m = {};
-    if (metaState.kind === 'jpeg') {
+  /* 형식별로 파싱해 공통 상태 {rows(보기 목록), m(입력값), sub(저장용), editable, note}를 만든다 */
+  function metaPrepare(f, bytes, kind) {
+    var st = { file: f, bytes: bytes, kind: kind, editable: true, noSoftware: false, note: '', rows: [], m: {}, sub: null };
+    var m = st.m;
+    var exifIntoState = function (ex) {
+      if (ex.make || ex.model) st.rows.push(['카메라', ((ex.make || '') + ' ' + (ex.model || '')).trim()]);
+      if (ex.orientation) st.rows.push(['방향', 'Orientation ' + ex.orientation]);
+      if (ex.dateTimeOriginal || ex.dateTime) st.rows.push(['촬영 일시', ex.dateTimeOriginal || ex.dateTime]);
+      if (ex.software) st.rows.push(['소프트웨어', ex.software]);
+      if (ex.artist) st.rows.push(['작가', ex.artist]);
+      if (ex.copyright) st.rows.push(['저작권', ex.copyright]);
+      if (ex.desc) st.rows.push(['설명', ex.desc]);
+      if (typeof ex.lat === 'number') st.rows.push(['GPS', ex.lat.toFixed(6) + ', ' + ex.lon.toFixed(6)]);
+      if (ex.other) st.rows.push(['기타', 'EXIF 태그 ' + ex.other + '개 (저장하면 아래 항목만 남아요)']);
+      m.desc = ex.desc; m.artist = ex.artist; m.copyright = ex.copyright; m.software = ex.software;
+      m.date = exifDateToInput(ex.dateTimeOriginal || ex.dateTime);
+      m.make = ex.make; m.model = ex.model; m.orientation = ex.orientation || 0;
+      m.lat = ex.lat; m.lon = ex.lon;
+    };
+    if (kind === 'jpeg') {
       var segs = parseJpegSegments(bytes).segs;
+      var ex = {};
       for (var i = 0; i < segs.length; i++) {
-        if (segIsExif(bytes, segs[i])) { m = parseExif(bytes, segs[i].start + 10, segs[i].end); break; }
+        if (segIsExif(bytes, segs[i])) { ex = parseExif(bytes, segs[i].start + 10, segs[i].end); break; }
       }
-      if (m.make || m.model) metaRow(listEl, '카메라', ((m.make || '') + ' ' + (m.model || '')).trim());
-      if (m.orientation) metaRow(listEl, '방향', 'Orientation ' + m.orientation);
-      if (m.dateTimeOriginal || m.dateTime) metaRow(listEl, '촬영 일시', m.dateTimeOriginal || m.dateTime);
-      if (m.software) metaRow(listEl, '소프트웨어', m.software);
-      if (m.artist) metaRow(listEl, '작가', m.artist);
-      if (m.copyright) metaRow(listEl, '저작권', m.copyright);
-      if (m.desc) metaRow(listEl, '설명', m.desc);
-      if (typeof m.lat === 'number') metaRow(listEl, 'GPS', m.lat.toFixed(6) + ', ' + m.lon.toFixed(6));
-      if (m.other) metaRow(listEl, '기타', 'EXIF 태그 ' + m.other + '개 (저장하면 아래 항목만 남아요)');
-    } else {
+      exifIntoState(ex);
+      return Promise.resolve(st);
+    }
+    if (kind === 'webp') {
+      var chunks = webpChunks(bytes) || [];
+      var exw = {};
+      chunks.forEach(function (c) {
+        if (c.tag !== 'EXIF') return;
+        var ts = c.payloadStart;
+        if (bytes[ts] === 0x45 && bytes[ts + 1] === 0x78 && bytes[ts + 2] === 0x69 && bytes[ts + 3] === 0x66) ts += 6;
+        try { exw = parseExif(bytes, ts, c.payloadStart + c.size); } catch (e2) {}
+      });
+      exifIntoState(exw);
+      st.sub = { chunks: chunks };
+      return Promise.resolve(st);
+    }
+    if (kind === 'png') {
       var texts = pngReadText(bytes, parsePngChunks(bytes));
       texts.forEach(function (t) {
-        metaRow(listEl, t.key, t.value.length > 200 ? t.value.slice(0, 200) + '…' : t.value);
+        st.rows.push([t.key, t.value.length > 200 ? t.value.slice(0, 200) + '…' : t.value]);
         for (var k in PNG_KEYS) if (PNG_KEYS[k] === t.key) m[k] = t.value;
       });
+      m.date = isoToInput(m.dateTime);
+      st.note = 'PNG에는 카메라·방향·GPS 항목이 없어 저장되지 않아요.';
+      return Promise.resolve(st);
     }
-    metaState.parsed = m;
+    if (kind === 'mp3') {
+      var tag = id3Parse(bytes);
+      st.sub = tag;
+      var tv = {};
+      tag.frames.forEach(function (fr) { if (fr.id.charAt(0) === 'T' && !tv[fr.id]) tv[fr.id] = id3Text(fr); });
+      m.desc = tv.TIT2 || ''; m.artist = tv.TPE1 || ''; m.copyright = tv.TCOP || ''; m.software = tv.TSSE || '';
+      m.date = '';
+      if (tv.TDRC) m.date = isoToInput(tv.TDRC) || (/^\d{4}$/.test(tv.TDRC) ? tv.TDRC + '-01-01T00:00:00' : '');
+      else if (tv.TYER) {
+        var dd = /^(\d{2})(\d{2})$/.exec(tv.TDAT || ''), tt = /^(\d{2})(\d{2})$/.exec(tv.TIME || '');
+        m.date = tv.TYER + '-' + (dd ? dd[2] : '01') + '-' + (dd ? dd[1] : '01') + 'T' + (tt ? tt[1] : '00') + ':' + (tt ? tt[2] : '00') + ':00';
+      }
+      if (tv.TIT2) st.rows.push(['제목', tv.TIT2]);
+      if (tv.TPE1) st.rows.push(['아티스트', tv.TPE1]);
+      if (tv.TALB) st.rows.push(['앨범', tv.TALB]);
+      if (tv.TDRC || tv.TYER) st.rows.push(['연도/일시', tv.TDRC || tv.TYER]);
+      if (tv.TCON) st.rows.push(['장르', tv.TCON]);
+      if (tv.TCOP) st.rows.push(['저작권', tv.TCOP]);
+      var apic = 0;
+      tag.frames.forEach(function (fr) { if (fr.id === 'APIC') apic++; });
+      if (apic) st.rows.push(['앨범아트', apic + '개 (수정해도 유지돼요)']);
+      if (tag.locked) {
+        st.editable = false;
+        st.note = '이 MP3의 태그 구조(구버전 ID3 또는 unsync)는 편집을 지원하지 않아요.';
+      } else {
+        st.note = '설명=제목 · 작가=아티스트 · 소프트웨어=인코더로 저장돼요. 카메라·방향·GPS 항목은 없어요.';
+      }
+      return Promise.resolve(st);
+    }
+    if (kind === 'mp4') {
+      var sub = mp4Read(bytes);
+      if (sub) {
+        st.sub = sub;
+        m.desc = sub.tags.desc || ''; m.artist = sub.tags.artist || '';
+        m.copyright = sub.tags.copyright || ''; m.software = sub.tags.software || '';
+        m.date = sub.tags.date
+          ? (isoToInput(sub.tags.date) || (/^\d{4}/.test(sub.tags.date) ? sub.tags.date.slice(0, 4) + '-01-01T00:00:00' : ''))
+          : '';
+        if (m.desc) st.rows.push(['제목', m.desc]);
+        if (m.artist) st.rows.push(['아티스트', m.artist]);
+        if (sub.tags.date) st.rows.push(['일시', sub.tags.date]);
+        if (m.software) st.rows.push(['인코더', m.software]);
+        if (m.copyright) st.rows.push(['저작권', m.copyright]);
+        if (sub.others.length) st.rows.push(['기타 태그', sub.others.length + '개 (수정해도 유지돼요)']);
+        st.note = '설명=제목 · 작가=아티스트로 저장돼요. 카메라·방향·GPS 항목은 없어요.';
+        return Promise.resolve(st);
+      }
+      kind = st.kind = 'other'; /* moov 없는 ftyp(HEIF 등) → 일반 파일 */
+    }
+    if (kind === 'pdf') {
+      var P = pdfParse(bytes);
+      st.sub = P;
+      if (!P || !P.ok) {
+        st.editable = false;
+        st.note = '이 PDF의 구조를 해석하지 못해 편집할 수 없어요.';
+        return Promise.resolve(st);
+      }
+      if (P.encrypted) {
+        st.editable = false;
+        st.note = '암호화된 PDF는 문서 정보를 편집할 수 없어요.';
+      }
+      var d = P.dict || '';
+      m.desc = pdfStr(d, 'Title'); m.artist = pdfStr(d, 'Author'); m.software = pdfStr(d, 'Creator');
+      var cd = pdfStr(d, 'CreationDate');
+      m.date = cd ? pdfDateToInput(cd) : '';
+      var producer = pdfStr(d, 'Producer');
+      if (m.desc) st.rows.push(['제목', m.desc]);
+      if (m.artist) st.rows.push(['작성자', m.artist]);
+      if (m.software) st.rows.push(['만든 프로그램', m.software]);
+      if (producer) st.rows.push(['변환 프로그램', producer]);
+      if (cd) st.rows.push(['만든 날짜', cd]);
+      if (!st.note) {
+        st.note = '설명=Title · 작가=Author · 소프트웨어=Creator로 저장돼요. 저작권·카메라·GPS 항목은 없어요.' +
+          (P.hasXmp ? ' (XMP 메타데이터는 별도로 존재하며 수정되지 않아요)' : '');
+      }
+      return Promise.resolve(st);
+    }
+    if (kind === 'zip') {
+      var zip = zipParse(bytes);
+      st.sub = { zip: zip };
+      if (zip && zipEntry(zip, 'docProps/core.xml')) {
+        st.kind = 'ooxml';
+        var appEnt = zipEntry(zip, 'docProps/app.xml');
+        return Promise.all([
+          zipInflate(bytes, zipEntry(zip, 'docProps/core.xml')).then(function (u) { return new TextDecoder().decode(u); }),
+          appEnt ? zipInflate(bytes, appEnt).then(function (u) { return new TextDecoder().decode(u); }).catch(function () { return null; }) : Promise.resolve(null)
+        ]).then(function (res) {
+          st.sub.coreXml = res[0];
+          st.sub.appXml = res[1];
+          var doc = xmlParseDoc(res[0]);
+          if (doc) {
+            m.desc = xmlText(doc, OOXML_NS.dc, 'title');
+            m.artist = xmlText(doc, OOXML_NS.dc, 'creator');
+            m.date = isoToInput(xmlText(doc, OOXML_NS.dcterms, 'created'));
+            var lm = xmlText(doc, OOXML_NS.cp, 'lastModifiedBy');
+            var kw = xmlText(doc, OOXML_NS.cp, 'keywords');
+            var created = xmlText(doc, OOXML_NS.dcterms, 'created');
+            if (m.desc) st.rows.push(['제목', m.desc]);
+            if (m.artist) st.rows.push(['만든이', m.artist]);
+            if (lm) st.rows.push(['마지막 수정자', lm]);
+            if (kw) st.rows.push(['키워드', kw]);
+            if (created) st.rows.push(['만든 날짜', created]);
+          }
+          if (res[1]) {
+            var ad = xmlParseDoc(res[1]);
+            var app = ad && ad.getElementsByTagName('Application')[0];
+            m.software = app ? app.textContent : '';
+            if (m.software) st.rows.push(['프로그램', m.software]);
+          } else st.noSoftware = true;
+          st.note = '설명=제목 · 작가=만든이로 저장돼요. 저작권·카메라·GPS 항목은 없어요.';
+          return st;
+        }).catch(function () {
+          st.kind = 'other';
+          st.editable = false;
+          st.note = '문서 속성을 읽지 못했어요 — 이 브라우저에서 압축 해제를 지원하지 않아요.';
+          return st;
+        });
+      }
+      if (zip && zipEntry(zip, 'meta.xml') && zipEntry(zip, 'mimetype')) {
+        st.kind = 'odf';
+        return zipInflate(bytes, zipEntry(zip, 'meta.xml')).then(function (u) {
+          var xml = new TextDecoder().decode(u);
+          st.sub.metaXml = xml;
+          var doc = xmlParseDoc(xml);
+          if (doc) {
+            m.desc = xmlText(doc, ODF_NS.dc, 'title');
+            m.artist = xmlText(doc, ODF_NS.meta, 'initial-creator') || xmlText(doc, ODF_NS.dc, 'creator');
+            m.software = xmlText(doc, ODF_NS.meta, 'generator');
+            m.date = isoToInput(xmlText(doc, ODF_NS.meta, 'creation-date'));
+            if (m.desc) st.rows.push(['제목', m.desc]);
+            if (m.artist) st.rows.push(['만든이', m.artist]);
+            if (m.software) st.rows.push(['프로그램', m.software]);
+            var cdate = xmlText(doc, ODF_NS.meta, 'creation-date');
+            if (cdate) st.rows.push(['만든 날짜', cdate]);
+          }
+          st.note = '설명=제목 · 작가=만든이로 저장돼요. 저작권·카메라·GPS 항목은 없어요.';
+          return st;
+        }).catch(function () {
+          st.kind = 'other';
+          st.editable = false;
+          st.note = '문서 속성을 읽지 못했어요 — 이 브라우저에서 압축 해제를 지원하지 않아요.';
+          return st;
+        });
+      }
+      st.kind = 'other';
+      st.editable = false;
+      st.rows.push(['형식', 'ZIP 압축 파일' + (zip ? ' · 항목 ' + zip.entries.length + '개' : '')]);
+      st.note = META_OTHER_NOTE;
+      return Promise.resolve(st);
+    }
+    st.editable = false;
+    var extName = (f.name || '').indexOf('.') > 0 ? f.name.split('.').pop().toUpperCase() + ' 파일' : '알 수 없음';
+    st.rows.push(['형식', f.type || extName]);
+    if (f.lastModified) st.rows.push(['수정한 날짜', new Date(f.lastModified).toLocaleString('ko-KR')]);
+    st.note = META_OTHER_NOTE;
+    return Promise.resolve(st);
+  }
+
+  function renderMeta() {
+    var st = metaState, m = st.m || {};
+    var caps = META_CAPS[st.kind] || META_CAPS.other;
+    var listEl = $('#metaList');
+    listEl.textContent = '';
+    (st.rows || []).forEach(function (r) { metaRow(listEl, r[0], r[1]); });
     if (!listEl.children.length) {
       var p = document.createElement('p');
       p.className = 'muted';
       p.style.margin = '0';
-      p.textContent = '저장된 메타데이터가 없어요. 아래에서 새로 추가할 수 있어요.';
+      p.textContent = st.editable ? '저장된 메타데이터가 없어요. 아래에서 새로 추가할 수 있어요.' : '표시할 메타데이터가 없어요.';
       listEl.appendChild(p);
     }
-    $('#metaSummary').textContent = (metaState.file.name || '이미지') + ' · ' + fmtBytes(metaState.file.size) +
-      ' · ' + (metaState.kind === 'jpeg' ? 'JPEG (EXIF)' : 'PNG (텍스트 청크)');
+    $('#metaSummary').textContent = (st.file.name || '파일') + ' · ' + fmtBytes(st.file.size) + ' · ' + caps.label;
     $('#metaDesc').value = m.desc || '';
     $('#metaArtist').value = m.artist || '';
     $('#metaCopyright').value = m.copyright || '';
-    $('#metaSoftware').value = m.software || '';
-    $('#metaDate').value = metaState.kind === 'jpeg'
-      ? exifDateToInput(m.dateTimeOriginal || m.dateTime)
-      : isoToInput(m.dateTime);
+    metaSoftware.value = m.software || '';
+    $('#metaDate').value = m.date || '';
     $('#metaLat').value = typeof m.lat === 'number' ? String(Math.round(m.lat * 1e6) / 1e6) : '';
     $('#metaLon').value = typeof m.lon === 'number' ? String(Math.round(m.lon * 1e6) / 1e6) : '';
     metaMake.value = m.make || '';
     metaModel.value = m.model || '';
     metaOri = m.orientation || 0;
     syncMetaChips();
-    var isPng = metaState.kind === 'png';
-    $('#metaLat').disabled = $('#metaLon').disabled = isPng;
-    $('#metaMapBtn').disabled = isPng;
-    metaMake.disabled = metaModel.disabled = isPng;
-    document.querySelectorAll('#metaCamChips .chip, #metaOriChips .chip').forEach(function (b) { b.disabled = isPng; });
-    $('#metaGpsNote').hidden = !isPng;
+    var ed = !!st.editable;
+    var canCam = ed && !!caps.cam;
+    metaMake.disabled = metaModel.disabled = !canCam;
+    document.querySelectorAll('#metaCamChips .chip').forEach(function (b) { b.disabled = !canCam; });
+    document.querySelectorAll('#metaOriChips .chip').forEach(function (b) { b.disabled = !(ed && caps.ori); });
+    var gpsOk = ed && !!caps.gps;
+    $('#metaLat').disabled = $('#metaLon').disabled = !gpsOk;
+    $('#metaMapBtn').disabled = !gpsOk;
+    $('#metaDesc').disabled = $('#metaArtist').disabled = $('#metaDate').disabled = !ed;
+    $('#metaCopyright').disabled = !(ed && caps.copyright);
+    var swOk = ed && !st.noSoftware;
+    metaSoftware.disabled = !swOk;
+    document.querySelectorAll('#metaSwChips .chip').forEach(function (b) { b.disabled = !swOk; });
+    $('#metaSave').disabled = !ed;
+    $('#metaStrip').disabled = !ed;
+    $('#metaGpsNote').textContent = st.note || '';
+    $('#metaGpsNote').hidden = !st.note;
     $('#metaBody').hidden = false;
+  }
+
+  function metaOutName(suffix) {
+    var nm = metaState.file.name || 'file';
+    var dot = nm.lastIndexOf('.');
+    var caps = META_CAPS[metaState.kind] || META_CAPS.other;
+    var base = dot > 0 ? nm.slice(0, dot) : nm;
+    var ext = dot > 0 ? nm.slice(dot) : caps.ext;
+    return base + suffix + ext;
   }
 
   $('#metaFile').addEventListener('change', function () {
@@ -4362,7 +5155,7 @@ textarea {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#metaFile').click(); }
   });
   $('#metaSave').addEventListener('click', function () {
-    if (!metaState.bytes) return;
+    if (!metaState.bytes || !metaState.editable) return;
     var latS = $('#metaLat').value.trim(), lonS = $('#metaLon').value.trim();
     var lat = latS === '' ? null : parseFloat(latS);
     var lon = lonS === '' ? null : parseFloat(lonS);
@@ -4370,43 +5163,83 @@ textarea {
     if (lat !== null && (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)) {
       return toast('GPS 좌표 범위를 확인해 주세요 (위도 ±90, 경도 ±180).');
     }
-    var blob, ext;
-    if (metaState.kind === 'jpeg') {
-      var d = inputDateToExif($('#metaDate').value);
+    var f = {
+      desc: $('#metaDesc').value.trim(),
+      artist: $('#metaArtist').value.trim(),
+      copyright: $('#metaCopyright').value.trim(),
+      software: metaSoftware.value.trim(),
+      date: $('#metaDate').value,
+      make: metaMake.value.trim(),
+      model: metaModel.value.trim(),
+      orientation: metaOri || 0,
+      lat: lat === null ? undefined : lat,
+      lon: lon === null ? undefined : lon
+    };
+    var k = metaState.kind, out = null;
+    if (k === 'jpeg' || k === 'webp') {
+      var d = inputDateToExif(f.date);
       var seg = buildExif({
-        desc: $('#metaDesc').value.trim(),
-        artist: $('#metaArtist').value.trim(),
-        copyright: $('#metaCopyright').value.trim(),
-        software: metaSoftware.value.trim(),
-        dateTime: d,
-        dateTimeOriginal: d,
-        make: metaMake.value.trim(),
-        model: metaModel.value.trim(),
-        orientation: metaOri || 0,
-        lat: lat === null ? undefined : lat,
-        lon: lon === null ? undefined : lon
+        desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
+        dateTime: d, dateTimeOriginal: d, make: f.make, model: f.model,
+        orientation: f.orientation, lat: f.lat, lon: f.lon
       });
-      blob = rebuildJpeg(metaState.bytes, seg, false);
-      ext = 'jpg';
-    } else {
-      blob = rebuildPng(metaState.bytes, {
-        desc: $('#metaDesc').value.trim(),
-        artist: $('#metaArtist').value.trim(),
-        copyright: $('#metaCopyright').value.trim(),
-        software: $('#metaSoftware').value.trim(),
-        dateTime: isoToInput($('#metaDate').value)
+      if (k === 'jpeg') out = rebuildJpeg(metaState.bytes, seg, false);
+      else {
+        var dims = webpDims(metaState.bytes, metaState.sub.chunks);
+        out = embedWebpExif(metaState.bytes, seg.slice(10), dims.w, dims.h);
+      }
+    } else if (k === 'png') {
+      out = rebuildPng(metaState.bytes, {
+        desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
+        dateTime: inputToIso(f.date)
       }, false);
-      ext = 'png';
+    } else if (k === 'mp3') {
+      out = id3Build(metaState.sub, {
+        desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
+        date: inputToIso(f.date)
+      }, metaState.bytes.subarray(metaState.sub.tagEnd));
+    } else if (k === 'mp4') {
+      out = mp4BuildBlob(metaState.bytes, metaState.sub, {
+        desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
+        date: f.date ? inputToIso(f.date) + 'Z' : ''
+      }, false, metaState.file.type);
+    } else if (k === 'pdf') {
+      out = pdfBuildUpdate(metaState.bytes, metaState.sub, f);
+    } else if (k === 'ooxml') {
+      var rep = {};
+      var core = ooxmlCoreEdit(metaState.sub.coreXml, f, false);
+      if (core) rep['docProps/core.xml'] = new TextEncoder().encode(core);
+      if (core && metaState.sub.appXml && f.software !== (metaState.m.software || '')) {
+        var app = ooxmlAppEdit(metaState.sub.appXml, f.software);
+        if (app) rep['docProps/app.xml'] = new TextEncoder().encode(app);
+      }
+      out = core ? zipRebuild(metaState.bytes, metaState.sub.zip, rep) : null;
+    } else if (k === 'odf') {
+      var mx = odfMetaEdit(metaState.sub.metaXml, f, false);
+      out = mx ? zipRebuild(metaState.bytes, metaState.sub.zip, { 'meta.xml': new TextEncoder().encode(mx) }) : null;
     }
-    saveBlob(blob, baseName(metaState.file.name || 'image') + '-meta.' + ext);
+    if (!out) return toast('저장용 파일을 만들지 못했어요.');
+    saveBlob(out, metaOutName('-meta'));
     toast('메타데이터를 적용해 저장했어요.');
   });
   $('#metaStrip').addEventListener('click', function () {
-    if (!metaState.bytes) return;
-    var blob = metaState.kind === 'jpeg'
-      ? rebuildJpeg(metaState.bytes, null, true)
-      : rebuildPng(metaState.bytes, {}, true);
-    saveBlob(blob, baseName(metaState.file.name || 'image') + '-clean.' + (metaState.kind === 'jpeg' ? 'jpg' : 'png'));
+    if (!metaState.bytes || !metaState.editable) return;
+    var k = metaState.kind, out = null;
+    if (k === 'jpeg') out = rebuildJpeg(metaState.bytes, null, true);
+    else if (k === 'png') out = rebuildPng(metaState.bytes, {}, true);
+    else if (k === 'webp') out = stripWebpMeta(metaState.bytes);
+    else if (k === 'mp3') out = new Blob([id3StripV1(metaState.bytes.subarray(metaState.sub.tagEnd))], { type: 'audio/mpeg' });
+    else if (k === 'mp4') out = mp4BuildBlob(metaState.bytes, metaState.sub, {}, true, metaState.file.type);
+    else if (k === 'pdf') out = pdfBuildUpdate(metaState.bytes, metaState.sub, {});
+    else if (k === 'ooxml') {
+      var core = ooxmlCoreEdit(metaState.sub.coreXml, {}, true);
+      out = core ? zipRebuild(metaState.bytes, metaState.sub.zip, { 'docProps/core.xml': new TextEncoder().encode(core) }) : null;
+    } else if (k === 'odf') {
+      var mx = odfMetaEdit(metaState.sub.metaXml, {}, true);
+      out = mx ? zipRebuild(metaState.bytes, metaState.sub.zip, { 'meta.xml': new TextEncoder().encode(mx) }) : null;
+    }
+    if (!out) return toast('이 형식은 제거를 지원하지 않아요.');
+    saveBlob(out, metaOutName('-clean'));
     toast('메타데이터를 제거해 저장했어요.');
   });
 
