@@ -378,6 +378,20 @@ textarea {
 #exBox { cursor: crosshair; }
 #exCanvas { display: block; max-width: 100%; height: auto; touch-action: none; margin: 0 auto; cursor: crosshair; }
 .ex-queue { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 10px; }
+/* PDF 미리보기 — 대기열을 실제 페이지 규격 그대로 보여주는 종이 시트 */
+.pdf-pages { list-style: none; padding: 14px; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 18px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; }
+.pdf-page { width: 150px; text-align: center; }
+.pdf-sheet {
+  position: relative; width: 150px; background: #fff;
+  border: 1px solid #d9dee6; border-radius: 3px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, .14);
+}
+.pdf-sheet img { position: absolute; display: block; }
+.pdf-page .pdf-cap {
+  margin: 7px 0 4px; font-size: 11.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pdf-page .btn { padding: 4px 10px; font-size: 12px; min-height: 0; }
 .ex-item {
   width: 122px; background: var(--panel); border: 1px solid var(--border);
   border-radius: 12px; padding: 8px; text-align: center;
@@ -712,8 +726,8 @@ textarea {
         <input type="file" id="pdfFile" accept="image/*" multiple hidden>
       </div>
       <div id="pdfBody" hidden>
-        <p class="field-label" style="margin-top:16px">PDF 대기열 <output id="pdfCount"></output></p>
-        <ul id="pdfQueue" class="ex-queue"></ul>
+        <p class="field-label" style="margin-top:16px">PDF 미리보기 <output id="pdfCount"></output> <span class="sub">— 선택한 페이지 규격 그대로 보여요</span></p>
+        <ul id="pdfQueue" class="pdf-pages"></ul>
         <div class="settings-grid svg-opts">
           <div class="field">
             <label class="field-label" for="pdfName">파일 이름 <span class="sub">— 비워 두면 첫 이미지 이름으로 저장돼요</span></label>
@@ -2308,7 +2322,16 @@ textarea {
     var added = 0;
     Array.prototype.forEach.call(files, function (f) {
       if (!/^image\//.test(f.type) && !/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(f.name || '')) return;
-      pdfState.queue.push({ file: f, url: URL.createObjectURL(f) });
+      var item = { file: f, url: URL.createObjectURL(f), iw: 0, ih: 0 };
+      pdfState.queue.push(item);
+      /* 페이지 규격 미리보기용 원본 치수 프로브 */
+      var probe = new Image();
+      probe.onload = function () {
+        item.iw = probe.naturalWidth;
+        item.ih = probe.naturalHeight;
+        if (pdfState.queue.indexOf(item) >= 0) renderPdfQueue();
+      };
+      probe.src = item.url;
       added++;
     });
     if (!added) { toast('이미지 파일만 PDF로 만들 수 있어요.'); return; }
@@ -2316,37 +2339,58 @@ textarea {
     toast(added + '장을 PDF 대기열에 담았어요.');
   }
 
+  /* 대기열을 '실제 PDF 페이지' 모양으로 — 규격(A4/이미지 크기)과
+     여백·중앙 배치를 내보내기와 똑같은 계산으로 미리 보여준다 */
   function renderPdfQueue() {
     var ul = $('#pdfQueue');
     ul.textContent = '';
+    var SHEET_W = 150;
     pdfState.queue.forEach(function (item, idx) {
       var li = document.createElement('li');
-      li.className = 'ex-item';
+      li.className = 'pdf-page';
+      var sheet = document.createElement('div');
+      sheet.className = 'pdf-sheet';
+      var iw = item.iw || 3, ih = item.ih || 2;
+      var PW, PH, dw, dh, tx, tyTop;
+      if (pdfPageSize === 'a4p' || pdfPageSize === 'a4l') {
+        PW = pdfPageSize === 'a4p' ? 595.28 : 841.89;
+        PH = pdfPageSize === 'a4p' ? 841.89 : 595.28;
+        var margin = 24;
+        var sc = Math.min((PW - margin * 2) / iw, (PH - margin * 2) / ih);
+        dw = iw * sc; dh = ih * sc;
+        tx = (PW - dw) / 2; tyTop = (PH - dh) / 2;
+      } else {
+        PW = iw; PH = ih; dw = iw; dh = ih; tx = 0; tyTop = 0;
+      }
+      var k = SHEET_W / PW;
+      sheet.style.height = Math.round(PH * k) + 'px';
       var img = document.createElement('img');
-      img.className = 'ex-thumb';
       img.src = item.url;
       img.alt = item.file.name || ('이미지 ' + (idx + 1));
-      var p = document.createElement('p');
-      p.textContent = (idx + 1) + '. ' + (item.file.name || '이미지');
-      var btns = document.createElement('div');
-      btns.className = 'ex-btns';
+      img.style.left = (tx * k) + 'px';
+      img.style.top = (tyTop * k) + 'px';
+      img.style.width = (dw * k) + 'px';
+      img.style.height = (dh * k) + 'px';
+      sheet.appendChild(img);
+      var cap = document.createElement('p');
+      cap.className = 'pdf-cap';
+      cap.textContent = (idx + 1) + '쪽 · ' + (item.file.name || '이미지');
       var rm = document.createElement('button');
       rm.className = 'btn';
       rm.type = 'button';
-      rm.textContent = '✕';
-      rm.setAttribute('aria-label', '대기열에서 제거');
+      rm.textContent = '✕ 빼기';
+      rm.setAttribute('aria-label', (idx + 1) + '쪽을 대기열에서 제거');
       rm.addEventListener('click', function () {
         URL.revokeObjectURL(item.url);
         pdfState.queue.splice(pdfState.queue.indexOf(item), 1);
         renderPdfQueue();
       });
-      btns.appendChild(rm);
-      li.appendChild(img);
-      li.appendChild(p);
-      li.appendChild(btns);
+      li.appendChild(sheet);
+      li.appendChild(cap);
+      li.appendChild(rm);
       ul.appendChild(li);
     });
-    $('#pdfCount').textContent = pdfState.queue.length ? pdfState.queue.length + '장' : '';
+    $('#pdfCount').textContent = pdfState.queue.length ? pdfState.queue.length + '쪽' : '';
     $('#pdfBody').hidden = pdfState.queue.length === 0;
     /* 파일 이름은 첫 이미지 이름을 옅은 placeholder로 제안 — 입력하면 그 이름으로 저장 */
     $('#pdfName').placeholder = pdfState.queue.length ? baseName(pdfState.queue[0].file.name || 'images') : '';
@@ -2359,6 +2403,7 @@ textarea {
       document.querySelectorAll('#pdfSizeChips .chip').forEach(function (o) {
         o.classList.toggle('on', o === b);
       });
+      renderPdfQueue(); /* 미리보기에 규격 즉시 반영 */
     });
   });
 
