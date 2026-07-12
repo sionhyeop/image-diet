@@ -723,6 +723,14 @@ textarea {
             <label class="field-label" for="pdfQ">이미지 품질 <output id="pdfQOut">85</output>%</label>
             <input type="range" id="pdfQ" min="0.5" max="0.95" step="0.01" value="0.85">
           </div>
+          <div class="field field-wide">
+            <span class="field-label">페이지 규격 <span class="sub">— A4는 이미지를 비율 유지로 가운데 배치해요</span></span>
+            <div class="chips" id="pdfSizeChips">
+              <button type="button" class="chip on" data-psize="fit">이미지 크기</button>
+              <button type="button" class="chip" data-psize="a4p">A4 세로</button>
+              <button type="button" class="chip" data-psize="a4l">A4 가로</button>
+            </div>
+          </div>
         </div>
         <div class="btn-row">
           <button class="btn primary" id="pdfExport" type="button">PDF로 내보내기</button>
@@ -2302,8 +2310,18 @@ textarea {
     $('#pdfName').placeholder = pdfState.queue.length ? baseName(pdfState.queue[0].file.name || 'images') : '';
   }
 
-  /* 페이지 크기 = 이미지 픽셀 크기(포인트) · JPEG(DCTDecode)로 삽입하는 자체 PDF 라이터 */
-  function buildImagesPdf(pages, title) {
+  var pdfPageSize = 'fit'; /* 'fit' | 'a4p' | 'a4l' */
+  document.querySelectorAll('#pdfSizeChips .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      pdfPageSize = b.dataset.psize;
+      document.querySelectorAll('#pdfSizeChips .chip').forEach(function (o) {
+        o.classList.toggle('on', o === b);
+      });
+    });
+  });
+
+  /* 페이지 크기 = 이미지 크기 또는 A4(비율 유지 중앙 배치) · JPEG(DCTDecode) 자체 PDF 라이터 */
+  function buildImagesPdf(pages, title, pageSize) {
     var enc = new TextEncoder();
     var parts = [], pos = 0, offsets = [];
     var push = function (d) {
@@ -2322,16 +2340,28 @@ textarea {
     push('<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + pages.length + ' >>\nendobj\n');
     begin(3);
     push('<< /Title ' + pdfStrOut(title) + ' /Producer (Image Diet) >>\nendobj\n');
+    var fmt = function (v) { return Math.round(v * 100) / 100; };
     pages.forEach(function (pg, i2) {
       var pn = 4 + i2 * 3, xn = pn + 1, cn = pn + 2;
+      var PW, PH, dw, dh, tx, ty;
+      if (pageSize === 'a4p' || pageSize === 'a4l') {
+        PW = pageSize === 'a4p' ? 595.28 : 841.89;
+        PH = pageSize === 'a4p' ? 841.89 : 595.28;
+        var margin = 24;
+        var sc = Math.min((PW - margin * 2) / pg.w, (PH - margin * 2) / pg.h);
+        dw = pg.w * sc; dh = pg.h * sc;
+        tx = (PW - dw) / 2; ty = (PH - dh) / 2;
+      } else {
+        PW = pg.w; PH = pg.h; dw = pg.w; dh = pg.h; tx = 0; ty = 0;
+      }
       begin(pn);
-      push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pg.w + ' ' + pg.h + '] /Resources << /XObject << /Im' + i2 + ' ' + xn + ' 0 R >> >> /Contents ' + cn + ' 0 R >>\nendobj\n');
+      push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + fmt(PW) + ' ' + fmt(PH) + '] /Resources << /XObject << /Im' + i2 + ' ' + xn + ' 0 R >> >> /Contents ' + cn + ' 0 R >>\nendobj\n');
       begin(xn);
       push('<< /Type /XObject /Subtype /Image /Width ' + pg.w + ' /Height ' + pg.h +
         ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + pg.jpeg.length + ' >>\nstream\n');
       push(pg.jpeg);
       push('\nendstream\nendobj\n');
-      var cs = 'q ' + pg.w + ' 0 0 ' + pg.h + ' 0 0 cm /Im' + i2 + ' Do Q';
+      var cs = 'q ' + fmt(dw) + ' 0 0 ' + fmt(dh) + ' ' + fmt(tx) + ' ' + fmt(ty) + ' cm /Im' + i2 + ' Do Q';
       begin(cn);
       push('<< /Length ' + cs.length + ' >>\nstream\n' + cs + '\nendstream\nendobj\n');
     });
@@ -2375,7 +2405,7 @@ textarea {
     });
     chain.then(function () {
       var name = ($('#pdfName').value.trim() || $('#pdfName').placeholder || 'images').replace(/\.pdf$/i, '');
-      var blob = buildImagesPdf(pages, name);
+      var blob = buildImagesPdf(pages, name, pdfPageSize);
       saveBlob(blob, name + '.pdf');
       stat.textContent = 'PDF 저장 완료 — ' + q.length + '장 · ' + fmtBytes(blob.size);
       btn.disabled = false;
