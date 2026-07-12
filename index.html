@@ -2700,6 +2700,28 @@ textarea {
     return loops;
   }
 
+  /* 경계 좌표 저역 필터 — 픽셀 계단(±0.5px 지터)이 DP 단순화에서 불규칙한
+     꼭짓점으로 남아 '우글거림'이 되는 것을 5점 이동평균으로 눌러준다.
+     크게 꺾이는 점(진짜 모서리)은 원래 좌표를 유지해 형태 변형을 막는다 */
+  function smoothLoopPts(pts) {
+    var n = pts.length;
+    if (n < 8) return pts;
+    var out = new Array(n);
+    for (var i = 0; i < n; i++) {
+      var pm2 = pts[(i + n - 2) % n], pm1 = pts[(i + n - 1) % n], p0 = pts[i];
+      var pp1 = pts[(i + 1) % n], pp2 = pts[(i + 2) % n];
+      var ax = p0[0] - pm2[0], ay = p0[1] - pm2[1];
+      var bx = pp2[0] - p0[0], by = pp2[1] - p0[1];
+      var la = Math.sqrt(ax * ax + ay * ay) || 1, lb = Math.sqrt(bx * bx + by * by) || 1;
+      var cos = (ax * bx + ay * by) / (la * lb);
+      out[i] = cos < 0.35 ? p0 : [
+        (pm2[0] + pm1[0] + p0[0] + pp1[0] + pp2[0]) / 5,
+        (pm2[1] + pm1[1] + p0[1] + pp1[1] + pp2[1]) / 5
+      ];
+    }
+    return out;
+  }
+
   function simplifyLoop(pts, tol) {
     var out = [];
     var n = pts.length;
@@ -2708,6 +2730,7 @@ textarea {
       if ((a[0] === b[0] && b[0] === c[0]) || (a[1] === b[1] && b[1] === c[1])) continue;
       out.push(b);
     }
+    out = smoothLoopPts(out);
     if (tol <= 0 || out.length < 5) return out;
     var far = 0, fd = -1;
     for (var j = 1; j < out.length; j++) {
@@ -2947,7 +2970,8 @@ textarea {
   syncSvgOutputs();
 
   function svgOpts() {
-    var RES = [96, 160, 256, 384, 512];
+    /* 원본 변형 최소화 — 작업 해상도를 한 단계씩 상향 (입력이 1920px로 캡되어 부담 없음) */
+    var RES = [128, 192, 320, 448, 640];
     var TOL = [0.3, 0.6, 1.0, 1.6, 2.4];
     var AREA = [0, 3, 9, 24, 60];
     return {
