@@ -701,6 +701,10 @@ textarea {
           <input type="range" id="svgNoise" min="0" max="4" step="1" value="2">
         </div>
         <div class="field">
+          <label class="field-label" for="svgGap">빈틈 메우기 <output id="svgGapOut">1.0</output>px<span class="sub"> — 도형 사이 빈공간을 같은 색 테두리로 메워요</span></label>
+          <input type="range" id="svgGap" min="0" max="4" step="0.5" value="1">
+        </div>
+        <div class="field">
           <span class="field-label">곡선 처리</span>
           <label class="check-label"><input type="checkbox" id="svgSmooth" checked> 부드럽게 다듬기</label>
         </div>
@@ -2933,13 +2937,14 @@ textarea {
       if (keep.length) entries.push({ color: palette[pc].slice(), loops: keep, count: count });
     }
     if (!entries.length) throw new Error('추적할 만한 색 면을 찾지 못했어요. 추적 정밀도를 높이거나 잡티 제거를 낮춰 보세요.');
-    var built = buildSvgFromEntries(entries, w, h, sw, sh, opts.smooth);
-    built.trace = { entries: entries, w: w, h: h, sw: sw, sh: sh, smooth: opts.smooth, tol: opts.tol };
+    var built = buildSvgFromEntries(entries, w, h, sw, sh, opts.smooth, 0, opts.gap);
+    built.trace = { entries: entries, w: w, h: h, sw: sw, sh: sh, smooth: opts.smooth, tol: opts.tol, gap: opts.gap };
     return built;
   }
 
   /* 추적 데이터(색별 루프) → SVG 문자열. '한 번 더 최적화'에서도 재사용 */
-  function buildSvgFromEntries(entries, w, h, sw, sh, smooth, prec) {
+  function buildSvgFromEntries(entries, w, h, sw, sh, smooth, prec, strokeW) {
+    if (strokeW == null) strokeW = 1;
     var paths = [], totalLoops = 0, totalNodes = 0;
     entries.forEach(function (e) {
       var d = '';
@@ -2955,7 +2960,10 @@ textarea {
     paths.sort(function (a, b3) { return b3.area - a.area; });
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + ' ' + h + '" width="' + sw + '" height="' + sh + '">\n' +
       paths.map(function (pp) {
-        return '  <path fill="' + pp.color + '" stroke="' + pp.color + '" stroke-width="1" stroke-linejoin="round" fill-rule="evenodd" d="' + pp.d + '"/>';
+        var strokeAttr = strokeW > 0
+          ? ' stroke="' + pp.color + '" stroke-width="' + strokeW + '" stroke-linejoin="round"'
+          : '';
+        return '  <path fill="' + pp.color + '"' + strokeAttr + ' fill-rule="evenodd" d="' + pp.d + '"/>';
       }).join('\n') + '\n</svg>\n';
     return { svg: svg, colors: paths.length, loops: totalLoops, nodes: totalNodes };
   }
@@ -2967,6 +2975,7 @@ textarea {
   var svgSimplify = $('#svgSimplify'), svgSimplifyOut = $('#svgSimplifyOut');
   var svgNoise = $('#svgNoise'), svgNoiseOut = $('#svgNoiseOut');
   var svgSmooth = $('#svgSmooth');
+  var svgGap = $('#svgGap'), svgGapOut = $('#svgGapOut');
   var svgResult = $('#svgResult'), svgPreview = $('#svgPreview'), svgStats = $('#svgStats');
   var svgOrig = $('#svgOrig'), svgCmp = $('#svgCmp'), svgCmpLine = $('#svgCmpLine'), svgCmpPos = $('#svgCmpPos');
   var svgDownload = $('#svgDownload'), svgCopy = $('#svgCopy'), svgZoom = $('#svgZoom');
@@ -2976,6 +2985,7 @@ textarea {
   var SVG_LV5B = ['끄기', '약하게', '보통', '강하게', '최대'];
   function syncSvgOutputs() {
     svgColorsOut.textContent = svgColors.value;
+    svgGapOut.textContent = parseFloat(svgGap.value).toFixed(1);
     svgDetailOut.textContent = SVG_LV5[parseInt(svgDetail.value, 10) - 1];
     svgSimplifyOut.textContent = SVG_LV5B[parseInt(svgSimplify.value, 10)];
     svgNoiseOut.textContent = SVG_LV5B[parseInt(svgNoise.value, 10)];
@@ -2995,7 +3005,8 @@ textarea {
       workRes: RES[parseInt(svgDetail.value, 10) - 1],
       tol: TOL[parseInt(svgSimplify.value, 10)],
       minArea: AREA[parseInt(svgNoise.value, 10)],
-      smooth: svgSmooth.checked
+      smooth: svgSmooth.checked,
+      gap: parseFloat(svgGap.value)
     };
   }
 
@@ -3098,7 +3109,7 @@ textarea {
     clearTimeout(svgOptTimer);
     svgOptTimer = setTimeout(runVectorize, 300);
   }
-  [svgColors, svgDetail, svgSimplify, svgNoise].forEach(function (input) {
+  [svgColors, svgDetail, svgSimplify, svgNoise, svgGap].forEach(function (input) {
     input.addEventListener('input', function () {
       syncSvgOutputs();
       scheduleVectorize();
@@ -3181,7 +3192,7 @@ textarea {
     });
     entries = entries.filter(function (e) { return e.loops.length; });
     if (!entries.length) { toast('더 줄이면 형태가 사라져요.'); return; }
-    var res = buildSvgFromEntries(entries, t.w, t.h, t.sw, t.sh, t.smooth, 1);
+    var res = buildSvgFromEntries(entries, t.w, t.h, t.sw, t.sh, t.smooth, 1, t.gap);
     svgState.optLevel = Lv;
     svgState.svg = res.svg;
     if (svgState.previewUrl) URL.revokeObjectURL(svgState.previewUrl);

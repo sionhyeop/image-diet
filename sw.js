@@ -1,5 +1,5 @@
 /* 이미지 변환 — 오프라인 캐시 서비스 워커 */
-var CACHE = 'image-diet-v21';
+var CACHE = 'image-diet-v22';
 var ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
