@@ -301,6 +301,9 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .map-head b { font-size: 15px; }
 .map-head .muted { font-size: 12.5px; margin-left: auto; font-variant-numeric: tabular-nums; }
 .map-wrap { position: relative; height: min(58vh, 460px); background: #dbe3ea; }
+/* GPS 필드에 처음부터 임베딩되는 인라인 지도 */
+.map-wrap-inline { height: 280px; margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.map-inline-cap { font-size: 12px; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
 #mapCanvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #mapCanvas.dragging { cursor: grabbing; }
 .map-cross {
@@ -883,7 +886,18 @@ textarea {
             <div class="target-row">
               <input type="number" id="metaLat" step="any" min="-90" max="90" placeholder="위도 37.5665" aria-label="위도">
               <input type="number" id="metaLon" step="any" min="-180" max="180" placeholder="경도 126.9780" aria-label="경도">
-              <button class="btn" id="metaMapBtn" type="button">🗺️ 지도에서 선택</button>
+              <button class="btn primary" id="mapPick" type="button">📍 지도 중심으로 채우기</button>
+            </div>
+            <div id="mapInline" hidden>
+              <div class="map-wrap map-wrap-inline">
+                <canvas id="mapCanvas"></canvas>
+                <div class="map-cross" aria-hidden="true"></div>
+                <div class="map-zoom">
+                  <button id="mapZoomIn" type="button" aria-label="확대">＋</button>
+                  <button id="mapZoomOut" type="button" aria-label="축소">－</button>
+                </div>
+              </div>
+              <p class="muted map-inline-cap"><span id="mapCoords"></span> · 지도를 움직여 십자선에 맞추고 ‘지도 중심으로 채우기’를 누르세요 · 지도 © OpenStreetMap</p>
             </div>
             <p class="warn-text" id="metaGpsNote" hidden>PNG에는 카메라·방향·GPS 항목이 없어 저장되지 않아요.</p>
           </div>
@@ -927,28 +941,6 @@ textarea {
 </template>
 
 <div id="exGhost" hidden><img alt=""></div>
-
-<div id="mapModal" class="lightbox map-modal" hidden>
-  <div class="map-card">
-    <div class="map-head">
-      <b>지도에서 위치 선택</b>
-      <span id="mapCoords" class="muted"></span>
-      <button id="mapClose" class="icon-btn" type="button" aria-label="지도 닫기">✕</button>
-    </div>
-    <div class="map-wrap">
-      <canvas id="mapCanvas"></canvas>
-      <div class="map-cross" aria-hidden="true"></div>
-      <div class="map-zoom">
-        <button id="mapZoomIn" type="button" aria-label="확대">＋</button>
-        <button id="mapZoomOut" type="button" aria-label="축소">－</button>
-      </div>
-    </div>
-    <div class="map-foot">
-      <span class="muted">지도 © OpenStreetMap contributors — 지도 타일만 인터넷에서 불러와요</span>
-      <button class="btn primary" id="mapPick" type="button">이 위치로 선택</button>
-    </div>
-  </div>
-</div>
 
 <div id="lightbox" class="lightbox" hidden>
   <img id="lightboxImg" alt="결과 이미지 미리보기">
@@ -4739,7 +4731,7 @@ textarea {
   var META_CAPS = {
     jpeg:  { label: 'JPEG (EXIF)', cam: 1, ori: 1, gps: 1, copyright: 1, ext: '.jpg' },
     webp:  { label: 'WebP (EXIF)', cam: 1, ori: 1, gps: 1, copyright: 1, ext: '.webp' },
-    png:   { label: 'PNG (텍스트 청크)', copyright: 1, ext: '.png' },
+    png:   { label: 'PNG (텍스트 청크)', cam: 1, ori: 1, gps: 1, copyright: 1, ext: '.png' },
     mp3:   { label: 'MP3 (ID3 태그)', copyright: 1, ext: '.mp3' },
     mp4:   { label: 'MP4/M4A (iTunes 태그)', copyright: 1, ext: '.mp4' },
     pdf:   { label: 'PDF (문서 정보)', ext: '.pdf' },
@@ -5530,31 +5522,39 @@ textarea {
     var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     if (dv.getUint16(0, true) !== 0xFFFE) return null;
     var num = dv.getUint32(24, true);
-    if (num < 1 || num > 4 || 28 + num * 20 > bytes.length) return null;
+    if (num < 1 || num > 8 || 28 + num * 20 > bytes.length) return null;
     var sets = [];
     for (var i = 0; i < num; i++) {
       var off = dv.getUint32(44 + i * 20, true);
       if (off + 8 > bytes.length) return null;
+      var size = dv.getUint32(off, true);
       var cnt = dv.getUint32(off + 4, true);
-      if (cnt > 512 || off + 8 + cnt * 8 > bytes.length) return null;
-      var props = [], codepage = 1252, ok = true;
+      if (cnt > 4096 || off + 8 + cnt * 8 > bytes.length) return null;
+      var secEnd = Math.min(bytes.length, off + Math.max(size, 8 + cnt * 8));
+      var list = [];
       for (var p = 0; p < cnt; p++) {
-        var pid = dv.getUint32(off + 8 + p * 8, true);
-        var po = off + dv.getUint32(off + 12 + p * 8, true);
-        if (po + 4 > bytes.length) { ok = false; break; }
-        var vt = dv.getUint32(po, true);
-        var raw = null;
-        if (vt === 2 || vt === 3 || vt === 4 || vt === 11 || vt === 19) {
-          raw = bytes.slice(po, po + 8);
-          if (vt === 2 && pid === 1) codepage = dv.getUint16(po + 4, true);
-        } else if (vt === 5 || vt === 7 || vt === 20 || vt === 21 || vt === 64) raw = bytes.slice(po, po + 12);
-        else if (vt === 30) raw = bytes.slice(po, po + 8 + dv.getUint32(po + 4, true));
-        else if (vt === 31) raw = bytes.slice(po, po + 8 + dv.getUint32(po + 4, true) * 2);
-        else if (vt === 65 || vt === 71) raw = bytes.slice(po, po + 8 + dv.getUint32(po + 4, true));
-        else { ok = false; break; }
-        props.push({ id: pid, vt: vt, raw: raw });
+        list.push({ id: dv.getUint32(off + 8 + p * 8, true), o: dv.getUint32(off + 12 + p * 8, true) });
       }
-      if (!ok) return null; /* 모르는 타입이 있으면 안전하게 편집 포기 */
+      /* 값의 길이는 타입 지식이 아니라 '다음 값의 시작 오프셋'으로 산출 —
+         한글(HWP) 등 비표준·미지의 값 타입이 섞여 있어도 원본 그대로
+         보존·재작성할 수 있어 해석 실패로 편집을 포기하는 일이 없다 */
+      var sorted = list.slice().sort(function (a, b) { return a.o - b.o; });
+      var props = [], codepage = 1252, bad = false;
+      list.forEach(function (pr) {
+        if (bad) return;
+        var startAbs = off + pr.o;
+        if (startAbs + 4 > bytes.length) { bad = true; return; }
+        var nextO = secEnd - off;
+        for (var s2 = 0; s2 < sorted.length; s2++) {
+          if (sorted[s2].o > pr.o) { nextO = sorted[s2].o; break; }
+        }
+        var endAbs = Math.min(bytes.length, off + nextO);
+        if (endAbs <= startAbs) { bad = true; return; }
+        var vt = dv.getUint32(startAbs, true);
+        if (vt === 2 && pr.id === 1 && startAbs + 6 <= bytes.length) codepage = dv.getUint16(startAbs + 4, true);
+        props.push({ id: pr.id, vt: vt, raw: bytes.slice(startAbs, endAbs) });
+      });
+      if (bad) return null;
       sets.push({ props: props, codepage: codepage });
     }
     return { head: bytes.slice(0, 28 + num * 20), sets: sets };
@@ -5572,13 +5572,17 @@ textarea {
     for (var i = 0; i < set.props.length; i++) {
       var pr = set.props[i];
       if (pr.id !== pid) continue;
+      if (pr.raw.length < 8) return '';
       var dv = new DataView(pr.raw.buffer, pr.raw.byteOffset, pr.raw.byteLength);
+      var decl = dv.getUint32(4, true); /* 선언된 길이 기준 — raw 끝의 패딩은 무시 */
       try {
         if (pr.vt === 31) {
-          return new TextDecoder('utf-16le').decode(pr.raw.subarray(8)).replace(/\0+$/, '');
+          var end31 = Math.min(pr.raw.length, 8 + decl * 2);
+          return new TextDecoder('utf-16le').decode(pr.raw.subarray(8, end31)).replace(/\0+$/, '');
         }
         if (pr.vt === 30) {
-          var body = pr.raw.subarray(8);
+          var end30 = Math.min(pr.raw.length, 8 + decl);
+          var body = pr.raw.subarray(8, end30);
           if (set.codepage === 1200) return new TextDecoder('utf-16le').decode(body).replace(/\0+$/, '');
           return new TextDecoder(psCodec(set.codepage)).decode(body).replace(/\0+$/, '');
         }
@@ -5590,7 +5594,7 @@ textarea {
     var set = ps.sets[0];
     for (var i = 0; i < set.props.length; i++) {
       var pr = set.props[i];
-      if (pr.id !== pid || pr.vt !== 64) continue;
+      if (pr.id !== pid || pr.vt !== 64 || pr.raw.length < 12) continue;
       var dv = new DataView(pr.raw.buffer, pr.raw.byteOffset, pr.raw.byteLength);
       var ft = dv.getBigUint64(4, true);
       var ms = Number(ft / 10000n) - 11644473600000;
@@ -6054,7 +6058,7 @@ textarea {
         for (var k in PNG_KEYS) if (PNG_KEYS[k] === t.key) m[k] = t.value;
       });
       m.date = isoToInput(m.dateTime);
-      st.note = 'PNG에는 카메라·방향·GPS 항목이 없어 저장되지 않아요.';
+      st.note = '카메라·방향·GPS는 PNG에 담을 수 없어 — 해당 항목을 입력하면 JPEG로 자동 변환해 EXIF로 저장해요.';
       return Promise.resolve(st);
     }
     if (kind === 'mp3') {
@@ -6393,7 +6397,18 @@ textarea {
     document.querySelectorAll('#metaOriChips .chip').forEach(function (b) { b.disabled = !(ed && caps.ori); });
     var gpsOk = ed && !!caps.gps;
     $('#metaLat').disabled = $('#metaLon').disabled = !gpsOk;
-    $('#metaMapBtn').disabled = !gpsOk;
+    $('#mapPick').disabled = !gpsOk;
+    /* GPS 가능 형식이면 지도를 처음부터 임베딩해 보여준다 */
+    $('#mapInline').hidden = !gpsOk;
+    if (gpsOk) {
+      if (typeof m.lat === 'number' && isFinite(m.lat) && typeof m.lon === 'number' && isFinite(m.lon) &&
+          Math.abs(m.lat) <= 85 && Math.abs(m.lon) <= 180) {
+        mapState.lat = m.lat;
+        mapState.lon = m.lon;
+        mapState.z = 13;
+      }
+      requestMapDraw();
+    }
     $('#metaDesc').disabled = !ed;
     $('#metaArtist').disabled = !(ed && caps.artist !== false);
     $('#metaDate').disabled = !(ed && caps.date !== false);
@@ -6448,7 +6463,7 @@ textarea {
       lat: lat === null ? undefined : lat,
       lon: lon === null ? undefined : lon
     };
-    var k = metaState.kind, out = null;
+    var k = metaState.kind, out = null, pngConverted = false;
     if (k === 'jpeg' || k === 'webp') {
       var d = inputDateToExif(f.date);
       var seg = buildExif({
@@ -6462,10 +6477,32 @@ textarea {
         out = embedWebpExif(metaState.bytes, seg.slice(10), dims.w, dims.h);
       }
     } else if (k === 'png') {
-      out = rebuildPng(metaState.bytes, {
-        desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
-        dateTime: inputToIso(f.date)
-      }, false);
+      /* PNG에 담을 수 없는 항목(카메라·방향·GPS)이 입력되면 JPEG로 자동 변환해 EXIF로 저장 */
+      var needsExif = f.make || f.model || f.orientation || (typeof f.lat === 'number' && isFinite(f.lat));
+      if (needsExif) {
+        var d2 = inputDateToExif(f.date);
+        var seg2 = buildExif({
+          desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
+          dateTime: d2, dateTimeOriginal: d2, make: f.make, model: f.model,
+          orientation: f.orientation, lat: f.lat, lon: f.lon
+        });
+        pngConverted = true;
+        out = decodeToSource(new Blob([metaState.bytes], { type: 'image/png' })).then(function (dec) {
+          var w2 = srcW(dec.source) || 512, h2 = srcH(dec.source) || 512;
+          var c2 = drawScaled(dec.source, w2, h2, '#ffffff');
+          if (dec.url) URL.revokeObjectURL(dec.url);
+          if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e4) {} }
+          return encodeCanvas(c2, 'image/jpeg', 0.95);
+        }).then(function (b) {
+          if (!b) return null;
+          return b.arrayBuffer().then(function (ab) { return rebuildJpeg(new Uint8Array(ab), seg2, false); });
+        });
+      } else {
+        out = rebuildPng(metaState.bytes, {
+          desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
+          dateTime: inputToIso(f.date)
+        }, false);
+      }
     } else if (k === 'mp3') {
       out = id3Build(metaState.sub, {
         desc: f.desc, artist: f.artist, copyright: f.copyright, software: f.software,
@@ -6524,8 +6561,16 @@ textarea {
       }
     }
     if (!out) return toast('저장용 파일을 만들지 못했어요.');
-    saveBlob(out, metaOutName('-meta'));
-    toast('메타데이터를 적용해 저장했어요.');
+    var outName = pngConverted
+      ? baseName(metaState.file.name || 'image') + '-meta.jpg'
+      : metaOutName('-meta');
+    Promise.resolve(out).then(function (blob) {
+      if (!blob) return toast('저장용 파일을 만들지 못했어요.');
+      saveBlob(blob, outName);
+      toast(pngConverted
+        ? 'PNG에 담을 수 없는 항목이 있어 JPEG로 변환해 EXIF로 저장했어요.'
+        : '메타데이터를 적용해 저장했어요.');
+    });
   });
   $('#metaStrip').addEventListener('click', function () {
     if (!metaState.bytes || !metaState.editable) return;
@@ -6572,8 +6617,8 @@ textarea {
     toast('메타데이터를 제거해 저장했어요.');
   });
 
-  /* ---------- map picker (OpenStreetMap 타일, 자체 슬리피 맵) ---------- */
-  var mapModal = $('#mapModal');
+  /* ---------- map picker (OpenStreetMap 타일, 자체 슬리피 맵 — GPS 필드에 인라인 임베딩) ---------- */
+  var mapInline = $('#mapInline');
   var mapCanvas = $('#mapCanvas');
   var mapState = { lat: 37.5665, lon: 126.978, z: 10 };
   var tileCache = new Map();
@@ -6602,7 +6647,7 @@ textarea {
   }
   function drawMap() {
     mapDrawQueued = false;
-    if (mapModal.hidden) return;
+    if (mapInline.hidden || $('#panel-meta').hidden || $('#metaBody').hidden) return;
     var w = mapCanvas.clientWidth, h = mapCanvas.clientHeight;
     if (!w || !h) return;
     if (mapCanvas.width !== w) mapCanvas.width = w;
@@ -6704,29 +6749,24 @@ textarea {
   });
   $('#mapZoomIn').addEventListener('click', function () { zoomAt(mapCanvas.clientWidth / 2, mapCanvas.clientHeight / 2, 1); });
   $('#mapZoomOut').addEventListener('click', function () { zoomAt(mapCanvas.clientWidth / 2, mapCanvas.clientHeight / 2, -1); });
-  $('#metaMapBtn').addEventListener('click', function () {
+  /* 좌표 입력을 고치면 지도도 그 위치로 이동 */
+  function syncMapFromInputs() {
     var lat = parseFloat($('#metaLat').value), lon = parseFloat($('#metaLon').value);
     if (isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 85 && Math.abs(lon) <= 180) {
-      mapState.lat = lat; mapState.lon = lon; mapState.z = 13;
-    } else {
-      mapState.lat = 37.5665; mapState.lon = 126.978; mapState.z = 10;
+      mapState.lat = lat;
+      mapState.lon = lon;
+      if (mapState.z < 12) mapState.z = 13;
+      requestMapDraw();
     }
-    mapModal.hidden = false;
-    requestMapDraw();
-  });
-  function closeMap() { mapModal.hidden = true; }
-  $('#mapClose').addEventListener('click', closeMap);
-  mapModal.addEventListener('click', function (e) { if (e.target === mapModal) closeMap(); });
-  window.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !mapModal.hidden) closeMap();
-  });
+  }
+  $('#metaLat').addEventListener('change', syncMapFromInputs);
+  $('#metaLon').addEventListener('change', syncMapFromInputs);
   $('#mapPick').addEventListener('click', function () {
     $('#metaLat').value = mapState.lat.toFixed(6);
     $('#metaLon').value = mapState.lon.toFixed(6);
-    closeMap();
     toast('위치를 선택했어요: ' + mapState.lat.toFixed(4) + ', ' + mapState.lon.toFixed(4));
   });
-  window.addEventListener('resize', function () { if (!mapModal.hidden) requestMapDraw(); });
+  window.addEventListener('resize', function () { if (!mapInline.hidden) requestMapDraw(); });
 
   /* 콘솔/테스트용 내부 핸들 */
   window.__imgdiet = {
