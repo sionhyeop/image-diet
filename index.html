@@ -4532,6 +4532,12 @@ textarea {
     pdf:   { label: 'PDF (문서 정보)', ext: '.pdf' },
     ooxml: { label: 'Office 문서 (핵심 속성)', ext: '' },
     odf:   { label: 'ODF 문서 (meta.xml)', ext: '' },
+    hwp:   { label: '한글 문서 (HWP)', ext: '.hwp' },
+    ole:   { label: 'Office 문서 (OLE)', ext: '' },
+    hwpx:  { label: '한글 문서 (HWPX)', ext: '.hwpx' },
+    riff:  { label: 'WAV·AVI (RIFF INFO)', copyright: 1, ext: '' },
+    flac:  { label: 'FLAC (Vorbis 태그)', copyright: 1, ext: '.flac' },
+    svgx:  { label: 'SVG (제목)', artist: false, date: false, software: false, ext: '.svg' },
     other: { label: '일반 파일', ext: '' }
   };
 
@@ -4545,6 +4551,13 @@ textarea {
     if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return 'mp3';
     if (bytes.length >= 2 && bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0 && /\.mp3$/i.test(name || '')) return 'mp3';
     if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 3 && bytes[3] === 4) return 'zip';
+    if (bytes.length >= 512 && bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0) return 'cfb';
+    if (bytes.length >= 8 && t4(0) === 'fLaC') return 'flac';
+    if (bytes.length >= 12 && t4(0) === 'RIFF' && (t4(8) === 'WAVE' || t4(8) === 'AVI ')) return 'riff';
+    try {
+      var headTxt = new TextDecoder().decode(bytes.subarray(0, 2048));
+      if (/^﻿?\s*</.test(headTxt) && /<svg[\s>]/i.test(headTxt)) return 'svgx';
+    } catch (e) {}
     return 'other';
   }
 
@@ -5108,6 +5121,500 @@ textarea {
     return new XMLSerializer().serializeToString(doc);
   }
 
+  /* ---------- CFB(복합 문서: HWP 5.x·doc·xls·ppt) ---------- */
+  function cfbParse(bytes) {
+    if (bytes.length < 512) return null;
+    var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (dv.getUint32(0, true) !== 0xE011CFD0 || dv.getUint32(4, true) !== 0xE11AB1A1) return null;
+    var ss = 1 << dv.getUint16(30, true);
+    var msz = 1 << dv.getUint16(32, true);
+    var numFat = dv.getUint32(44, true);
+    var dirStart = dv.getUint32(48, true);
+    var miniCutoff = dv.getUint32(56, true) || 4096;
+    var miniFatStart = dv.getUint32(60, true);
+    var difatStart = dv.getUint32(68, true);
+    var numDifat = dv.getUint32(72, true);
+    var secAt = function (n) { return 512 + n * ss; };
+    var difat = [];
+    for (var i = 0; i < 109; i++) difat.push(dv.getUint32(76 + i * 4, true));
+    var ds = difatStart, guard = 0;
+    while (ds < 0xFFFFFFFE && guard++ <= numDifat + 2) {
+      var base = secAt(ds);
+      if (base + ss > bytes.length) break;
+      for (i = 0; i < ss / 4 - 1; i++) difat.push(dv.getUint32(base + i * 4, true));
+      ds = dv.getUint32(base + ss - 4, true);
+    }
+    var fat = [];
+    for (i = 0; i < numFat && i < difat.length; i++) {
+      var fs = difat[i];
+      if (fs >= 0xFFFFFFFE) continue;
+      var fb = secAt(fs);
+      if (fb + ss > bytes.length) return null;
+      for (var j = 0; j < ss / 4; j++) fat.push(dv.getUint32(fb + j * 4, true));
+    }
+    var readChain = function (start, size) {
+      var out = [], s = start, g = 0;
+      while (s < 0xFFFFFFFE && s < fat.length && g++ < fat.length + 2) { out.push(s); s = fat[s]; }
+      var buf = new Uint8Array(out.length * ss);
+      for (var k = 0; k < out.length; k++) {
+        var so = secAt(out[k]);
+        if (so + ss <= bytes.length) buf.set(bytes.subarray(so, so + ss), k * ss);
+      }
+      return size == null ? buf : buf.subarray(0, Math.min(size, buf.length));
+    };
+    var dirBytes = readChain(dirStart, null);
+    var entries = [];
+    for (var e = 0; e + 128 <= dirBytes.length; e += 128) {
+      var edv = new DataView(dirBytes.buffer, dirBytes.byteOffset + e, 128);
+      var nameLen = edv.getUint16(64, true);
+      var name = '';
+      for (var c = 0; c + 2 <= Math.min(64, Math.max(0, nameLen - 2)); c += 2) name += String.fromCharCode(edv.getUint16(c, true));
+      entries.push({ name: name, type: edv.getUint8(66), start: edv.getUint32(116, true), size: edv.getUint32(120, true), rec: e });
+    }
+    if (!entries.length || entries[0].type !== 5) return null;
+    var root = entries[0];
+    var miniStream = readChain(root.start, root.size);
+    var miniFatBytes = readChain(miniFatStart, null);
+    var mfdv = new DataView(miniFatBytes.buffer, miniFatBytes.byteOffset, miniFatBytes.byteLength);
+    var readStream = function (ent) {
+      if (ent.type !== 2 || !ent.size) return new Uint8Array(0);
+      if (ent.size >= miniCutoff) return readChain(ent.start, ent.size).slice();
+      var out = new Uint8Array(ent.size);
+      var s = ent.start, off = 0, g = 0;
+      while (s < 0xFFFFFFFE && off < ent.size && g++ < 1e6) {
+        var take = Math.min(msz, ent.size - off);
+        if ((s + 1) * msz <= miniStream.length) out.set(miniStream.subarray(s * msz, s * msz + take), off);
+        off += take;
+        if (s * 4 + 4 > miniFatBytes.length) break;
+        s = mfdv.getUint32(s * 4, true);
+      }
+      return out;
+    };
+    return { entries: entries, dirBytes: dirBytes, readStream: readStream };
+  }
+  /* 스트림 하나를 교체하고 CFB 전체를 재조립 — 디렉터리 레코드(이름·트리·시간)는
+     원본 그대로 두고 start/size만 갱신하므로 구조가 안 깨진다 */
+  function cfbBuild(cfb, dataByIndex) {
+    var ss = 512, msz = 64, cutoff = 4096;
+    var entries = cfb.entries;
+    var datas = entries.map(function (ent, i) {
+      if (ent.type !== 2) return null;
+      return dataByIndex[i] !== undefined ? dataByIndex[i] : cfb.readStream(ent);
+    });
+    var miniSecs = 0, bigSecs = 0;
+    entries.forEach(function (ent, i) {
+      if (ent.type !== 2 || !datas[i].length) return;
+      if (datas[i].length < cutoff) miniSecs += Math.ceil(datas[i].length / msz);
+      else bigSecs += Math.ceil(datas[i].length / ss);
+    });
+    var miniBytes = miniSecs * msz;
+    var miniStreamSecs = Math.ceil(miniBytes / ss);
+    var miniFatSecs = Math.ceil(miniSecs * 4 / ss);
+    var dirSecs = Math.ceil(cfb.dirBytes.length / ss);
+    var dataSecs = miniFatSecs + dirSecs + miniStreamSecs + bigSecs;
+    var fatSecs = 0, difatSecs = 0;
+    for (var it = 0; it < 10; it++) {
+      fatSecs = Math.ceil((dataSecs + fatSecs + difatSecs) * 4 / ss);
+      difatSecs = fatSecs > 109 ? Math.ceil((fatSecs - 109) / (ss / 4 - 1)) : 0;
+    }
+    var cur = 0;
+    var difatStart = difatSecs ? cur : 0xFFFFFFFE; cur += difatSecs;
+    var fatFirst = cur; cur += fatSecs;
+    var miniFatStart = miniFatSecs ? cur : 0xFFFFFFFE; cur += miniFatSecs;
+    var dirStart = cur; cur += dirSecs;
+    var miniStreamStart = miniStreamSecs ? cur : 0xFFFFFFFE; cur += miniStreamSecs;
+    var bigStarts = {};
+    entries.forEach(function (ent, i) {
+      if (ent.type !== 2 || !datas[i].length || datas[i].length < cutoff) return;
+      bigStarts[i] = cur;
+      cur += Math.ceil(datas[i].length / ss);
+    });
+    var totalSecs = cur;
+    var fat = new Uint32Array(totalSecs).fill(0xFFFFFFFF);
+    var s2;
+    for (s2 = 0; s2 < difatSecs; s2++) fat[s2] = 0xFFFFFFFC;
+    for (s2 = 0; s2 < fatSecs; s2++) fat[fatFirst + s2] = 0xFFFFFFFD;
+    var chainRange = function (start, count) {
+      for (var k = 0; k < count; k++) fat[start + k] = k === count - 1 ? 0xFFFFFFFE : start + k + 1;
+    };
+    if (miniFatSecs) chainRange(miniFatStart, miniFatSecs);
+    chainRange(dirStart, dirSecs);
+    if (miniStreamSecs) chainRange(miniStreamStart, miniStreamSecs);
+    entries.forEach(function (ent, i) {
+      if (bigStarts[i] !== undefined) chainRange(bigStarts[i], Math.ceil(datas[i].length / ss));
+    });
+    /* 미니 스트림 배치 + miniFAT */
+    var miniStreamData = new Uint8Array(miniStreamSecs * ss);
+    var miniFat = new Uint32Array(miniFatSecs * ss / 4).fill(0xFFFFFFFF);
+    var mcur = 0;
+    var miniStarts = {};
+    entries.forEach(function (ent, i) {
+      if (ent.type !== 2 || !datas[i].length || datas[i].length >= cutoff) return;
+      miniStarts[i] = mcur;
+      miniStreamData.set(datas[i], mcur * msz);
+      var nsec = Math.ceil(datas[i].length / msz);
+      for (var k = 0; k < nsec; k++) miniFat[mcur + k] = k === nsec - 1 ? 0xFFFFFFFE : mcur + k + 1;
+      mcur += nsec;
+    });
+    /* 디렉터리 레코드 패치 */
+    var dir = cfb.dirBytes.slice();
+    var ddv = new DataView(dir.buffer);
+    entries.forEach(function (ent, i) {
+      var o = ent.rec;
+      if (ent.type === 5) {
+        ddv.setUint32(o + 116, miniStreamSecs ? miniStreamStart : 0xFFFFFFFE, true);
+        ddv.setUint32(o + 120, miniBytes, true);
+        ddv.setUint32(o + 124, 0, true);
+      } else if (ent.type === 2) {
+        var len = datas[i].length;
+        ddv.setUint32(o + 116, len ? (len < cutoff ? miniStarts[i] : bigStarts[i]) : 0xFFFFFFFE, true);
+        ddv.setUint32(o + 120, len, true);
+        ddv.setUint32(o + 124, 0, true);
+      }
+    });
+    /* 헤더 */
+    var header = new Uint8Array(512);
+    var hdv = new DataView(header.buffer);
+    hdv.setUint32(0, 0xE011CFD0, true); hdv.setUint32(4, 0xE11AB1A1, true);
+    hdv.setUint16(24, 0x003E, true); hdv.setUint16(26, 0x0003, true);
+    hdv.setUint16(28, 0xFFFE, true); hdv.setUint16(30, 9, true); hdv.setUint16(32, 6, true);
+    hdv.setUint32(44, fatSecs, true);
+    hdv.setUint32(48, dirStart, true);
+    hdv.setUint32(56, cutoff, true);
+    hdv.setUint32(60, miniFatStart, true); hdv.setUint32(64, miniFatSecs, true);
+    hdv.setUint32(68, difatStart, true); hdv.setUint32(72, difatSecs, true);
+    for (var d1 = 0; d1 < 109; d1++) hdv.setUint32(76 + d1 * 4, d1 < fatSecs && d1 < 109 ? fatFirst + d1 : 0xFFFFFFFF, true);
+    /* 본문 조립 */
+    var body = new Uint8Array(totalSecs * ss);
+    var putSec = function (secNo, data) { body.set(data.subarray(0, Math.min(data.length, (totalSecs - secNo) * ss)), secNo * ss); };
+    if (difatSecs) {
+      var dbuf = new Uint8Array(difatSecs * ss).fill(0xFF);
+      var dbv = new DataView(dbuf.buffer);
+      var per = ss / 4 - 1, fi = 109;
+      for (var dsx = 0; dsx < difatSecs; dsx++) {
+        for (var k2 = 0; k2 < per; k2++) {
+          dbv.setUint32(dsx * ss + k2 * 4, fi < fatSecs ? fatFirst + fi : 0xFFFFFFFF, true);
+          fi++;
+        }
+        dbv.setUint32(dsx * ss + ss - 4, dsx === difatSecs - 1 ? 0xFFFFFFFE : dsx + 1, true);
+      }
+      putSec(0, dbuf);
+    }
+    putSec(fatFirst, new Uint8Array(fat.buffer, 0, fat.length * 4));
+    if (miniFatSecs) putSec(miniFatStart, new Uint8Array(miniFat.buffer, 0, miniFat.length * 4));
+    putSec(dirStart, dir);
+    if (miniStreamSecs) putSec(miniStreamStart, miniStreamData);
+    entries.forEach(function (ent, i) {
+      if (bigStarts[i] !== undefined) putSec(bigStarts[i], datas[i]);
+    });
+    return new Blob([header, body]);
+  }
+
+  /* ---------- OLE 속성 집합 (SummaryInformation · HwpSummaryInformation) ---------- */
+  var PS_PIDS = { desc: 2, artist: 4, software: 18, date: 12 };
+  function psParse(bytes) {
+    if (bytes.length < 48) return null;
+    var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (dv.getUint16(0, true) !== 0xFFFE) return null;
+    var num = dv.getUint32(24, true);
+    if (num < 1 || num > 4 || 28 + num * 20 > bytes.length) return null;
+    var sets = [];
+    for (var i = 0; i < num; i++) {
+      var off = dv.getUint32(44 + i * 20, true);
+      if (off + 8 > bytes.length) return null;
+      var cnt = dv.getUint32(off + 4, true);
+      if (cnt > 512 || off + 8 + cnt * 8 > bytes.length) return null;
+      var props = [], codepage = 1252, ok = true;
+      for (var p = 0; p < cnt; p++) {
+        var pid = dv.getUint32(off + 8 + p * 8, true);
+        var po = off + dv.getUint32(off + 12 + p * 8, true);
+        if (po + 4 > bytes.length) { ok = false; break; }
+        var vt = dv.getUint32(po, true);
+        var raw = null;
+        if (vt === 2 || vt === 3 || vt === 4 || vt === 11 || vt === 19) {
+          raw = bytes.slice(po, po + 8);
+          if (vt === 2 && pid === 1) codepage = dv.getUint16(po + 4, true);
+        } else if (vt === 5 || vt === 7 || vt === 20 || vt === 21 || vt === 64) raw = bytes.slice(po, po + 12);
+        else if (vt === 30) raw = bytes.slice(po, po + 8 + dv.getUint32(po + 4, true));
+        else if (vt === 31) raw = bytes.slice(po, po + 8 + dv.getUint32(po + 4, true) * 2);
+        else if (vt === 65 || vt === 71) raw = bytes.slice(po, po + 8 + dv.getUint32(po + 4, true));
+        else { ok = false; break; }
+        props.push({ id: pid, vt: vt, raw: raw });
+      }
+      if (!ok) return null; /* 모르는 타입이 있으면 안전하게 편집 포기 */
+      sets.push({ props: props, codepage: codepage });
+    }
+    return { head: bytes.slice(0, 28 + num * 20), sets: sets };
+  }
+  function psCodec(cp) {
+    if (cp === 65001) return 'utf-8';
+    if (cp === 949) return 'euc-kr';
+    if (cp === 932) return 'shift_jis';
+    if (cp === 936) return 'gbk';
+    if (cp === 950) return 'big5';
+    return 'windows-1252';
+  }
+  function psGetString(ps, pid) {
+    var set = ps.sets[0];
+    for (var i = 0; i < set.props.length; i++) {
+      var pr = set.props[i];
+      if (pr.id !== pid) continue;
+      var dv = new DataView(pr.raw.buffer, pr.raw.byteOffset, pr.raw.byteLength);
+      try {
+        if (pr.vt === 31) {
+          return new TextDecoder('utf-16le').decode(pr.raw.subarray(8)).replace(/\0+$/, '');
+        }
+        if (pr.vt === 30) {
+          var body = pr.raw.subarray(8);
+          if (set.codepage === 1200) return new TextDecoder('utf-16le').decode(body).replace(/\0+$/, '');
+          return new TextDecoder(psCodec(set.codepage)).decode(body).replace(/\0+$/, '');
+        }
+      } catch (e) { return ''; }
+    }
+    return '';
+  }
+  function psGetDate(ps, pid) {
+    var set = ps.sets[0];
+    for (var i = 0; i < set.props.length; i++) {
+      var pr = set.props[i];
+      if (pr.id !== pid || pr.vt !== 64) continue;
+      var dv = new DataView(pr.raw.buffer, pr.raw.byteOffset, pr.raw.byteLength);
+      var ft = dv.getBigUint64(4, true);
+      var ms = Number(ft / 10000n) - 11644473600000;
+      if (ms <= 0) return '';
+      var d = new Date(ms);
+      var z = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds());
+    }
+    return '';
+  }
+  function psBuild(ps, updates) {
+    var makeStr = function (s) {
+      var out = new Uint8Array(8 + (s.length + 1) * 2);
+      var dv = new DataView(out.buffer);
+      dv.setUint32(0, 31, true);
+      dv.setUint32(4, s.length + 1, true);
+      for (var i = 0; i < s.length; i++) dv.setUint16(8 + i * 2, s.charCodeAt(i), true);
+      return out;
+    };
+    var makeFt = function (input) {
+      var ms = Date.parse(input);
+      if (!isFinite(ms)) return null;
+      var out = new Uint8Array(12);
+      var dv = new DataView(out.buffer);
+      dv.setUint32(0, 64, true);
+      dv.setBigUint64(4, (BigInt(Math.round(ms)) + 11644473600000n) * 10000n, true);
+      return out;
+    };
+    var head = ps.head.slice();
+    var hdv = new DataView(head.buffer);
+    var off = head.length;
+    var bufs = [head];
+    ps.sets.forEach(function (set, si) {
+      var props = [];
+      set.props.forEach(function (pr) {
+        var raw = pr.raw;
+        if (si === 0 && updates.hasOwnProperty(pr.id)) {
+          var u = updates[pr.id];
+          if (u === null) return; /* 빈 값 → 속성 제거 */
+          raw = u.kind === 'ft' ? makeFt(u.v) : makeStr(u.v);
+          if (!raw) return;
+        }
+        props.push({ id: pr.id, raw: raw });
+      });
+      if (si === 0) {
+        for (var pid in updates) {
+          var u2 = updates[pid];
+          if (!u2 || !u2.v) continue;
+          if (set.props.some(function (pr) { return pr.id === +pid; })) continue;
+          var raw2 = u2.kind === 'ft' ? makeFt(u2.v) : makeStr(u2.v);
+          if (raw2) props.push({ id: +pid, raw: raw2 });
+        }
+      }
+      var lens = props.map(function (p) { return p.raw.length + ((4 - (p.raw.length % 4)) % 4); });
+      var size = 8 + props.length * 8;
+      lens.forEach(function (l) { size += l; });
+      var buf = new Uint8Array(size);
+      var dv = new DataView(buf.buffer);
+      dv.setUint32(0, size, true);
+      dv.setUint32(4, props.length, true);
+      var vo = 8 + props.length * 8;
+      props.forEach(function (p, i) {
+        dv.setUint32(8 + i * 8, p.id, true);
+        dv.setUint32(12 + i * 8, vo, true);
+        buf.set(p.raw, vo);
+        vo += lens[i];
+      });
+      hdv.setUint32(44 + si * 20, off, true);
+      off += size;
+      bufs.push(buf);
+    });
+    var total = 0;
+    bufs.forEach(function (b) { total += b.length; });
+    var out = new Uint8Array(total);
+    var o2 = 0;
+    bufs.forEach(function (b) { out.set(b, o2); o2 += b.length; });
+    return out;
+  }
+
+  /* ---------- WAV·AVI (RIFF INFO) ---------- */
+  var RIFF_INFO = { desc: 'INAM', artist: 'IART', copyright: 'ICOP', date: 'ICRD', software: 'ISFT' };
+  function riffTopChunks(bytes) {
+    var out = [], i = 12;
+    while (i + 8 <= bytes.length) {
+      var tag = String.fromCharCode(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
+      var size = (bytes[i + 4] | (bytes[i + 5] << 8) | (bytes[i + 6] << 16) | (bytes[i + 7] << 24)) >>> 0;
+      out.push({ tag: tag, start: i, payloadStart: i + 8, size: size });
+      i += 8 + size + (size & 1);
+    }
+    return out;
+  }
+  function riffInfoRead(bytes) {
+    var res = { tags: {}, others: [] };
+    riffTopChunks(bytes).forEach(function (c) {
+      if (c.tag !== 'LIST') return;
+      var sub = String.fromCharCode(bytes[c.payloadStart], bytes[c.payloadStart + 1], bytes[c.payloadStart + 2], bytes[c.payloadStart + 3]);
+      if (sub !== 'INFO') return;
+      var i = c.payloadStart + 4, end = c.payloadStart + c.size;
+      while (i + 8 <= end) {
+        var tag = String.fromCharCode(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
+        var size = (bytes[i + 4] | (bytes[i + 5] << 8) | (bytes[i + 6] << 16) | (bytes[i + 7] << 24)) >>> 0;
+        var val = '';
+        try { val = new TextDecoder().decode(bytes.subarray(i + 8, i + 8 + size)).replace(/\0+$/, ''); } catch (e) {}
+        var managed = false;
+        for (var k in RIFF_INFO) if (RIFF_INFO[k] === tag) { res.tags[k] = val; managed = true; }
+        if (!managed) res.others.push({ tag: tag, raw: bytes.slice(i, i + 8 + size + (size & 1)) });
+        i += 8 + size + (size & 1);
+      }
+    });
+    return res;
+  }
+  function riffInfoBuild(bytes, fields, strip, mime) {
+    var enc = new TextEncoder();
+    var subChunk = function (tag, text) {
+      var tb = enc.encode(text);
+      var size = tb.length + 1;
+      var out = new Uint8Array(8 + size + (size & 1));
+      for (var i = 0; i < 4; i++) out[i] = tag.charCodeAt(i);
+      out[4] = size & 0xFF; out[5] = (size >> 8) & 0xFF; out[6] = (size >> 16) & 0xFF; out[7] = (size >> 24) & 0xFF;
+      out.set(tb, 8);
+      return out;
+    };
+    var info = riffInfoRead(bytes);
+    var subs = [];
+    if (!strip) {
+      for (var k in RIFF_INFO) {
+        var v = k === 'date' ? (fields.date ? fields.date.slice(0, 10) : '') : fields[k];
+        if (v) subs.push(subChunk(RIFF_INFO[k], v));
+      }
+      info.others.forEach(function (o) { subs.push(o.raw); });
+    }
+    var parts = [];
+    riffTopChunks(bytes).forEach(function (c) {
+      var isInfo = c.tag === 'LIST' &&
+        String.fromCharCode(bytes[c.payloadStart], bytes[c.payloadStart + 1], bytes[c.payloadStart + 2], bytes[c.payloadStart + 3]) === 'INFO';
+      if (isInfo) return;
+      parts.push(bytes.subarray(c.start, Math.min(c.payloadStart + c.size + (c.size & 1), bytes.length)));
+    });
+    if (subs.length) {
+      var ilen = 4;
+      subs.forEach(function (s) { ilen += s.length; });
+      var list = new Uint8Array(8 + ilen);
+      list.set([0x4C, 0x49, 0x53, 0x54], 0);
+      list[4] = ilen & 0xFF; list[5] = (ilen >> 8) & 0xFF; list[6] = (ilen >> 16) & 0xFF; list[7] = (ilen >> 24) & 0xFF;
+      list.set([0x49, 0x4E, 0x46, 0x4F], 8);
+      var lo = 12;
+      subs.forEach(function (s) { list.set(s, lo); lo += s.length; });
+      parts.push(list);
+    }
+    var total = 4;
+    parts.forEach(function (p) { total += p.length; });
+    var out = new Uint8Array(8 + total);
+    out.set(bytes.subarray(0, 12).slice(), 0); /* RIFF + size + form */
+    out[4] = total & 0xFF; out[5] = (total >> 8) & 0xFF; out[6] = (total >> 16) & 0xFF; out[7] = (total >> 24) & 0xFF;
+    var oo = 12;
+    parts.forEach(function (p) { out.set(p, oo); oo += p.length; });
+    return new Blob([out], { type: mime });
+  }
+
+  /* ---------- FLAC (Vorbis comment) ---------- */
+  var FLAC_KEYS = { desc: 'TITLE', artist: 'ARTIST', copyright: 'COPYRIGHT', date: 'DATE', software: 'ENCODER' };
+  function flacParse(bytes) {
+    if (!(bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43)) return null;
+    var blocks = [], i = 4, last = false;
+    while (!last && i + 4 <= bytes.length) {
+      last = !!(bytes[i] & 0x80);
+      var type = bytes[i] & 0x7F;
+      var size = (bytes[i + 1] << 16) | (bytes[i + 2] << 8) | bytes[i + 3];
+      blocks.push({ type: type, start: i, size: size });
+      i += 4 + size;
+    }
+    var res = { blocks: blocks, audioStart: i, vendor: '', tags: {}, others: [] };
+    blocks.forEach(function (b) {
+      if (b.type !== 4) return;
+      var p = b.start + 4;
+      var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      var vlen = dv.getUint32(p, true);
+      try { res.vendor = new TextDecoder().decode(bytes.subarray(p + 4, p + 4 + vlen)); } catch (e) {}
+      p += 4 + vlen;
+      var cnt = dv.getUint32(p, true);
+      p += 4;
+      for (var c = 0; c < cnt && p + 4 <= bytes.length; c++) {
+        var clen = dv.getUint32(p, true);
+        var txt = '';
+        try { txt = new TextDecoder().decode(bytes.subarray(p + 4, p + 4 + clen)); } catch (e2) {}
+        p += 4 + clen;
+        var eq = txt.indexOf('=');
+        if (eq < 0) continue;
+        var key = txt.slice(0, eq).toUpperCase(), val = txt.slice(eq + 1);
+        var managed = false;
+        for (var k in FLAC_KEYS) if (FLAC_KEYS[k] === key) { res.tags[k] = val; managed = true; }
+        if (!managed) res.others.push(txt);
+      }
+    });
+    return res;
+  }
+  function flacBuild(bytes, sub, fields, strip) {
+    var enc = new TextEncoder();
+    var comments = [];
+    if (!strip) {
+      for (var k in FLAC_KEYS) {
+        var v = k === 'date' ? (fields.date ? fields.date.slice(0, 10) : '') : fields[k];
+        if (v) comments.push(FLAC_KEYS[k] + '=' + v);
+      }
+      sub.others.forEach(function (o) { comments.push(o); });
+    }
+    var vb = enc.encode(sub.vendor);
+    var size = 4 + vb.length + 4;
+    var cbufs = comments.map(function (c) { return enc.encode(c); });
+    cbufs.forEach(function (c) { size += 4 + c.length; });
+    var vc = new Uint8Array(4 + size);
+    var dv = new DataView(vc.buffer);
+    vc[0] = 4; /* last 플래그는 아래에서 */
+    vc[1] = (size >> 16) & 0xFF; vc[2] = (size >> 8) & 0xFF; vc[3] = size & 0xFF;
+    var p = 4;
+    dv.setUint32(p, vb.length, true); p += 4;
+    vc.set(vb, p); p += vb.length;
+    dv.setUint32(p, cbufs.length, true); p += 4;
+    cbufs.forEach(function (c) {
+      dv.setUint32(p, c.length, true); p += 4;
+      vc.set(c, p); p += c.length;
+    });
+    var parts = [new Uint8Array([0x66, 0x4C, 0x61, 0x43])];
+    var metaParts = [];
+    sub.blocks.forEach(function (b) {
+      if (b.type === 4) return;
+      var raw = bytes.slice(b.start, b.start + 4 + b.size);
+      raw[0] &= 0x7F;
+      metaParts.push(raw);
+    });
+    metaParts.push(vc);
+    metaParts[metaParts.length - 1][0] |= 0x80; /* 마지막 블록 표시 */
+    metaParts.forEach(function (m) { parts.push(m); });
+    parts.push(bytes.subarray(sub.audioStart));
+    return new Blob(parts, { type: 'audio/flac' });
+  }
+
   var metaState = { file: null, bytes: null, kind: null, parsed: null };
   var metaMake = $('#metaMake'), metaModel = $('#metaModel'), metaSoftware = $('#metaSoftware');
   var metaOri = 0;
@@ -5222,7 +5729,58 @@ textarea {
     box.appendChild(div);
   }
 
-  var META_OTHER_NOTE = '이 형식은 메타데이터 편집을 지원하지 않아요 — 이미지(JPG·PNG·WebP)·MP3·MP4·PDF·Office 문서에서 편집할 수 있어요.';
+  var META_OTHER_NOTE = '이 형식은 자체 메타데이터 영역이 없어 편집할 수 없어요 — 이미지(JPG·PNG·WebP·SVG)·오디오(MP3·WAV·FLAC)·영상(MP4·AVI)·문서(PDF·docx류·odt류·doc류·HWP·HWPX)를 지원해요.';
+
+  /* HWPX(content.hpf, OPF 형식) 메타 편집 — 요소는 로컬 이름으로 관대하게 찾는다 */
+  function hwpxHpfEdit(xml, f, strip) {
+    var doc = xmlParseDoc(xml);
+    if (!doc) return null;
+    var all = doc.getElementsByTagName('*');
+    var byLocal = function (local) {
+      for (var i = 0; i < all.length; i++) if (all[i].localName === local) return all[i];
+      return null;
+    };
+    var metaEl = byLocal('metadata') || doc.documentElement;
+    var ns = metaEl.namespaceURI || doc.documentElement.namespaceURI;
+    var setEl = function (local, val) {
+      var el = byLocal(local);
+      if (val) {
+        if (!el) {
+          el = doc.createElementNS(ns, local);
+          metaEl.appendChild(el);
+        }
+        el.textContent = val;
+      } else if (el) el.textContent = '';
+    };
+    var setMeta = function (nameAttr, val) {
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].localName === 'meta' && all[i].getAttribute('name') === nameAttr) {
+          if (val) all[i].setAttribute('content', val);
+          else all[i].removeAttribute('content');
+          return;
+        }
+      }
+      if (val) {
+        var el = doc.createElementNS(ns, 'meta');
+        el.setAttribute('name', nameAttr);
+        el.setAttribute('content', val);
+        metaEl.appendChild(el);
+      }
+    };
+    if (strip) {
+      setEl('title', '');
+      setEl('creator', '');
+      setEl('subject', '');
+      setEl('description', '');
+      setMeta('CreatedDate', '');
+      setMeta('ModifiedDate', '');
+    } else {
+      setEl('title', f.desc);
+      setEl('creator', f.artist);
+      setMeta('CreatedDate', f.date ? inputToIso(f.date) + '+09:00' : '');
+    }
+    return new XMLSerializer().serializeToString(doc);
+  }
 
   function loadMetaFile(f) {
     f.arrayBuffer().then(function (ab) {
@@ -5363,9 +5921,155 @@ textarea {
       }
       return Promise.resolve(st);
     }
+    if (kind === 'cfb') {
+      var cfb = cfbParse(bytes);
+      if (!cfb) {
+        st.kind = 'other';
+        st.editable = false;
+        st.note = '복합 문서(OLE) 구조를 해석하지 못했어요.';
+        return Promise.resolve(st);
+      }
+      var names = cfb.entries.map(function (e) { return e.name; });
+      var isHwp = names.indexOf('HwpSummaryInformation') >= 0 || names.indexOf('FileHeader') >= 0;
+      st.kind = isHwp ? 'hwp' : 'ole';
+      var docKind = isHwp ? '한글(HWP 5.x)'
+        : names.indexOf('WordDocument') >= 0 ? 'Word(doc)'
+        : (names.indexOf('Workbook') >= 0 || names.indexOf('Book') >= 0) ? 'Excel(xls)'
+        : names.indexOf('PowerPoint Document') >= 0 ? 'PowerPoint(ppt)' : 'OLE 문서';
+      st.rows.push(['종류', docKind]);
+      var sumIdx = -1;
+      cfb.entries.forEach(function (e, i) {
+        if (e.type === 2 && e.name === 'HwpSummaryInformation') sumIdx = i;
+      });
+      if (sumIdx < 0) {
+        cfb.entries.forEach(function (e, i) {
+          if (e.type === 2 && e.name === 'SummaryInformation') sumIdx = i;
+        });
+      }
+      if (sumIdx < 0) {
+        st.editable = false;
+        st.note = '요약 속성 스트림이 없어 편집할 수 없어요.';
+        return Promise.resolve(st);
+      }
+      var ps = psParse(cfb.readStream(cfb.entries[sumIdx]));
+      if (!ps) {
+        st.editable = false;
+        st.note = '속성 정보 형식을 해석하지 못해 편집할 수 없어요.';
+        return Promise.resolve(st);
+      }
+      st.sub = { cfb: cfb, sumIdx: sumIdx, ps: ps };
+      m.desc = psGetString(ps, 2);
+      m.artist = psGetString(ps, 4);
+      m.software = psGetString(ps, 18);
+      m.date = psGetDate(ps, 12);
+      var subj = psGetString(ps, 3), keyw = psGetString(ps, 5), comm = psGetString(ps, 6), lastA = psGetString(ps, 8);
+      if (m.desc) st.rows.push(['제목', m.desc]);
+      if (subj) st.rows.push(['주제', subj]);
+      if (m.artist) st.rows.push(['작성자', m.artist]);
+      if (lastA) st.rows.push(['마지막 저장', lastA]);
+      if (keyw) st.rows.push(['키워드', keyw]);
+      if (comm) st.rows.push(['설명', comm]);
+      if (m.date) st.rows.push(['만든 날짜', m.date.replace('T', ' ')]);
+      if (m.software) st.rows.push(['프로그램', m.software]);
+      st.note = '설명=제목 · 작가=작성자로 저장돼요. 저작권·카메라·GPS 항목은 없어요.';
+      return Promise.resolve(st);
+    }
+    if (kind === 'riff') {
+      var isAvi = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]) === 'AVI ';
+      var info = riffInfoRead(bytes);
+      st.sub = { info: info, mime: isAvi ? 'video/x-msvideo' : 'audio/wav' };
+      m.desc = info.tags.desc || ''; m.artist = info.tags.artist || '';
+      m.copyright = info.tags.copyright || ''; m.software = info.tags.software || '';
+      var icrd = info.tags.date || '';
+      m.date = /^\d{4}-\d{2}-\d{2}/.test(icrd) ? icrd.slice(0, 10) + 'T00:00:00'
+        : /^\d{4}$/.test(icrd) ? icrd + '-01-01T00:00:00' : '';
+      st.rows.push(['종류', isAvi ? 'AVI 영상' : 'WAV 오디오']);
+      if (m.desc) st.rows.push(['제목', m.desc]);
+      if (m.artist) st.rows.push(['아티스트', m.artist]);
+      if (icrd) st.rows.push(['날짜', icrd]);
+      if (m.software) st.rows.push(['소프트웨어', m.software]);
+      if (m.copyright) st.rows.push(['저작권', m.copyright]);
+      st.note = 'RIFF INFO 태그로 저장돼요(날짜는 날짜만). 카메라·방향·GPS 항목은 없어요.';
+      return Promise.resolve(st);
+    }
+    if (kind === 'flac') {
+      var fsub = flacParse(bytes);
+      if (!fsub) {
+        st.kind = 'other';
+        st.editable = false;
+        st.note = 'FLAC 구조를 해석하지 못했어요.';
+        return Promise.resolve(st);
+      }
+      st.sub = fsub;
+      m.desc = fsub.tags.desc || ''; m.artist = fsub.tags.artist || '';
+      m.copyright = fsub.tags.copyright || ''; m.software = fsub.tags.software || '';
+      var fdate = fsub.tags.date || '';
+      m.date = /^\d{4}-\d{2}-\d{2}/.test(fdate) ? fdate.slice(0, 10) + 'T00:00:00'
+        : /^\d{4}$/.test(fdate) ? fdate + '-01-01T00:00:00' : '';
+      if (m.desc) st.rows.push(['제목', m.desc]);
+      if (m.artist) st.rows.push(['아티스트', m.artist]);
+      if (fdate) st.rows.push(['날짜', fdate]);
+      if (fsub.others.length) st.rows.push(['기타 태그', fsub.others.length + '개 (수정해도 유지돼요)']);
+      st.note = 'Vorbis 태그(TITLE·ARTIST 등)로 저장돼요. 카메라·방향·GPS 항목은 없어요.';
+      return Promise.resolve(st);
+    }
+    if (kind === 'svgx') {
+      var svgText = '';
+      try { svgText = new TextDecoder().decode(bytes); } catch (e3) {}
+      var sdoc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+      if (!svgText || sdoc.getElementsByTagName('parsererror').length) {
+        st.kind = 'other';
+        st.editable = false;
+        st.note = 'SVG를 해석하지 못했어요.';
+        return Promise.resolve(st);
+      }
+      st.sub = { text: svgText };
+      var tEl = null;
+      var rootKids = sdoc.documentElement.children;
+      for (var tk = 0; tk < rootKids.length; tk++) if (rootKids[tk].localName === 'title') { tEl = rootKids[tk]; break; }
+      m.desc = tEl ? tEl.textContent : '';
+      if (m.desc) st.rows.push(['제목', m.desc]);
+      st.note = 'SVG는 제목(<title>)만 편집할 수 있어요.';
+      return Promise.resolve(st);
+    }
     if (kind === 'zip') {
       var zip = zipParse(bytes);
       st.sub = { zip: zip };
+      if (zip && zipEntry(zip, 'Contents/content.hpf')) {
+        st.kind = 'hwpx';
+        st.noSoftware = true;
+        return zipInflate(bytes, zipEntry(zip, 'Contents/content.hpf')).then(function (u) {
+          var xml = new TextDecoder().decode(u);
+          st.sub.hpfXml = xml;
+          var hdoc = xmlParseDoc(xml);
+          if (hdoc) {
+            var all2 = hdoc.getElementsByTagName('*');
+            var text2 = function (local) {
+              for (var i2 = 0; i2 < all2.length; i2++) if (all2[i2].localName === local) return all2[i2].textContent;
+              return '';
+            };
+            var metaC = function (nm) {
+              for (var i3 = 0; i3 < all2.length; i3++) {
+                if (all2[i3].localName === 'meta' && all2[i3].getAttribute('name') === nm) return all2[i3].getAttribute('content') || '';
+              }
+              return '';
+            };
+            m.desc = text2('title');
+            m.artist = text2('creator');
+            m.date = isoToInput(metaC('CreatedDate'));
+            if (m.desc) st.rows.push(['제목', m.desc]);
+            if (m.artist) st.rows.push(['만든이', m.artist]);
+            if (metaC('CreatedDate')) st.rows.push(['만든 날짜', metaC('CreatedDate')]);
+          }
+          st.note = '설명=제목 · 작가=만든이로 저장돼요. 저작권·카메라·GPS 항목은 없어요.';
+          return st;
+        }).catch(function () {
+          st.kind = 'other';
+          st.editable = false;
+          st.note = '문서 속성을 읽지 못했어요 — 이 브라우저에서 압축 해제를 지원하지 않아요.';
+          return st;
+        });
+      }
       if (zip && zipEntry(zip, 'docProps/core.xml')) {
         st.kind = 'ooxml';
         var appEnt = zipEntry(zip, 'docProps/app.xml');
@@ -5477,9 +6181,11 @@ textarea {
     var gpsOk = ed && !!caps.gps;
     $('#metaLat').disabled = $('#metaLon').disabled = !gpsOk;
     $('#metaMapBtn').disabled = !gpsOk;
-    $('#metaDesc').disabled = $('#metaArtist').disabled = $('#metaDate').disabled = !ed;
+    $('#metaDesc').disabled = !ed;
+    $('#metaArtist').disabled = !(ed && caps.artist !== false);
+    $('#metaDate').disabled = !(ed && caps.date !== false);
     $('#metaCopyright').disabled = !(ed && caps.copyright);
-    var swOk = ed && !st.noSoftware;
+    var swOk = ed && caps.software !== false && !st.noSoftware;
     metaSoftware.disabled = !swOk;
     document.querySelectorAll('#metaSwChips .chip').forEach(function (b) { b.disabled = !swOk; });
     $('#metaSave').disabled = !ed;
@@ -5571,6 +6277,38 @@ textarea {
     } else if (k === 'odf') {
       var mx = odfMetaEdit(metaState.sub.metaXml, f, false);
       out = mx ? zipRebuild(metaState.bytes, metaState.sub.zip, { 'meta.xml': new TextEncoder().encode(mx) }) : null;
+    } else if (k === 'hwp' || k === 'ole') {
+      var ups = {};
+      ups[2] = f.desc ? { kind: 'str', v: f.desc } : null;
+      ups[4] = f.artist ? { kind: 'str', v: f.artist } : null;
+      ups[18] = f.software ? { kind: 'str', v: f.software } : null;
+      ups[12] = f.date ? { kind: 'ft', v: f.date } : null;
+      var psb = psBuild(metaState.sub.ps, ups);
+      var repIdx = {};
+      repIdx[metaState.sub.sumIdx] = psb;
+      out = cfbBuild(metaState.sub.cfb, repIdx);
+    } else if (k === 'hwpx') {
+      var hx = hwpxHpfEdit(metaState.sub.hpfXml, f, false);
+      out = hx ? zipRebuild(metaState.bytes, metaState.sub.zip, { 'Contents/content.hpf': new TextEncoder().encode(hx) }) : null;
+    } else if (k === 'riff') {
+      out = riffInfoBuild(metaState.bytes, f, false, metaState.sub.mime);
+    } else if (k === 'flac') {
+      out = flacBuild(metaState.bytes, metaState.sub, f, false);
+    } else if (k === 'svgx') {
+      var sdoc2 = new DOMParser().parseFromString(metaState.sub.text, 'image/svg+xml');
+      if (!sdoc2.getElementsByTagName('parsererror').length) {
+        var sroot = sdoc2.documentElement;
+        var tEl2 = null;
+        for (var sk = 0; sk < sroot.children.length; sk++) if (sroot.children[sk].localName === 'title') { tEl2 = sroot.children[sk]; break; }
+        if (f.desc) {
+          if (!tEl2) {
+            tEl2 = sdoc2.createElementNS('http://www.w3.org/2000/svg', 'title');
+            sroot.insertBefore(tEl2, sroot.firstChild);
+          }
+          tEl2.textContent = f.desc;
+        } else if (tEl2) sroot.removeChild(tEl2);
+        out = new Blob([new XMLSerializer().serializeToString(sdoc2)], { type: 'image/svg+xml' });
+      }
     }
     if (!out) return toast('저장용 파일을 만들지 못했어요.');
     saveBlob(out, metaOutName('-meta'));
@@ -5591,6 +6329,30 @@ textarea {
     } else if (k === 'odf') {
       var mx = odfMetaEdit(metaState.sub.metaXml, {}, true);
       out = mx ? zipRebuild(metaState.bytes, metaState.sub.zip, { 'meta.xml': new TextEncoder().encode(mx) }) : null;
+    } else if (k === 'hwp' || k === 'ole') {
+      var ups2 = { 2: null, 3: null, 4: null, 5: null, 6: null, 8: null, 12: null, 13: null, 18: null };
+      var psb2 = psBuild(metaState.sub.ps, ups2);
+      var repIdx2 = {};
+      repIdx2[metaState.sub.sumIdx] = psb2;
+      out = cfbBuild(metaState.sub.cfb, repIdx2);
+    } else if (k === 'hwpx') {
+      var hx2 = hwpxHpfEdit(metaState.sub.hpfXml, {}, true);
+      out = hx2 ? zipRebuild(metaState.bytes, metaState.sub.zip, { 'Contents/content.hpf': new TextEncoder().encode(hx2) }) : null;
+    } else if (k === 'riff') {
+      out = riffInfoBuild(metaState.bytes, {}, true, metaState.sub.mime);
+    } else if (k === 'flac') {
+      out = flacBuild(metaState.bytes, metaState.sub, {}, true);
+    } else if (k === 'svgx') {
+      var sdoc3 = new DOMParser().parseFromString(metaState.sub.text, 'image/svg+xml');
+      if (!sdoc3.getElementsByTagName('parsererror').length) {
+        var sroot3 = sdoc3.documentElement;
+        ['title', 'desc', 'metadata'].forEach(function (tag) {
+          for (var q3 = sroot3.children.length - 1; q3 >= 0; q3--) {
+            if (sroot3.children[q3].localName === tag) sroot3.removeChild(sroot3.children[q3]);
+          }
+        });
+        out = new Blob([new XMLSerializer().serializeToString(sdoc3)], { type: 'image/svg+xml' });
+      }
     }
     if (!out) return toast('이 형식은 제거를 지원하지 않아요.');
     saveBlob(out, metaOutName('-clean'));
