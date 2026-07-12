@@ -2788,35 +2788,35 @@ textarea {
       for (i = 1; i < pts.length; i++) d += 'L' + f(pts[i][0]) + ' ' + f(pts[i][1]);
       return d + 'Z';
     }
-    /* 각도 적응형 코너 라운딩 — 단순 중점(Q) 스무딩은 긴 변의 모서리를 변 절반씩
-       깎아 사각형을 원으로 만들고 도형 사이 큰 빈공간을 만든다.
-       완만하게 꺾이는 점(연속 곡선의 일부)은 크게 둥글려 부드럽게,
-       급한 모서리(사각형 꼭짓점)는 살짝만 둥글려 형태·틈 모두 지킨다 */
+    /* 꼭짓점을 '통과'하는 Catmull-Rom 큐빅 스무딩 — 코너를 깎는 방식은
+       조절점이 성기면(최적화 후) 도형이 수축하거나 각져 보인다.
+       곡선이 꼭짓점을 그대로 지나가므로 수축이 없고, 급한 모서리
+       (72° 이상 꺾임)는 텐션을 0으로 두어 각을 유지한다 */
     var n = pts.length;
-    var towards = function (from, to, dist) {
-      var dx = to[0] - from[0], dy = to[1] - from[1];
-      var len = Math.sqrt(dx * dx + dy * dy) || 1;
-      var t = Math.min(0.5, dist / len);
-      return [from[0] + dx * t, from[1] + dy * t];
-    };
-    var radiusAt = function (vi) {
-      var a = pts[(vi + n - 1) % n], v = pts[vi], c = pts[(vi + 1) % n];
-      var ax = v[0] - a[0], ay = v[1] - a[1], bx = c[0] - v[0], by = c[1] - v[1];
+    var sharp = new Array(n);
+    for (i = 0; i < n; i++) {
+      var pa = pts[(i + n - 1) % n], pv = pts[i], pcn = pts[(i + 1) % n];
+      var ax = pv[0] - pa[0], ay = pv[1] - pa[1], bx = pcn[0] - pv[0], by = pcn[1] - pv[1];
       var la = Math.sqrt(ax * ax + ay * ay) || 1, lb = Math.sqrt(bx * bx + by * by) || 1;
-      var cos = (ax * bx + ay * by) / (la * lb);
-      if (cos > 0.92) return 6;   /* 거의 직진 — 곡선의 일부, 크게 부드럽게 */
-      if (cos > 0.5) return 3.5;  /* 완만한 꺾임 */
-      return 1.6;                 /* 급한 모서리 — 형태 유지 */
+      sharp[i] = (ax * bx + ay * by) / (la * lb) < 0.3;
+    }
+    var tangent = function (vi) {
+      if (sharp[vi]) return [0, 0];
+      var p0 = pts[(vi + n - 1) % n], p2 = pts[(vi + 1) % n];
+      return [(p2[0] - p0[0]) / 6, (p2[1] - p0[1]) / 6];
     };
-    var start = towards(pts[0], pts[1], radiusAt(0));
-    d = 'M' + f(start[0]) + ' ' + f(start[1]);
-    for (i = 1; i <= n; i++) {
-      var vi = i % n;
-      var v = pts[vi];
-      var R = radiusAt(vi);
-      var pin = towards(v, pts[(vi + n - 1) % n], R);
-      var pout = towards(v, pts[(vi + 1) % n], R);
-      d += 'L' + f(pin[0]) + ' ' + f(pin[1]) + 'Q' + f(v[0]) + ' ' + f(v[1]) + ' ' + f(pout[0]) + ' ' + f(pout[1]);
+    d = 'M' + f(pts[0][0]) + ' ' + f(pts[0][1]);
+    for (i = 0; i < n; i++) {
+      var p1 = pts[i], p2b = pts[(i + 1) % n];
+      var segLen = Math.sqrt((p2b[0] - p1[0]) * (p2b[0] - p1[0]) + (p2b[1] - p1[1]) * (p2b[1] - p1[1])) || 1;
+      var t1 = tangent(i), t2 = tangent((i + 1) % n);
+      /* 세그먼트 길이가 들쭉날쭉해도 과도한 출렁임이 없게 접선 길이 제한 */
+      var m1 = Math.sqrt(t1[0] * t1[0] + t1[1] * t1[1]);
+      if (m1 > segLen / 2) { t1[0] *= segLen / 2 / m1; t1[1] *= segLen / 2 / m1; }
+      var m2 = Math.sqrt(t2[0] * t2[0] + t2[1] * t2[1]);
+      if (m2 > segLen / 2) { t2[0] *= segLen / 2 / m2; t2[1] *= segLen / 2 / m2; }
+      d += 'C' + f(p1[0] + t1[0]) + ' ' + f(p1[1] + t1[1]) + ' ' +
+        f(p2b[0] - t2[0]) + ' ' + f(p2b[1] - t2[1]) + ' ' + f(p2b[0]) + ' ' + f(p2b[1]);
     }
     return d + 'Z';
   }
