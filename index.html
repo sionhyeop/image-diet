@@ -4107,61 +4107,6 @@ textarea {
     }
   }
 
-  /* AI 전경맵에서 눌린 지점의 연결 성분 선택 (소프트 엣지 1픽셀 림 포함) */
-  function exPickComponentAI(ax, ay) {
-    if (!exState.aiPred) return null;
-    var S = exState.aiS, pred = exState.aiPred;
-    var n = S * S;
-    var tol = parseInt($('#bgTol').value, 10);
-    var thr = 0.15 + (tol - 3) / 57 * 0.7;
-    var lo = Math.max(0, thr - 0.12);
-    var start = Math.min(n - 1, Math.max(0, ay * S + ax));
-    if (pred[start] < thr) {
-      /* 살짝 빗나간 클릭 보정 — 주변에서 가장 확신 높은 픽셀로 스냅 */
-      var rad = Math.max(2, S >> 6), best = -1, bv = thr;
-      for (var sy2 = Math.max(0, ay - rad); sy2 <= Math.min(S - 1, ay + rad); sy2++) {
-        for (var sx2 = Math.max(0, ax - rad); sx2 <= Math.min(S - 1, ax + rad); sx2++) {
-          var si = sy2 * S + sx2;
-          if (pred[si] >= bv) { bv = pred[si]; best = si; }
-        }
-      }
-      if (best < 0) return null;
-      start = best;
-    }
-    var seen = new Uint8Array(n);
-    var queue = new Int32Array(n);
-    var depth = new Int32Array(n);
-    var qh = 0, qt = 0;
-    seen[start] = 1;
-    queue[qt++] = start;
-    while (qh < qt) {
-      var u = queue[qh++];
-      var ux = u % S;
-      var grow = function (v) { if (!seen[v] && pred[v] >= thr) { seen[v] = 1; depth[v] = depth[u] + 1; queue[qt++] = v; } };
-      if (ux > 0) grow(u - 1);
-      if (ux < S - 1) grow(u + 1);
-      if (u >= S) grow(u - S);
-      if (u < n - S) grow(u + S);
-    }
-    if (qt < 8) return null;
-    /* 목(neck) 너머로 이어진 곁가지는 잘라 클릭한 물체만 남긴다 */
-    var cut = exNeckCutDepth(depth, queue, qt);
-    var minX = S, minY = S, maxX = 0, maxY = 0;
-    for (var qi = 0; qi < qt; qi++) {
-      var w = queue[qi];
-      if (depth[w] >= cut) { seen[w] = 0; continue; }
-      var wx = w % S, wy = (w / S) | 0;
-      if (wx < minX) minX = wx;
-      if (wx > maxX) maxX = wx;
-      if (wy < minY) minY = wy;
-      if (wy > maxY) maxY = wy;
-    }
-    exFillHoles(seen, S, minX, minY, maxX, maxY); /* 색감 차이로 뚫린 내부를 메워 한 덩어리로 */
-    /* 바깥 림 대신 1px 침식 + 경계 AA — 배경이 물려 오는 테두리 프린지 제거 */
-    var alpha = exErodeAlpha(seen, S, S);
-    return { mask: alphaToMaskCanvas(alpha, S, S), minX: minX, minY: minY, maxX: maxX, maxY: maxY, gw: S, gh: S };
-  }
-
   /* 마스크 경계 1px을 잘라내고(침식) 그 안쪽 링은 부분 알파로 —
      추출물 테두리에 배경색 픽셀이 딸려 오는 것을 안쪽까지 빡세게 제거 */
   function exErodeAlpha(seen, w, h) {
@@ -4248,27 +4193,52 @@ textarea {
     exState.workH = wh;
   }
 
-  /* 꾹 누른 지점의 연결 성분 → {mask(work-res 성분만), bbox} 또는 null */
+  /* 꾹 누른 지점 중심의 '국소' 요소 선택 — 요소 추출은 배경 제거와 달리
+     이미지 전체 피사체가 아니라 클릭한 물체 주변의 작은 영역만 가져온다.
+     ① 클릭 주변 5×5 평균색 기준 색 유사 성장
+     ② 반경 제한(긴 변 45%) — 멀리 있는 같은 색까지 번지지 않게
+     ③ AI 게이트 — 시드가 AI 전경 위면, 확실한 배경 픽셀은 차단
+     ④ 이후 목 자르기·구멍 메움·프린지 침식은 동일 */
   function exPickComponent(wx, wy) {
     var ww = exState.workW, wh = exState.workH;
-    var bg = exState.workBg, data = exState.workData;
+    var data = exState.workData;
     var n = ww * wh;
     var start = Math.min(n - 1, Math.max(0, wy * ww + wx));
-    var inSet;
-    if (!bg[start]) {
-      inSet = function (idx) { return !bg[idx]; };
-    } else {
-      var p0 = start * 4;
-      var sr = data[p0], sg = data[p0 + 1], sb = data[p0 + 2];
-      var tol = parseInt($('#bgTol').value, 10);
-      var thr = 9 * Math.pow(tol * 2.55, 2);
-      inSet = function (idx) {
-        var p = idx * 4;
-        var dr = data[p] - sr, dg = data[p + 1] - sg, db = data[p + 2] - sb;
-        return 2 * dr * dr + 4 * dg * dg + 3 * db * db <= thr;
-      };
-      if (!inSet(start)) return null;
+    var sr = 0, sg = 0, sb = 0, sc = 0;
+    for (var oy = -2; oy <= 2; oy++) {
+      for (var ox = -2; ox <= 2; ox++) {
+        var xx = wx + ox, yy = wy + oy;
+        if (xx < 0 || xx >= ww || yy < 0 || yy >= wh) continue;
+        var p4 = (yy * ww + xx) * 4;
+        if (data[p4 + 3] < 40) continue;
+        sr += data[p4]; sg += data[p4 + 1]; sb += data[p4 + 2]; sc++;
+      }
     }
+    if (!sc) return null;
+    sr /= sc; sg /= sc; sb /= sc;
+    var tol = parseInt($('#bgTol').value, 10);
+    var thr = 9 * Math.pow(tol * 2.55, 2);
+    var pred = exState.aiPred, S = exState.aiS;
+    var predAt = pred ? function (idx) {
+      var x2 = idx % ww, y2 = (idx / ww) | 0;
+      var ax = Math.min(S - 1, Math.round(x2 * S / ww));
+      var ay = Math.min(S - 1, Math.round(y2 * S / wh));
+      return pred[ay * S + ax];
+    } : null;
+    var useAI = predAt && predAt(start) >= 0.3;
+    var Rmax = Math.max(40, Math.round(Math.max(ww, wh) * 0.45));
+    var R2 = Rmax * Rmax;
+    var inSet = function (idx) {
+      var p = idx * 4;
+      if (data[p + 3] < 40) return false;
+      var dx2 = idx % ww - wx, dy2 = ((idx / ww) | 0) - wy;
+      if (dx2 * dx2 + dy2 * dy2 > R2) return false;
+      var dr = data[p] - sr, dg = data[p + 1] - sg, db = data[p + 2] - sb;
+      if (2 * dr * dr + 4 * dg * dg + 3 * db * db > thr) return false;
+      if (useAI && predAt(idx) < 0.12) return false;
+      return true;
+    };
+    if (!inSet(start)) return null;
     var seen = new Uint8Array(n);
     var queue = new Int32Array(n);
     var depth = new Int32Array(n);
@@ -4369,14 +4339,7 @@ textarea {
   }
   function exActivate(e) {
     var pos = exPos(e);
-    var r = exCanvas.getBoundingClientRect();
-    var comp = null;
-    if (exState.aiPred) {
-      var ax = Math.round((e.clientX - r.left) * (exState.aiS / r.width));
-      var ay = Math.round((e.clientY - r.top) * (exState.aiS / r.height));
-      comp = exPickComponentAI(ax, ay);
-    }
-    if (!comp) comp = exPickComponent(pos.wx, pos.wy);
+    var comp = exPickComponent(pos.wx, pos.wy);
     if (!comp) {
       toast('여기서는 물체를 찾지 못했어요 — 인식 범위를 조절해 보세요.');
       exDrag = null;
