@@ -371,7 +371,8 @@ textarea {
 .cmp-tag.right { right: 6px; }
 #svgCmpPos { width: 100%; margin-top: 8px; }
 .bg-wrap { max-width: 640px; }
-#bgBox { cursor: col-resize; }
+/* 결과 박스를 이미지 크기에 딱 맞추고(=여백 없는 컷) 바깥 영역 가운데 정렬 */
+#bgBox { cursor: col-resize; width: -moz-fit-content; width: fit-content; max-width: 100%; margin-left: auto; margin-right: auto; }
 #bgBox.painting { cursor: crosshair; }
 #bgCanvas { display: block; max-width: 100%; height: auto; touch-action: none; margin: 0 auto; }
 #exBox { cursor: crosshair; }
@@ -2598,10 +2599,34 @@ textarea {
     file: null, srcCanvas: null, W: 0, H: 0,
     workMask: null, workW: 0, workH: 0,
     mask: null, strokes: [], tool: 'compare', divider: 50,
-    dispImg: null, dispW: 0, dispH: 0, seq: 0
+    dispImg: null, dispW: 0, dispH: 0, seq: 0, revealed: false
   };
   var bgCanvas = $('#bgCanvas'), bgBox = $('#bgBox');
   var bgTmp = document.createElement('canvas');
+  var bgRevealRAF = null;
+
+  /* 결과가 처음 나오면 원본→결과 전환을 한 번 자동으로 훑어 보여준 뒤 가운데(50%)에서 멈춘다 */
+  function bgRevealAnim() {
+    if (bgRevealRAF) { cancelAnimationFrame(bgRevealRAF); bgRevealRAF = null; }
+    if (!bgState.mask) { bgRender(); return; }
+    var dur = 1150, start = null;
+    var ease = function (t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; };
+    function frame(ts) {
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / dur);
+      var d;
+      if (p < 0.6) { d = 100 - ease(p / 0.6) * 100; }       /* 원본(100) → 결과 전체(0) 훑기 */
+      else { d = ease((p - 0.6) / 0.4) * 50; }               /* 결과(0) → 가운데(50) 정착 */
+      bgState.divider = d;
+      bgRender();
+      if (p < 1) { bgRevealRAF = requestAnimationFrame(frame); }
+      else { bgState.divider = 50; bgRender(); bgRevealRAF = null; }
+    }
+    bgRevealRAF = requestAnimationFrame(frame);
+  }
+  function bgStopReveal() {
+    if (bgRevealRAF) { cancelAnimationFrame(bgRevealRAF); bgRevealRAF = null; }
+  }
 
   function loadBgFile(f) {
     var seq = ++bgState.seq;
@@ -2622,6 +2647,8 @@ textarea {
       bgState.strokes = [];
       bgState.divider = 50;
       bgState.mask = null;
+      bgState.revealed = false;
+      bgStopReveal();
       $('#bgBody').hidden = false;
       $('#exBody').hidden = true;
       bgSetupDisplay();
@@ -2876,7 +2903,8 @@ textarea {
     return run.then(function () {
       if (bgState.seq !== seq || !bgState.srcCanvas || !bgState.workMask) return;
       bgReplayMask();
-      bgRender();
+      if (!bgState.revealed) { bgState.revealed = true; bgRevealAnim(); }
+      else bgRender();
       var eng = bgEngine === 'classic' ? '색상' : AI_MODELS[aiModelKey()].label;
       stats.textContent = (bgState.file.name || '이미지') + ' · ' + bgState.W + '×' + bgState.H +
         ' · ' + eng + ' 인식 완료 — 브러시로 다듬을 수 있어요';
@@ -3063,7 +3091,9 @@ textarea {
   }
 
   function bgSetupDisplay() {
-    var boxW = bgBox.clientWidth || 600;
+    /* 박스가 이미지에 맞춰 줄어드므로 가용 폭은 바깥 컨테이너(.bg-wrap)에서 측정 */
+    var host = bgBox.parentElement;
+    var boxW = ((host && host.clientWidth) || bgBox.clientWidth || 600) - 4;
     var dw = Math.max(1, Math.min(bgState.W, Math.round(boxW)));
     var dh = Math.max(1, Math.round(dw * bgState.H / bgState.W));
     if (dh > 560) { dw = Math.max(1, Math.round(dw * 560 / dh)); dh = 560; }
@@ -3135,6 +3165,7 @@ textarea {
   bgCanvas.addEventListener('pointerdown', function (e) {
     if (!bgState.dispImg) return;
     e.preventDefault();
+    bgStopReveal();
     try { bgCanvas.setPointerCapture(e.pointerId); } catch (err) {}
     var pos = bgPos(e);
     if (bgState.tool === 'compare') {
