@@ -164,6 +164,7 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
   padding: 8px 14px; font-size: 13.5px; font-weight: 700;
   transition: border-color .12s, background .12s, box-shadow .12s, transform .08s;
   touch-action: manipulation;
+  white-space: nowrap; /* 좁은 화면에서 글자가 줄바꿈돼 버튼이 세로로 길어지지 않게 */
 }
 .btn:active:not(:disabled) { transform: scale(.97); }
 .btn.primary { box-shadow: 0 4px 14px rgba(49, 130, 246, .22); }
@@ -194,7 +195,7 @@ body.save-open #toasts { bottom: 150px; }
 .save-bar .sb-name { font-weight: 600; font-size: 14px; word-break: break-all; }
 .save-bar .sb-hint { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
 .save-bar .btn-row { margin-top: 10px; }
-.save-bar .btn-row .btn { flex: 1 1 0; justify-content: center; text-align: center; text-decoration: none; }
+.save-bar .btn-row .btn { flex: 1 1 auto; justify-content: center; text-align: center; text-decoration: none; }
 .name-row { display: flex; align-items: center; gap: 8px; }
 .name-row input { flex: 1 1 auto; min-width: 0; }
 .name-row .name-ext {
@@ -290,8 +291,11 @@ body.save-open #toasts { bottom: 150px; }
   .wrap { padding: 0 14px; }
   .settings { padding: 15px 14px 12px; }
   .summary { padding: 12px 14px; }
-  .summary-actions { width: 100%; }
-  .summary-actions .btn { flex: 1; }
+  /* 폰: 버튼을 억지로 같은 폭으로 눌러 담지 않고, 글자 폭만큼 잡되 모자라면 줄을 바꾼다.
+     (예전엔 flex:1이라 칸이 좁아져 글자가 줄바꿈되고 버튼이 세로로 길어졌다) */
+  .summary-actions { width: 100%; flex-wrap: wrap; }
+  .summary-actions .seg-slide.seg-sm { flex: 1 1 auto; }
+  .summary-actions .btn { flex: 1 1 auto; }
   .b64-card { padding: 16px 14px; }
   .target-row { flex-wrap: wrap; }
   .pair-row { flex-wrap: wrap; }
