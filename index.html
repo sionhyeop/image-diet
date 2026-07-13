@@ -173,6 +173,26 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .btn.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
+/* ---------- 모바일 저장 시트 (blob 자동 다운로드가 막히는 환경 대비) ---------- */
+.save-bar {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+  z-index: 60; width: min(520px, calc(100vw - 24px));
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(25, 31, 40, .18); padding: 12px 14px;
+}
+.save-bar[hidden] { display: none; }
+body.save-open #toasts { bottom: 150px; }
+.save-bar .sb-name { font-weight: 600; font-size: 14px; word-break: break-all; }
+.save-bar .sb-hint { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.save-bar .btn-row { margin-top: 10px; }
+.save-bar .btn-row .btn { flex: 1 1 0; justify-content: center; text-align: center; text-decoration: none; }
+.name-row { display: flex; align-items: center; gap: 8px; }
+.name-row input { flex: 1 1 auto; min-width: 0; }
+.name-row .name-ext {
+  flex: 0 0 auto; font-size: 13px; font-weight: 600; color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+}
+
 /* ---------- result list ---------- */
 .results { list-style: none; padding: 0; margin: 14px 0 0; }
 .results:not(:empty) {
@@ -492,6 +512,7 @@ textarea {
     </div>
     <div class="header-actions">
       <span class="pill">🔒 100% 브라우저 처리 · 업로드 없음</span>
+      <button class="btn" id="shareTool" type="button" title="지금 보고 있는 도구 링크를 공유해요">🔗 공유하기</button>
     </div>
   </div>
   <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
@@ -584,6 +605,8 @@ textarea {
       <p id="summaryText" aria-live="polite"></p>
       <div class="summary-actions">
         <button id="zipBtn" class="btn primary" type="button">ZIP으로 모두 저장</button>
+        <button id="saveAllBtn" class="btn" type="button">개별 파일로 모두 저장</button>
+        <button id="shareCompress" class="btn" type="button">🔗 공유하기</button>
         <button id="clearBtn" class="btn" type="button">전체 지우기</button>
       </div>
     </section>
@@ -666,6 +689,7 @@ textarea {
           <button class="btn" id="bgZoom" type="button">크게 미리보기</button>
           <button class="btn primary" id="bgSavePng" type="button">PNG 다운로드 (최대 화질)</button>
           <button class="btn" id="bgSaveOpt" type="button">압축해서 다운로드</button>
+          <button class="btn" id="bgShare" type="button">🔗 공유하기</button>
         </div>
       </div>
       <div id="exBody" hidden>
@@ -678,6 +702,8 @@ textarea {
           <ul id="exQueue" class="ex-queue"></ul>
           <div class="btn-row">
             <button class="btn primary" id="exZip" type="button">ZIP으로 모두 저장</button>
+            <button class="btn" id="exSaveAll" type="button">개별 파일로 모두 저장</button>
+            <button class="btn" id="exShare" type="button">🔗 공유하기</button>
             <button class="btn" id="exOptim" type="button">⚡ 1920px 기준 압축</button>
             <button class="btn" id="exClear" type="button">대기열 비우기</button>
           </div>
@@ -744,6 +770,7 @@ textarea {
           <button class="btn primary" id="svgDownload" type="button" disabled>SVG 다운로드</button>
           <button class="btn" id="svgOptimize" type="button" disabled>🔧 한 번 더 최적화</button>
           <button class="btn" id="svgCopy" type="button" disabled>SVG 코드 복사</button>
+          <button class="btn" id="svgShare" type="button">🔗 공유하기</button>
         </div>
       </div>
     </div>
@@ -780,6 +807,7 @@ textarea {
         </div>
         <div class="btn-row">
           <button class="btn primary" id="pdfExport" type="button">PDF로 내보내기</button>
+          <button class="btn" id="pdfShare" type="button">🔗 공유하기</button>
           <button class="btn" id="pdfClear" type="button">대기열 비우기</button>
         </div>
         <p class="muted" id="pdfStat" role="status"></p>
@@ -809,6 +837,7 @@ textarea {
           <button class="btn primary" id="copyUri" type="button">Data URI 복사</button>
           <button class="btn" id="copyImg" type="button">&lt;img&gt; 태그 복사</button>
           <button class="btn" id="copyCss" type="button">CSS background 복사</button>
+          <button class="btn" id="b64Share" type="button">🔗 공유하기</button>
         </div>
       </div>
     </div>
@@ -824,6 +853,7 @@ textarea {
         <p id="b64DecStats" class="muted"></p>
         <div class="btn-row">
           <button class="btn primary" id="b64DecSave" type="button">이미지로 저장</button>
+          <button class="btn" id="b64DecShare" type="button">🔗 공유하기</button>
           <button class="btn" id="b64DecPreview" type="button">미리보기</button>
         </div>
         <div class="dec-compress">
@@ -869,6 +899,13 @@ textarea {
         <p id="metaSummary" class="muted svg-opts"></p>
         <div id="metaList" class="meta-list"></div>
         <div class="settings-grid svg-opts">
+          <div class="field field-wide">
+            <label class="field-label" for="metaName">파일 이름 <span class="sub">— 저장될 이름이에요. 비워두면 원래 이름을 써요</span></label>
+            <div class="name-row">
+              <input type="text" id="metaName" maxlength="150" placeholder="파일 이름">
+              <span class="name-ext" id="metaNameExt">.jpg</span>
+            </div>
+          </div>
           <div class="field field-wide" id="metaCamField">
             <span class="field-label">카메라 <span class="sub">— 기종을 고르면 실제 EXIF 표기 형식(Make/Model/소프트웨어)으로 채워져요</span></span>
             <select id="metaCamSel"></select>
@@ -935,6 +972,7 @@ textarea {
         </div>
         <div class="btn-row">
           <button class="btn primary" id="metaSave" type="button">적용해서 다운로드</button>
+          <button class="btn" id="metaShare" type="button">🔗 적용해서 공유·저장</button>
           <button class="btn" id="metaStrip" type="button">메타데이터 전부 제거</button>
         </div>
         <p class="settings-hint">빈 칸(또는 ‘태그 없음’)으로 두면 해당 항목은 저장되지 않아요 — 기존 값도 삭제돼요.</p>
@@ -1016,21 +1054,41 @@ textarea {
 
   /* ================= tabs ================= */
   var tabs = [
-    { btn: $('#tabCompress'), panel: $('#panel-compress') },
-    { btn: $('#tabBg'), panel: $('#panel-bg') },
-    { btn: $('#tabSvg'), panel: $('#panel-svg') },
-    { btn: $('#tabPdf'), panel: $('#panel-pdf') },
-    { btn: $('#tabBase64'), panel: $('#panel-base64') },
-    { btn: $('#tabMeta'), panel: $('#panel-meta') }
+    { btn: $('#tabCompress'), panel: $('#panel-compress'), key: 'compress', label: '이미지 압축', desc: '사진 용량을 화질 그대로 줄여요' },
+    { btn: $('#tabBg'), panel: $('#panel-bg'), key: 'bg', label: '배경 제거 · 요소 추출', desc: '클릭 한 번으로 배경을 지우고 원하는 요소만 뽑아요' },
+    { btn: $('#tabSvg'), panel: $('#panel-svg'), key: 'svg', label: 'SVG 변환', desc: '이미지를 선명한 벡터 SVG로 바꿔요' },
+    { btn: $('#tabPdf'), panel: $('#panel-pdf'), key: 'pdf', label: 'PDF 만들기', desc: '이미지 여러 장을 PDF 한 권으로 묶어요' },
+    { btn: $('#tabBase64'), panel: $('#panel-base64'), key: 'base64', label: 'Base64 도구', desc: '이미지 ↔ Data URI 변환' },
+    { btn: $('#tabMeta'), panel: $('#panel-meta'), key: 'meta', label: '메타데이터 보기·편집', desc: '거의 모든 파일의 속성 정보를 보고 고쳐요' }
   ];
-  tabs.forEach(function (t) {
-    t.btn.addEventListener('click', function () {
-      tabs.forEach(function (o) {
-        var on = o === t;
-        o.btn.setAttribute('aria-selected', on ? 'true' : 'false');
-        o.panel.hidden = !on;
-      });
+  var curTab = tabs[0];
+  function selectTab(t, push) {
+    curTab = t;
+    tabs.forEach(function (o) {
+      var on = o === t;
+      o.btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      o.panel.hidden = !on;
     });
+    if (push && location.hash !== '#' + t.key) {
+      try { history.replaceState(null, '', '#' + t.key); } catch (e) {}
+    }
+  }
+  tabs.forEach(function (t) {
+    t.btn.addEventListener('click', function () { selectTab(t, true); });
+  });
+  function tabFromHash() {
+    var h = (location.hash || '').replace(/^#/, '');
+    for (var i = 0; i < tabs.length; i++) if (tabs[i].key === h) return tabs[i];
+    return null;
+  }
+  (function () {
+    var t = tabFromHash();
+    if (t) selectTab(t, false);
+  })();
+  /* 공유받은 링크(#svg 등)로 들어오거나 주소만 바뀔 때도 해당 도구가 열리게 */
+  window.addEventListener('hashchange', function () {
+    var t = tabFromHash();
+    if (t && t !== curTab) selectTab(t, false);
   });
 
   /* ================= toast ================= */
@@ -1123,14 +1181,149 @@ textarea {
     ta.remove();
     return ok;
   }
-  function saveBlob(blob, name) {
+  /* ================= 저장 · 공유 =================
+     모바일(특히 iOS/PWA)에서는 blob: 링크의 자동 다운로드가 막히거나 이미지를 뷰어로
+     열어버려서, 사용자가 '이미지 저장'으로 다시 인코딩된 사본을 받게 된다 —
+     그러면 방금 넣은 메타데이터가 사라진다.
+     그래서 모바일에서는 ① 자동 다운로드를 시도하고 ② 원본 바이트 그대로를 넘겨주는
+     저장/공유 시트를 함께 띄워 확실한 경로를 남긴다. */
+  var isMobileUA = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
+  function toFile(blob, name) {
+    try { return new File([blob], name, { type: blob.type || 'application/octet-stream' }); }
+    catch (e) { return null; }
+  }
+  function canShareFiles(files) {
+    if (!files || !files.length || !navigator.share || !navigator.canShare) return false;
+    try { return navigator.canShare({ files: files }); } catch (e) { return false; }
+  }
+  /* 파일을 OS 공유 시트로 넘긴다(바이트 그대로 — 재인코딩 없음). */
+  function shareFiles(files, title) {
+    if (!canShareFiles(files)) return Promise.resolve('unsupported');
+    return navigator.share({ files: files, title: title || files[0].name })
+      .then(function () { return 'shared'; })
+      .catch(function (err) { return err && err.name === 'AbortError' ? 'canceled' : 'failed'; });
+  }
+
+  function anchorSave(blob, name) {
     var a = document.createElement('a');
     var url = URL.createObjectURL(blob);
     a.href = url; a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    return url;
+  }
+
+  var saveBar = null, saveBarUrl = null, saveBarTimer = null;
+  function hideSaveBar() {
+    if (saveBarTimer) { clearTimeout(saveBarTimer); saveBarTimer = null; }
+    if (saveBar) saveBar.hidden = true;
+    document.body.classList.remove('save-open');
+    if (saveBarUrl) { URL.revokeObjectURL(saveBarUrl); saveBarUrl = null; }
+  }
+  function showSaveBar(blob, name, url) {
+    if (!saveBar) {
+      saveBar = document.createElement('div');
+      saveBar.className = 'save-bar';
+      saveBar.hidden = true;
+      saveBar.innerHTML =
+        '<p class="sb-name"></p>' +
+        '<p class="sb-hint">자동 저장이 안 됐다면 여기서 저장하세요. <b>공유</b>로 저장하면 원본 그대로(메타데이터 포함) 저장돼요.</p>' +
+        '<div class="btn-row">' +
+        '<a class="btn primary" id="sbSave" download>기기에 저장</a>' +
+        '<button class="btn" id="sbShare" type="button">공유</button>' +
+        '<button class="btn" id="sbClose" type="button">닫기</button>' +
+        '</div>';
+      document.body.appendChild(saveBar);
+      saveBar.querySelector('#sbClose').addEventListener('click', hideSaveBar);
+      saveBar.querySelector('#sbShare').addEventListener('click', function () {
+        var f = toFile(saveBar._blob, saveBar._name);
+        if (!f || !canShareFiles([f])) return toast('이 브라우저는 파일 공유를 지원하지 않아요.');
+        shareFiles([f]).then(function (r) {
+          if (r === 'shared') { toast('공유 시트로 넘겼어요.'); hideSaveBar(); }
+          else if (r === 'failed') toast('공유에 실패했어요.');
+        });
+      });
+    }
+    if (saveBarTimer) clearTimeout(saveBarTimer);
+    if (saveBarUrl && saveBarUrl !== url) URL.revokeObjectURL(saveBarUrl);
+    saveBarUrl = url;
+    saveBar._blob = blob;
+    saveBar._name = name;
+    saveBar.querySelector('.sb-name').textContent = '💾 ' + name + ' · ' + fmtBytes(blob.size);
+    var a = saveBar.querySelector('#sbSave');
+    a.href = url;
+    a.download = name;
+    saveBar.querySelector('#sbShare').hidden = !canShareFiles([toFile(blob, name)].filter(Boolean));
+    saveBar.hidden = false;
+    document.body.classList.add('save-open');
+    saveBarTimer = setTimeout(hideSaveBar, 45000);
+  }
+
+  function saveBlob(blob, name) {
+    var url = anchorSave(blob, name);
+    if (isMobileUA) showSaveBar(blob, name, url);
+  }
+
+  /* 각 탭의 '공유하기' — 결과 파일이 있으면 파일을 그대로 공유하고,
+     파일 공유를 지원하지 않으면 이 도구 링크를 공유(또는 복사)한다. */
+  function shareLink() {
+    var base = location.origin + location.pathname;
+    return base + '#' + (curTab ? curTab.key : 'compress');
+  }
+  function sharePage() {
+    var url = shareLink();
+    var t = curTab || tabs[0];
+    if (navigator.share) {
+      return navigator.share({ title: '이미지 변환 — ' + t.label, text: t.desc + ' · 100% 브라우저 처리, 업로드 없음', url: url })
+        .then(function () { return 'shared'; })
+        .catch(function (err) {
+          if (err && err.name === 'AbortError') return 'canceled';
+          return copyText(url).then(function (ok) { toast(ok ? '링크를 복사했어요.' : '공유에 실패했어요.'); return 'copied'; });
+        });
+    }
+    return copyText(url).then(function (ok) {
+      toast(ok ? '링크를 복사했어요 — 붙여넣기로 공유하세요.' : '공유를 지원하지 않는 브라우저예요.');
+      return 'copied';
+    });
+  }
+  /* getFiles: () => File[] | Promise<File[]> — 없거나 비면 링크 공유로 넘어간다 */
+  function shareResult(getFiles, title) {
+    var btnBusy = false;
+    return Promise.resolve()
+      .then(function () { return getFiles ? getFiles() : []; })
+      .catch(function () { return []; })
+      .then(function (files) {
+        files = (files || []).filter(Boolean);
+        if (!files.length || !canShareFiles(files)) return sharePage();
+        return shareFiles(files, title).then(function (r) {
+          if (r === 'shared') toast('공유 시트로 넘겼어요.');
+          else if (r === 'failed') return sharePage();
+          return r;
+        });
+      });
+  }
+  /* 헤더의 공유 버튼 — 어느 탭에서든 지금 보고 있는 도구의 링크를 공유한다 */
+  $('#shareTool').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    sharePage().catch(function () {}).then(function () { btn.disabled = false; });
+  });
+
+  /* 공유 버튼 공통 배선 — 처리 중 중복 클릭 방지 */
+  function bindShare(sel, getFiles, title) {
+    var btn = $(sel);
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      shareResult(getFiles, typeof title === 'function' ? title() : title)
+        .catch(function () { toast('공유에 실패했어요.'); })
+        .then(function () { btn.disabled = false; });
+    });
   }
 
   /* ================= settings ================= */
@@ -1166,7 +1359,7 @@ textarea {
     webpWarn: $('#webpWarn'),
     dropzone: $('#dropzone'), fileInput: $('#fileInput'),
     summary: $('#summary'), summaryText: $('#summaryText'),
-    results: $('#results'), zipBtn: $('#zipBtn'), clearBtn: $('#clearBtn')
+    results: $('#results'), zipBtn: $('#zipBtn'), saveAllBtn: $('#saveAllBtn'), clearBtn: $('#clearBtn')
   };
 
   function syncSettingsUI() {
@@ -1887,14 +2080,14 @@ textarea {
     if (errs > 0) txt += ' · ' + errs + '장 실패';
     el.summaryText.textContent = txt;
     el.zipBtn.disabled = done.length === 0;
+    el.saveAllBtn.disabled = done.length === 0;
   }
 
-  el.zipBtn.addEventListener('click', function () {
+  /* 완료된 결과 → 이름이 겹치지 않는 {name, blob} 목록 (ZIP·개별 저장·공유 공통) */
+  function doneEntries() {
     var done = items.filter(function (i) { return i.status === 'done'; });
-    if (!done.length) return;
-    el.zipBtn.disabled = true;
     var used = Object.create(null);
-    var entries = done.map(function (i) {
+    return done.map(function (i) {
       var name = outName(i);
       if (used[name]) {
         var m = name.match(/^(.*)(\.[^.]+)$/);
@@ -1906,6 +2099,54 @@ textarea {
       used[name] = 1;
       return { name: name, blob: i.result.blob };
     });
+  }
+
+  /* 파일을 하나씩 연달아 내려받는다 — 브라우저의 연속 다운로드 차단을 피해 간격을 둔다 */
+  function sequentialDownload(entries) {
+    return new Promise(function (res) {
+      var i = 0;
+      (function step() {
+        if (i >= entries.length) return res(entries.length);
+        anchorSave(entries[i].blob, entries[i].name);
+        i++;
+        setTimeout(step, 300);
+      })();
+    });
+  }
+  /* '개별 파일로 모두 저장' — ZIP으로 묶지 않고 파일 하나하나로 저장한다.
+     모바일에서는 공유 시트로 전체를 한 번에 넘겨 사진·파일 앱에 그대로 담고,
+     그 외에는 순차 다운로드한다. */
+  function saveAllIndividually(entries, what) {
+    if (!entries.length) return Promise.resolve();
+    var files = isMobileUA ? entries.map(function (e) { return toFile(e.blob, e.name); }).filter(Boolean) : [];
+    if (files.length && canShareFiles(files)) {
+      return shareFiles(files, entries.length + '개 ' + (what || '파일')).then(function (r) {
+        if (r === 'shared') { toast(entries.length + '개를 공유 시트로 넘겼어요.'); return; }
+        if (r === 'canceled') return;
+        return sequentialDownload(entries).then(function (n) { toast(n + '개를 각각 저장했어요.'); });
+      });
+    }
+    return sequentialDownload(entries).then(function (n) {
+      toast(n + '개를 각각 저장했어요. (브라우저가 여러 파일 다운로드를 물어보면 허용해 주세요)');
+    });
+  }
+
+  el.saveAllBtn.addEventListener('click', function () {
+    var entries = doneEntries();
+    if (!entries.length) return;
+    el.saveAllBtn.disabled = true;
+    saveAllIndividually(entries, '이미지').catch(function () {
+      toast('저장에 실패했어요.');
+    }).then(function () { el.saveAllBtn.disabled = false; });
+  });
+  bindShare('#shareCompress', function () {
+    return doneEntries().map(function (e) { return toFile(e.blob, e.name); });
+  }, '압축한 이미지');
+
+  el.zipBtn.addEventListener('click', function () {
+    var entries = doneEntries();
+    if (!entries.length) return;
+    el.zipBtn.disabled = true;
     makeZip(entries).then(function (zip) {
       var d = new Date();
       var pad = function (n) { return String(n).padStart(2, '0'); };
@@ -2306,6 +2547,18 @@ textarea {
     if (!decBlob) return;
     saveBlob(decBlob, 'decoded.' + extFor(decBlob.type));
   });
+  bindShare('#b64DecShare', function () {
+    if (!decBlob) return [];
+    var f = toFile(decBlob, 'decoded.' + extFor(decBlob.type));
+    return f ? [f] : [];
+  }, '디코딩한 이미지');
+  /* Data URI는 그대로 공유하면 너무 길어 텍스트 파일로 넘긴다 */
+  bindShare('#b64Share', function () {
+    var uri = $('#b64Out').value;
+    if (!uri) return [];
+    var f = toFile(new Blob([uri], { type: 'text/plain' }), 'data-uri.txt');
+    return f ? [f] : [];
+  }, 'Data URI');
   b64DecPreview.addEventListener('click', function () {
     if (decUrl) openLightbox(decUrl, b64DecStats.textContent || '디코딩한 이미지');
   });
@@ -2559,12 +2812,10 @@ textarea {
     return new Blob(parts, { type: 'application/pdf' });
   }
 
-  function exportPdfQueue() {
+  function buildPdfQueue() {
     var q = pdfState.queue.slice();
-    if (!q.length) return;
+    if (!q.length) return Promise.resolve(null);
     var stat = $('#pdfStat');
-    var btn = $('#pdfExport');
-    btn.disabled = true;
     var quality = parseFloat($('#pdfQ').value);
     var pages = [];
     var chain = Promise.resolve();
@@ -2589,19 +2840,35 @@ textarea {
         });
       });
     });
-    chain.then(function () {
+    return chain.then(function () {
       var name = ($('#pdfName').value.trim() || $('#pdfName').placeholder || 'images').replace(/\.pdf$/i, '');
       var blob = buildImagesPdf(pages, name, pdfPageSize);
-      saveBlob(blob, name + '.pdf');
-      stat.textContent = 'PDF 저장 완료 — ' + q.length + '장 · ' + fmtBytes(blob.size);
-      btn.disabled = false;
-      toast('PDF로 저장했어요 (' + fmtBytes(blob.size) + ')');
-    }).catch(function () {
-      btn.disabled = false;
-      stat.textContent = '';
-      toast('PDF 생성에 실패했어요.');
+      return { blob: blob, name: name + '.pdf', count: q.length };
     });
   }
+
+  function exportPdfQueue() {
+    if (!pdfState.queue.length) return;
+    var stat = $('#pdfStat');
+    var btn = $('#pdfExport');
+    btn.disabled = true;
+    buildPdfQueue().then(function (r) {
+      if (!r) return;
+      saveBlob(r.blob, r.name);
+      stat.textContent = 'PDF 저장 완료 — ' + r.count + '장 · ' + fmtBytes(r.blob.size);
+      toast('PDF로 저장했어요 (' + fmtBytes(r.blob.size) + ')');
+    }).catch(function () {
+      stat.textContent = '';
+      toast('PDF 생성에 실패했어요.');
+    }).then(function () { btn.disabled = false; });
+  }
+  bindShare('#pdfShare', function () {
+    if (!pdfState.queue.length) return [];
+    return buildPdfQueue().then(function (r) {
+      var f = r && toFile(r.blob, r.name);
+      return f ? [f] : [];
+    });
+  }, 'PDF');
 
   $('#pdfFile').addEventListener('change', function () {
     if (this.files && this.files.length) addPdfImages(this.files);
@@ -3269,6 +3536,12 @@ textarea {
     if (!svgState.previewUrl) return;
     openLightbox(svgState.previewUrl, baseName(svgState.file.name || 'image') + '.svg · ' + fmtBytes(svgState.svg.length));
   });
+  bindShare('#svgShare', function () {
+    if (!svgState.svg) return [];
+    var f = toFile(new Blob([svgState.svg], { type: 'image/svg+xml' }),
+      baseName(svgState.file.name || 'image') + '.svg');
+    return f ? [f] : [];
+  }, 'SVG 파일');
 
   /* ================= background removal =================
      테두리 픽셀을 k-means로 군집화해 배경색 모델을 만들고,
@@ -3973,6 +4246,13 @@ textarea {
       toast('압축 저장 완료 (' + fmtBytes(res.b.size) + ')');
     });
   });
+  bindShare('#bgShare', function () {
+    if (!bgState.mask) return [];
+    return encodeCanvas(bgComposeFull(), 'image/png').then(function (b) {
+      var f = b && toFile(b, baseName(bgState.file.name || 'image') + '-nobg.png');
+      return f ? [f] : [];
+    });
+  }, '배경을 지운 이미지');
   $('#bgZoom').addEventListener('click', function () {
     if (!bgState.mask) return;
     bgComposeFull().toBlob(function (b) {
@@ -4462,6 +4742,21 @@ textarea {
       toast('ZIP으로 ' + exState.queue.length + '개를 저장했어요.');
     }).catch(function () { toast('ZIP 생성에 실패했어요.'); });
   });
+  function exEntries() {
+    return exState.queue.map(function (q) { return { name: q.name, blob: q.blob }; });
+  }
+  $('#exSaveAll').addEventListener('click', function () {
+    var btn = this;
+    var entries = exEntries();
+    if (!entries.length) return;
+    btn.disabled = true;
+    saveAllIndividually(entries, '요소').catch(function () {
+      toast('저장에 실패했어요.');
+    }).then(function () { btn.disabled = false; });
+  });
+  bindShare('#exShare', function () {
+    return exEntries().map(function (e) { return toFile(e.blob, e.name); });
+  }, '추출한 요소');
   $('#exClear').addEventListener('click', function () {
     exState.queue.forEach(function (q) { URL.revokeObjectURL(q.url); });
     exState.queue = [];
@@ -6046,6 +6341,7 @@ textarea {
     }
     metaSwSel.value = swId;
     metaOriSel.value = String(metaOri || 0);
+    updateMetaExt();
   }
   metaCamSel.addEventListener('change', function () {
     var cp = CAM_PRESETS.filter(function (c) { return c.id === metaCamSel.value; })[0];
@@ -6069,6 +6365,10 @@ textarea {
   });
   metaOriSel.addEventListener('change', function () {
     metaOri = parseInt(metaOriSel.value, 10) || 0;
+    updateMetaExt();
+  });
+  ['#metaLat', '#metaLon'].forEach(function (sel) {
+    $(sel).addEventListener('input', updateMetaExt);
   });
   [metaMake, metaModel, metaSoftware].forEach(function (inp) {
     inp.addEventListener('input', syncMetaChips);
@@ -6591,19 +6891,53 @@ textarea {
     metaSoftware.disabled = !swOk;
     $('#metaSwSel').disabled = !swOk;
     $('#metaSave').disabled = !ed;
+    $('#metaShare').disabled = !ed;
     $('#metaStrip').disabled = !ed;
+    $('#metaName').disabled = !ed;
+    $('#metaName').value = '';
+    updateMetaExt();
     $('#metaGpsNote').textContent = st.note || '';
     $('#metaGpsNote').hidden = !st.note;
     $('#metaBody').hidden = false;
   }
 
-  function metaOutName(suffix) {
-    var nm = metaState.file.name || 'file';
+  /* ---------- 저장 이름 ---------- */
+  function metaOrigParts() {
+    var nm = (metaState.file && metaState.file.name) || 'file';
     var dot = nm.lastIndexOf('.');
     var caps = META_CAPS[metaState.kind] || META_CAPS.other;
-    var base = dot > 0 ? nm.slice(0, dot) : nm;
-    var ext = dot > 0 ? nm.slice(dot) : caps.ext;
-    return base + suffix + ext;
+    return { base: dot > 0 ? nm.slice(0, dot) : nm, ext: dot > 0 ? nm.slice(dot) : (caps.ext || '') };
+  }
+  /* PNG에 EXIF 전용 항목이 들어가면 저장 시 JPEG로 바뀌므로 확장자도 따라간다 */
+  function metaNeedsExifNow() {
+    var latS = $('#metaLat').value.trim();
+    return !!(metaMake.value.trim() || metaModel.value.trim() || metaOri ||
+      (latS !== '' && isFinite(parseFloat(latS))));
+  }
+  function metaSaveExt() {
+    if (metaState.kind === 'png' && metaNeedsExifNow()) return '.jpg';
+    return metaOrigParts().ext;
+  }
+  function updateMetaExt() {
+    if (!metaState.file) return;
+    var ext = metaSaveExt();
+    $('#metaNameExt').textContent = ext || '(확장자 없음)';
+    $('#metaName').placeholder = metaOrigParts().base + '-meta';
+  }
+  /* 이름 칸이 비어 있으면 '원본이름-meta', 채워져 있으면 그 이름 그대로 저장한다 */
+  function metaOutName(suffix) {
+    var p = metaOrigParts();
+    var ext = suffix === '-clean' ? p.ext : metaSaveExt();
+    var typed = ($('#metaName').value || '').trim()
+      .replace(/[\\/:*?"<>|]/g, '')
+      .replace(/[\x00-\x1f]/g, '')
+      .replace(/^\.+/, '')
+      .trim();
+    if (typed && ext && typed.length > ext.length &&
+        typed.slice(-ext.length).toLowerCase() === ext.toLowerCase()) {
+      typed = typed.slice(0, -ext.length);
+    }
+    return (typed || (p.base + suffix)) + ext;
   }
 
   $('#metaFile').addEventListener('change', function () {
@@ -6619,14 +6953,17 @@ textarea {
   metaDropzone.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#metaFile').click(); }
   });
-  $('#metaSave').addEventListener('click', function () {
-    if (!metaState.bytes || !metaState.editable) return;
+  /* 입력값 → 결과 파일(Blob). 저장·공유가 같은 결과를 쓰도록 분리했다.
+     실패하거나 입력이 잘못되면 안내 후 null. */
+  function metaBuildOut() {
+    if (!metaState.bytes || !metaState.editable) return null;
     var latS = $('#metaLat').value.trim(), lonS = $('#metaLon').value.trim();
     var lat = latS === '' ? null : parseFloat(latS);
     var lon = lonS === '' ? null : parseFloat(lonS);
-    if ((lat === null) !== (lon === null)) return toast('위도와 경도를 함께 입력해 주세요.');
+    if ((lat === null) !== (lon === null)) { toast('위도와 경도를 함께 입력해 주세요.'); return null; }
     if (lat !== null && (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)) {
-      return toast('GPS 좌표 범위를 확인해 주세요 (위도 ±90, 경도 ±180).');
+      toast('GPS 좌표 범위를 확인해 주세요 (위도 ±90, 경도 ±180).');
+      return null;
     }
     var f = {
       desc: $('#metaDesc').value.trim(),
@@ -6737,17 +7074,47 @@ textarea {
         out = new Blob([new XMLSerializer().serializeToString(sdoc2)], { type: 'image/svg+xml' });
       }
     }
-    if (!out) return toast('저장용 파일을 만들지 못했어요.');
-    var outName = pngConverted
-      ? baseName(metaState.file.name || 'image') + '-meta.jpg'
-      : metaOutName('-meta');
-    Promise.resolve(out).then(function (blob) {
-      if (!blob) return toast('저장용 파일을 만들지 못했어요.');
-      saveBlob(blob, outName);
-      toast(pngConverted
+    if (!out) { toast('저장용 파일을 만들지 못했어요.'); return null; }
+    var outName = metaOutName('-meta');
+    return Promise.resolve(out).then(function (blob) {
+      if (!blob) { toast('저장용 파일을 만들지 못했어요.'); return null; }
+      return { blob: blob, name: outName, pngConverted: pngConverted };
+    });
+  }
+
+  $('#metaSave').addEventListener('click', function () {
+    var p = metaBuildOut();
+    if (!p) return;
+    p.then(function (r) {
+      if (!r) return;
+      saveBlob(r.blob, r.name);
+      toast(r.pngConverted
         ? 'PNG에 담을 수 없는 항목이 있어 JPEG로 변환해 EXIF로 저장했어요.'
         : '메타데이터를 적용해 저장했어요.');
     });
+  });
+  /* 모바일에서는 blob 다운로드가 뷰어로 열려버려, 사용자가 '이미지 저장'으로 다시
+     인코딩된 사본을 받으면 방금 넣은 메타데이터가 사라진다.
+     공유 시트로 File을 넘기면 바이트 그대로 사진·파일 앱에 저장된다. */
+  $('#metaShare').addEventListener('click', function () {
+    var btn = this;
+    var p = metaBuildOut();
+    if (!p) return;
+    btn.disabled = true;
+    p.then(function (r) {
+      if (!r) return;
+      var file = toFile(r.blob, r.name);
+      if (file && canShareFiles([file])) {
+        return shareFiles([file], r.name).then(function (res) {
+          if (res === 'shared') toast('메타데이터를 적용해 공유했어요 — 원본 그대로 저장돼요.');
+          else if (res === 'failed') { saveBlob(r.blob, r.name); toast('공유가 안 돼 다운로드로 저장했어요.'); }
+        });
+      }
+      saveBlob(r.blob, r.name);
+      toast('이 브라우저는 파일 공유를 지원하지 않아 다운로드로 저장했어요.');
+    }).catch(function () {
+      toast('저장에 실패했어요.');
+    }).then(function () { btn.disabled = false; });
   });
   $('#metaStrip').addEventListener('click', function () {
     if (!metaState.bytes || !metaState.editable) return;
