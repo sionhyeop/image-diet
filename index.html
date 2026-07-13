@@ -173,6 +173,15 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .btn.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
+/* 공유 버튼 — 저장/실행 버튼과 역할이 달라 조용히 구분한다.
+   색을 쓰지 않고 테두리만 점선 + 흐린 글자로 (튀지 않게) */
+.btn.btn-share {
+  background: transparent; border-style: dashed; border-color: var(--border);
+  color: var(--muted); font-weight: 600;
+}
+.btn.btn-share:hover:not(:disabled) { color: var(--accent-strong); border-color: var(--accent); background: var(--accent-soft); }
+.btn.btn-share .sh-ico { margin-right: 5px; opacity: .75; font-weight: 400; }
+
 /* ---------- 모바일 저장 시트 (blob 자동 다운로드가 막히는 환경 대비) ---------- */
 .save-bar {
   position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
@@ -323,6 +332,23 @@ body.save-open #toasts { bottom: 150px; }
 .map-wrap { position: relative; height: min(58vh, 460px); background: #dbe3ea; }
 /* GPS 필드에 처음부터 임베딩되는 인라인 지도 */
 .map-wrap-inline { height: 280px; margin-top: 10px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.map-search { display: flex; gap: 8px; margin-top: 10px; }
+.map-search input { flex: 1 1 auto; min-width: 0; }
+.map-search-msg { margin: 6px 0 0; font-size: 12.5px; }
+.map-results {
+  list-style: none; margin: 8px 0 0; padding: 4px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2);
+  max-height: 176px; overflow-y: auto;
+}
+.map-results[hidden] { display: none; }
+.map-results li { margin: 0; }
+.map-results button {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px; color: var(--text);
+  line-height: 1.4;
+}
+.map-results button:hover, .map-results button:focus-visible { background: var(--accent-soft); color: var(--accent-strong); }
+.map-results .mr-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
 .map-inline-cap { font-size: 12px; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
 #mapCanvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #mapCanvas.dragging { cursor: grabbing; }
@@ -413,6 +439,10 @@ textarea {
   cursor: pointer; transition: color .15s; touch-action: manipulation;
 }
 .seg-opt.on { color: var(--accent-strong); }
+/* 버튼 줄 안에 들어가는 작은 토글 (저장 방식 선택) */
+.seg-slide.seg-sm { max-width: none; flex: none; border-radius: 10px; padding: 3px; }
+.seg-slide.seg-sm .seg-thumb { top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); border-radius: 8px; }
+.seg-slide.seg-sm .seg-opt { padding: 6px 12px; font-size: 13px; font-weight: 600; white-space: nowrap; border-radius: 8px; }
 /* 결과 박스를 이미지 크기에 딱 맞추고(=여백 없는 컷) 바깥 영역 가운데 정렬 */
 #bgBox { cursor: col-resize; width: -moz-fit-content; width: fit-content; max-width: 100%; margin-left: auto; margin-right: auto; }
 #bgBox.painting { cursor: crosshair; }
@@ -512,7 +542,7 @@ textarea {
     </div>
     <div class="header-actions">
       <span class="pill">🔒 100% 브라우저 처리 · 업로드 없음</span>
-      <button class="btn" id="shareTool" type="button" title="지금 보고 있는 도구 링크를 공유해요">🔗 공유하기</button>
+      <button class="btn btn-share" id="shareTool" type="button" title="지금 보고 있는 도구 링크를 공유해요"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
     </div>
   </div>
   <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
@@ -604,9 +634,13 @@ textarea {
     <section id="summary" class="card summary" hidden>
       <p id="summaryText" aria-live="polite"></p>
       <div class="summary-actions">
-        <button id="zipBtn" class="btn primary" type="button">ZIP으로 모두 저장</button>
-        <button id="saveAllBtn" class="btn" type="button">개별 파일로 모두 저장</button>
-        <button id="shareCompress" class="btn" type="button">🔗 공유하기</button>
+        <div class="seg-slide seg-sm" id="saveModeSeg" role="tablist" aria-label="저장 방식 선택">
+          <div class="seg-thumb" aria-hidden="true"></div>
+          <button type="button" class="seg-opt on" data-savemode="zip" role="tab" aria-selected="true">🗜️ ZIP 한 개로</button>
+          <button type="button" class="seg-opt" data-savemode="each" role="tab" aria-selected="false">🖼️ 개별 파일로</button>
+        </div>
+        <button id="saveAllBtn" class="btn primary" type="button">모두 저장</button>
+        <button id="shareCompress" class="btn btn-share" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
         <button id="clearBtn" class="btn" type="button">전체 지우기</button>
       </div>
     </section>
@@ -689,7 +723,7 @@ textarea {
           <button class="btn" id="bgZoom" type="button">크게 미리보기</button>
           <button class="btn primary" id="bgSavePng" type="button">PNG 다운로드 (최대 화질)</button>
           <button class="btn" id="bgSaveOpt" type="button">압축해서 다운로드</button>
-          <button class="btn" id="bgShare" type="button">🔗 공유하기</button>
+          <button class="btn btn-share" id="bgShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
         </div>
       </div>
       <div id="exBody" hidden>
@@ -703,7 +737,7 @@ textarea {
           <div class="btn-row">
             <button class="btn primary" id="exZip" type="button">ZIP으로 모두 저장</button>
             <button class="btn" id="exSaveAll" type="button">개별 파일로 모두 저장</button>
-            <button class="btn" id="exShare" type="button">🔗 공유하기</button>
+            <button class="btn btn-share" id="exShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
             <button class="btn" id="exOptim" type="button">⚡ 1920px 기준 압축</button>
             <button class="btn" id="exClear" type="button">대기열 비우기</button>
           </div>
@@ -770,7 +804,7 @@ textarea {
           <button class="btn primary" id="svgDownload" type="button" disabled>SVG 다운로드</button>
           <button class="btn" id="svgOptimize" type="button" disabled>🔧 한 번 더 최적화</button>
           <button class="btn" id="svgCopy" type="button" disabled>SVG 코드 복사</button>
-          <button class="btn" id="svgShare" type="button">🔗 공유하기</button>
+          <button class="btn btn-share" id="svgShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
         </div>
       </div>
     </div>
@@ -807,7 +841,7 @@ textarea {
         </div>
         <div class="btn-row">
           <button class="btn primary" id="pdfExport" type="button">PDF로 내보내기</button>
-          <button class="btn" id="pdfShare" type="button">🔗 공유하기</button>
+          <button class="btn btn-share" id="pdfShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
           <button class="btn" id="pdfClear" type="button">대기열 비우기</button>
         </div>
         <p class="muted" id="pdfStat" role="status"></p>
@@ -837,7 +871,7 @@ textarea {
           <button class="btn primary" id="copyUri" type="button">Data URI 복사</button>
           <button class="btn" id="copyImg" type="button">&lt;img&gt; 태그 복사</button>
           <button class="btn" id="copyCss" type="button">CSS background 복사</button>
-          <button class="btn" id="b64Share" type="button">🔗 공유하기</button>
+          <button class="btn btn-share" id="b64Share" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
         </div>
       </div>
     </div>
@@ -853,7 +887,7 @@ textarea {
         <p id="b64DecStats" class="muted"></p>
         <div class="btn-row">
           <button class="btn primary" id="b64DecSave" type="button">이미지로 저장</button>
-          <button class="btn" id="b64DecShare" type="button">🔗 공유하기</button>
+          <button class="btn btn-share" id="b64DecShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
           <button class="btn" id="b64DecPreview" type="button">미리보기</button>
         </div>
         <div class="dec-compress">
@@ -957,6 +991,12 @@ textarea {
               <button class="btn primary" id="mapPick" type="button">📍 지도 중심으로 채우기</button>
             </div>
             <div id="mapInline" hidden>
+              <div class="map-search">
+                <input type="search" id="mapQ" placeholder="장소·주소로 찾기 (예: 제주 협재해수욕장, 서울시청)" autocomplete="off" aria-label="장소 검색">
+                <button class="btn" id="mapGo" type="button">검색</button>
+              </div>
+              <p class="muted map-search-msg" id="mapMsg" role="status" hidden></p>
+              <ul id="mapResults" class="map-results" hidden></ul>
               <div class="map-wrap map-wrap-inline">
                 <canvas id="mapCanvas"></canvas>
                 <div class="map-cross" aria-hidden="true"></div>
@@ -965,14 +1005,14 @@ textarea {
                   <button id="mapZoomOut" type="button" aria-label="축소">－</button>
                 </div>
               </div>
-              <p class="muted map-inline-cap"><span id="mapCoords"></span> · 지도를 움직여 십자선에 맞추고 ‘지도 중심으로 채우기’를 누르세요 · 지도 © OpenStreetMap</p>
+              <p class="muted map-inline-cap"><span id="mapCoords"></span> · 지도를 움직여 십자선에 맞추고 ‘지도 중심으로 채우기’를 누르세요 · 지도·검색 © OpenStreetMap (검색어만 전송돼요 — 사진은 전송되지 않아요)</p>
             </div>
             <p class="warn-text" id="metaGpsNote" hidden>PNG에는 카메라·방향·GPS 항목이 없어 저장되지 않아요.</p>
           </div>
         </div>
         <div class="btn-row">
           <button class="btn primary" id="metaSave" type="button">적용해서 다운로드</button>
-          <button class="btn" id="metaShare" type="button">🔗 적용해서 공유·저장</button>
+          <button class="btn btn-share" id="metaShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>적용해서 공유·저장</button>
           <button class="btn" id="metaStrip" type="button">메타데이터 전부 제거</button>
         </div>
         <p class="settings-hint">빈 칸(또는 ‘태그 없음’)으로 두면 해당 항목은 저장되지 않아요 — 기존 값도 삭제돼요.</p>
@@ -1359,7 +1399,7 @@ textarea {
     webpWarn: $('#webpWarn'),
     dropzone: $('#dropzone'), fileInput: $('#fileInput'),
     summary: $('#summary'), summaryText: $('#summaryText'),
-    results: $('#results'), zipBtn: $('#zipBtn'), saveAllBtn: $('#saveAllBtn'), clearBtn: $('#clearBtn')
+    results: $('#results'), saveModeSeg: $('#saveModeSeg'), saveAllBtn: $('#saveAllBtn'), clearBtn: $('#clearBtn')
   };
 
   function syncSettingsUI() {
@@ -2079,7 +2119,6 @@ textarea {
     if (busy > 0) txt += ' · ' + busy + '장 처리 중…';
     if (errs > 0) txt += ' · ' + errs + '장 실패';
     el.summaryText.textContent = txt;
-    el.zipBtn.disabled = done.length === 0;
     el.saveAllBtn.disabled = done.length === 0;
   }
 
@@ -2131,33 +2170,43 @@ textarea {
     });
   }
 
-  el.saveAllBtn.addEventListener('click', function () {
-    var entries = doneEntries();
-    if (!entries.length) return;
-    el.saveAllBtn.disabled = true;
-    saveAllIndividually(entries, '이미지').catch(function () {
-      toast('저장에 실패했어요.');
-    }).then(function () { el.saveAllBtn.disabled = false; });
-  });
-  bindShare('#shareCompress', function () {
-    return doneEntries().map(function (e) { return toFile(e.blob, e.name); });
-  }, '압축한 이미지');
-
-  el.zipBtn.addEventListener('click', function () {
-    var entries = doneEntries();
-    if (!entries.length) return;
-    el.zipBtn.disabled = true;
-    makeZip(entries).then(function (zip) {
+  function saveAsZip(entries) {
+    return makeZip(entries).then(function (zip) {
       var d = new Date();
       var pad = function (n) { return String(n).padStart(2, '0'); };
       saveBlob(zip, 'image-diet-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.zip');
       toast('ZIP 파일로 ' + entries.length + '장을 저장했어요.');
     }).catch(function () {
       toast('ZIP 생성에 실패했어요.');
-    }).then(function () {
-      el.zipBtn.disabled = false;
+    });
+  }
+
+  /* 저장 방식은 ZIP / 개별 파일 두 가지 — 슬라이딩 토글로 고르고 '모두 저장'이 실행한다 */
+  var saveMode = 'zip';
+  el.saveModeSeg.addEventListener('click', function (e) {
+    var b = e.target.closest('.seg-opt');
+    if (!b || b.dataset.savemode === saveMode) return;
+    saveMode = b.dataset.savemode;
+    el.saveModeSeg.classList.toggle('right', saveMode === 'each');
+    el.saveModeSeg.querySelectorAll('.seg-opt').forEach(function (o) {
+      var on = o.dataset.savemode === saveMode;
+      o.classList.toggle('on', on);
+      o.setAttribute('aria-selected', on ? 'true' : 'false');
     });
   });
+
+  el.saveAllBtn.addEventListener('click', function () {
+    var entries = doneEntries();
+    if (!entries.length) return;
+    el.saveAllBtn.disabled = true;
+    var job = saveMode === 'zip' ? saveAsZip(entries) : saveAllIndividually(entries, '이미지');
+    job.catch(function () {
+      toast('저장에 실패했어요.');
+    }).then(function () { el.saveAllBtn.disabled = false; });
+  });
+  bindShare('#shareCompress', function () {
+    return doneEntries().map(function (e) { return toFile(e.blob, e.name); });
+  }, '압축한 이미지');
 
   el.clearBtn.addEventListener('click', function () {
     items.slice().forEach(removeItem);
@@ -6874,6 +6923,10 @@ textarea {
     $('#mapPick').disabled = !gpsOk;
     /* GPS 가능 형식이면 지도를 처음부터 임베딩해 보여준다 */
     $('#mapInline').hidden = !gpsOk;
+    $('#mapQ').value = '';
+    $('#mapResults').hidden = true;
+    $('#mapResults').textContent = '';
+    mapSay('');
     if (gpsOk) {
       if (typeof m.lat === 'number' && isFinite(m.lat) && typeof m.lon === 'number' && isFinite(m.lon) &&
           Math.abs(m.lat) <= 85 && Math.abs(m.lon) <= 180) {
@@ -7308,7 +7361,87 @@ textarea {
   $('#mapPick').addEventListener('click', function () {
     $('#metaLat').value = mapState.lat.toFixed(6);
     $('#metaLon').value = mapState.lon.toFixed(6);
+    updateMetaExt();
     toast('위치를 선택했어요: ' + mapState.lat.toFixed(4) + ', ' + mapState.lon.toFixed(4));
+  });
+
+  /* ---------- 장소 검색 (OpenStreetMap Nominatim) ----------
+     검색어만 나가고 사진은 전송되지 않는다. 결과를 고르면 지도가 이동하고
+     위도·경도 칸이 바로 채워진다. */
+  var mapQ = $('#mapQ'), mapResults = $('#mapResults'), mapMsg = $('#mapMsg');
+  var mapSearchSeq = 0;
+  function mapSay(msg, isErr) {
+    mapMsg.textContent = msg || '';
+    mapMsg.hidden = !msg;
+    mapMsg.className = 'muted map-search-msg' + (isErr ? ' error' : '');
+  }
+  function mapPickResult(r) {
+    mapState.lat = r.lat;
+    mapState.lon = r.lon;
+    mapState.z = r.z;
+    requestMapDraw();
+    $('#metaLat').value = r.lat.toFixed(6);
+    $('#metaLon').value = r.lon.toFixed(6);
+    updateMetaExt();
+    mapResults.hidden = true;
+    mapResults.textContent = '';
+    mapSay('📍 ' + r.title + ' — 위도·경도를 채웠어요.');
+  }
+  /* 지명 종류에 따라 적당한 확대 수준을 고른다 (나라는 넓게, 건물은 좁게) */
+  function mapZoomFor(o) {
+    var cls = o.class || '', type = o.type || '';
+    if (cls === 'boundary' || type === 'country') return 6;
+    if (type === 'state' || type === 'province') return 8;
+    if (type === 'city' || type === 'town' || type === 'administrative') return 11;
+    if (type === 'village' || type === 'suburb' || type === 'neighbourhood') return 13;
+    return 16;
+  }
+  function mapSearch() {
+    var q = mapQ.value.trim();
+    if (q.length < 2) { mapSay('두 글자 이상 입력해 주세요.'); return; }
+    var seq = ++mapSearchSeq;
+    mapResults.hidden = true;
+    mapSay('검색 중…');
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=ko&q=' + encodeURIComponent(q);
+    fetch(url, { headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        if (!res.ok) throw new Error('http ' + res.status);
+        return res.json();
+      })
+      .then(function (list) {
+        if (seq !== mapSearchSeq) return; /* 더 최근 검색이 있으면 무시 */
+        if (!list || !list.length) { mapSay('검색 결과가 없어요. 다른 이름으로 찾아보세요.'); return; }
+        mapSay('');
+        mapResults.textContent = '';
+        list.forEach(function (o) {
+          var lat = parseFloat(o.lat), lon = parseFloat(o.lon);
+          if (!isFinite(lat) || !isFinite(lon)) return;
+          var full = o.display_name || '';
+          var head = full.split(',')[0].trim() || full;
+          var li = document.createElement('li');
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.appendChild(document.createTextNode(head));
+          var sub = document.createElement('span');
+          sub.className = 'mr-sub';
+          sub.textContent = full;
+          b.appendChild(sub);
+          b.addEventListener('click', function () {
+            mapPickResult({ lat: lat, lon: lon, z: mapZoomFor(o), title: head });
+          });
+          li.appendChild(b);
+          mapResults.appendChild(li);
+        });
+        mapResults.hidden = !mapResults.children.length;
+      })
+      .catch(function () {
+        if (seq !== mapSearchSeq) return;
+        mapSay('검색에 실패했어요. 인터넷 연결을 확인하거나 좌표를 직접 입력해 주세요.', true);
+      });
+  }
+  $('#mapGo').addEventListener('click', mapSearch);
+  mapQ.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); mapSearch(); }
   });
   window.addEventListener('resize', function () { if (!mapInline.hidden) requestMapDraw(); });
 
