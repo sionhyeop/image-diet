@@ -18,10 +18,14 @@ _CFG_PATH = os.path.join(_CFG_DIR, "settings.json")
 
 
 def load_settings():
+    valid = {v for _, v in FORMATS}
     try:
         with open(_CFG_PATH, encoding="utf-8") as f:
             d = json.load(f)
-            return int(d.get("target_kb", 200)), str(d.get("out_format", "auto"))
+            fmt = str(d.get("out_format", "auto"))
+            if fmt not in valid:
+                fmt = "auto"
+            return int(d.get("target_kb", 200)), fmt
     except Exception:
         return 200, "auto"
 
@@ -56,7 +60,6 @@ class App:
         ttk.Label(frm, text="KB").grid(column=2, row=1, sticky="w")
 
         ttk.Label(frm, text="출력 형식").grid(column=0, row=2, sticky="w", pady=(6, 0))
-        self.fmt = tk.StringVar(value=fmt0)
         labels = [l for l, _ in FORMATS]
         self.fmt_label = tk.StringVar(
             value=next(l for l, v in FORMATS if v == fmt0))
