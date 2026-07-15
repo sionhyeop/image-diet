@@ -75,3 +75,20 @@ def test_compress_bad_file_returns_error(tmp_path):
     res = compress.compress_image(str(bad), target_kb=50, out_format="auto")
     assert res["ok"] is False
     assert "error" in res
+
+
+def test_compress_preserves_transparency(tmp_path):
+    src = tmp_path / "logo.png"
+    img = Image.new("RGBA", (400, 300), (255, 0, 0, 0))  # fully transparent
+    # opaque red block in the middle
+    for y in range(100, 200):
+        for x in range(150, 250):
+            img.putpixel((x, y), (255, 0, 0, 255))
+    img.save(str(src), "PNG")
+    res = compress.compress_image(str(src), target_kb=None, out_format="auto")
+    assert res["ok"] is True
+    assert res["out_path"].endswith(".webp")
+    with Image.open(res["out_path"]) as out:
+        assert out.mode in ("RGBA", "LA", "P")  # has alpha
+        rgba = out.convert("RGBA")
+        assert rgba.getpixel((5, 5))[3] < 40  # corner stayed (near-)transparent

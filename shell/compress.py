@@ -83,8 +83,6 @@ def compress_image(src_path: str, target_kb, out_format: str) -> dict:
         with Image.open(src_path) as opened:
             img = ImageOps.exif_transpose(opened)
             fmt = resolve_format(src_path, out_format)
-            if fmt in ("jpeg",) and img.mode in ("RGBA", "P", "LA"):
-                img = img.convert("RGB")
 
             if target_kb is None:
                 data = encode_to_bytes(img, fmt, 82)
