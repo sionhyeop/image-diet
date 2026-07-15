@@ -1,0 +1,11 @@
+Windows Registry Editor Version 5.00
+
+[-HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.jpg\shell\ImageDiet]
+
+[-HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.jpeg\shell\ImageDiet]
+
+[-HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.png\shell\ImageDiet]
+
+[-HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.webp\shell\ImageDiet]
+
+[-HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.bmp\shell\ImageDiet]
