@@ -34,7 +34,13 @@ def encode_to_bytes(img, fmt: str, quality: int) -> bytes:
     if fmt == "png":
         img.save(buf, "PNG", optimize=True)
     elif fmt == "jpeg":
-        rgb = img.convert("RGB")
+        if img.mode in ("RGBA", "LA", "P"):
+            rgba = img.convert("RGBA")
+            bg = Image.new("RGB", rgba.size, (255, 255, 255))
+            bg.paste(rgba, mask=rgba.split()[-1])
+            rgb = bg
+        else:
+            rgb = img.convert("RGB")
         rgb.save(buf, "JPEG", quality=quality, optimize=True)
     else:  # webp
         img.save(buf, "WEBP", quality=quality, method=6)

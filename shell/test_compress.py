@@ -92,3 +92,14 @@ def test_compress_preserves_transparency(tmp_path):
         assert out.mode in ("RGBA", "LA", "P")  # has alpha
         rgba = out.convert("RGBA")
         assert rgba.getpixel((5, 5))[3] < 40  # corner stayed (near-)transparent
+
+
+def test_jpeg_transparency_composites_on_white(tmp_path):
+    src = tmp_path / "logo.png"
+    img = Image.new("RGBA", (200, 150), (255, 0, 0, 0))  # fully transparent
+    img.save(str(src), "PNG")
+    res = compress.compress_image(str(src), target_kb=None, out_format="jpeg")
+    assert res["ok"] is True
+    with Image.open(res["out_path"]) as out:
+        r, g, b = out.convert("RGB").getpixel((5, 5))
+        assert r > 230 and g > 230 and b > 230  # white, not black
