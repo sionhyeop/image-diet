@@ -6,10 +6,15 @@ rem 이 스크립트가 있는 폴더
 set "HERE=%~dp0"
 set "GUI=%HERE%compress_gui.pyw"
 
-rem pythonw.exe 탐지: py 런처 우선, 없으면 where
+rem pythonw.exe 탐지: py 런처 우선, 없으면 where, 없으면 기본 경로
 set "PYW="
-for /f "delims=" %%p in ('where pythonw.exe 2^>nul') do (
-    if not defined PYW set "PYW=%%p"
+for /f "delims=" %%p in ('py -3 -c "import os,sys;print(os.path.join(os.path.dirname(sys.executable),'pythonw.exe'))" 2^>nul') do (
+    if not defined PYW if exist "%%p" set "PYW=%%p"
+)
+if not defined PYW (
+    for /f "delims=" %%p in ('where pythonw.exe 2^>nul') do (
+        if not defined PYW set "PYW=%%p"
+    )
 )
 if not defined PYW (
     if exist "%LOCALAPPDATA%\Programs\Python\Python313\pythonw.exe" (
