@@ -7,7 +7,9 @@ $subject = 'CN=ImageDiet Dev'
 
 # 1) 빌드
 & $msb "$here\ImageDietShell.vcxproj"    /p:Configuration=Release /p:Platform=x64 /v:m
+if ($LASTEXITCODE -ne 0) { throw "MSBuild 실패" }
 & $msb "$here\ImageDietLauncher.vcxproj"  /p:Configuration=Release /p:Platform=x64 /v:m
+if ($LASTEXITCODE -ne 0) { throw "MSBuild 실패" }
 
 # 2) 패키지 레이아웃 구성
 $layout = Join-Path $here 'layout'
