@@ -13,7 +13,7 @@
 """
 import math
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageChops
 
 RES = [128, 192, 320, 448, 640]
 TOL = [0.3, 0.6, 1.0, 1.6, 2.4]
@@ -475,8 +475,8 @@ def _build_svg_from_entries(entries, w, h, sw, sh, smooth, prec, stroke_w):
 # _compute_entries — vectorize/rasterize 공유 계산부: 전처리 축소 -> 팔레트
 # 양자화 -> 색별 마스크 -> _trace_loops -> _simplify_loop(tol) -> minArea 필터.
 # entries는 팔레트 순서의 (rgb_tuple, [loop_points, ...], count) 튜플 목록.
-# (count는 vectorize의 _build_svg_from_entries 면적 정렬을 그대로 재현하기
-# 위해 보존한다 — rasterize는 이를 무시하고 팔레트 순서로만 그린다.)
+# (count는 vectorize와 rasterize 양쪽에서 _build_svg_from_entries와 동일한
+# 면적(-count) 정렬 순서를 재현하는 데 쓰인다.)
 # ---------------------------------------------------------------------------
 
 def _compute_entries(img, opts):
@@ -549,18 +549,23 @@ def vectorize(img, opts):
 
 # ---------------------------------------------------------------------------
 # rasterize — vectorize와 같은 전처리/양자화/추적/단순화를 거쳐, SVG 대신
-# 색별 단순화 루프를 ImageDraw.polygon으로 팔레트 순서대로 채운 PIL 이미지를
-# 반환한다. box가 주어지면 비율 유지로 그 안에 축소.
+# 색별 단순화 루프를 PIL 이미지로 채워 반환한다. _build_svg_from_entries와
+# 동일하게 면적(-count) 순으로 그리고, 각 색 안의 루프는 evenodd(XOR)로 합쳐
+# 구멍(hole) 루프가 실제로 배경/아래 색을 드러내도록 한다. box가 주어지면
+# 비율 유지로 그 안에 축소.
 # ---------------------------------------------------------------------------
 
 def rasterize(img, opts, box=None):
     entries, w, h = _compute_entries(img, opts)
     canvas = Image.new("RGB", (w, h), (255, 255, 255))
-    draw = ImageDraw.Draw(canvas)
-    for rgb, loops, _count in entries:
+    for rgb, loops, _count in sorted(entries, key=lambda e: -e[2]):  # _build_svg_from_entries 와 같은 순서
+        mask = Image.new("1", (w, h), 0)
         for loop in loops:
             if len(loop) >= 3:
-                draw.polygon([(float(x), float(y)) for x, y in loop], fill=rgb)
+                tmp = Image.new("1", (w, h), 0)
+                ImageDraw.Draw(tmp).polygon([(float(x), float(y)) for x, y in loop], fill=1)
+                mask = ImageChops.logical_xor(mask, tmp)   # evenodd == XOR
+        canvas.paste(rgb, (0, 0), mask)
     if box:
         canvas.thumbnail(box, Image.LANCZOS)
     return canvas

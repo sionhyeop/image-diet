@@ -52,3 +52,38 @@ def test_rasterize_not_blank():
     im = svgtool.rasterize(_shape(), o, box=(120, 100))
     colors = im.getcolors(maxcolors=100000)
     assert colors is not None and len(colors) >= 2
+
+
+def _donut():
+    # 흰 배경 + 파란 링(가운데 구멍은 배경색이어야 함)
+    im = Image.new("RGB", (100, 100), (255, 255, 255))
+    d = ImageDraw.Draw(im)
+    d.ellipse((10, 10, 90, 90), fill=(20, 60, 200))
+    d.ellipse((35, 35, 65, 65), fill=(255, 255, 255))
+    return im
+
+
+def _dark_ring():
+    # 어두운 배경 + 밝은 링 (팔레트 순서가 중첩 순서와 반대인 케이스)
+    im = Image.new("RGB", (100, 100), (20, 20, 30))
+    d = ImageDraw.Draw(im)
+    d.ellipse((15, 15, 85, 85), fill=(230, 230, 240))
+    d.ellipse((40, 40, 60, 60), fill=(20, 20, 30))
+    return im
+
+
+def test_rasterize_keeps_hole():
+    o = svgtool.opts_from_controls(4, 3, 2, 0, 1.0, True)
+    im = svgtool.rasterize(_donut(), o)     # box 없이 원본 작업 해상도로
+    cx, cy = im.width // 2, im.height // 2
+    r, g, b = im.getpixel((cx, cy))
+    # 가운데 구멍은 배경(흰색)에 가까워야 한다 — 링 색(파랑)으로 메워지면 실패
+    assert r > 180 and g > 180 and b > 180, (r, g, b)
+
+
+def test_rasterize_dark_ring_not_flat():
+    o = svgtool.opts_from_controls(4, 3, 2, 0, 1.0, True)
+    im = svgtool.rasterize(_dark_ring(), o)
+    colors = im.getcolors(maxcolors=100000)
+    # 링이 사라져 통짜 사각형이 되면 색이 1개 -> 실패
+    assert colors is not None and len(colors) >= 2, colors

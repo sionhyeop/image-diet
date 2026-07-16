@@ -88,6 +88,7 @@ class SvgView(tk.Frame):
     def _apply_preview(self, img, gen):
         if gen == self._gen:
             self.preview.set(img)
+            self.recenter()
 
     def _post(self, fn):
         try:

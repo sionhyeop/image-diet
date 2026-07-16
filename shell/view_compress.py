@@ -40,6 +40,7 @@ class CompressView(tk.Frame):
     def __init__(self, parent, pal, files, recenter):
         super().__init__(parent, bg=pal["card"])
         self.pal, self.files, self.recenter = pal, files, recenter
+        self._first_out = None
         t0, f0 = load_settings()
         self._fmt0 = f0
         self.kb = tk.StringVar(value=str(t0))
@@ -141,7 +142,7 @@ class CompressView(tk.Frame):
                            fill=p["ink"], font=("Segoe UI", 10, "bold"), anchor="w")
             cv.create_text(INNER - 14, 20, text="%d%% 가벼워짐 ↓" % pct,
                            fill=p["accent2"], font=("Segoe UI", 10, "bold"), anchor="e")
-        if getattr(self, "_first_out", None):
+        if self._first_out:
             result_preview = W.Preview(self.tail, p, (180, 150))
             result_preview.pack(pady=(12, 0))
             threading.Thread(target=self._load_preview,
@@ -164,7 +165,7 @@ class CompressView(tk.Frame):
                 except OSError:
                     csz = res.get("size_kb", 0) * 1024
                 done += 1; osum += osz; csum += csz
-                if getattr(self, "_first_out", None) is None:
+                if self._first_out is None and path == self.files[0]:
                     self._first_out = res["out_path"]
                 self._post(self._row, os.path.basename(path),
                            True, "%s → %s" % (W.human(osz), W.human(csz)))
