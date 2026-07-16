@@ -1,4 +1,0 @@
-LIBRARY "ImageDietShell"
-EXPORTS
-    DllGetClassObject   PRIVATE
-    DllCanUnloadNow     PRIVATE

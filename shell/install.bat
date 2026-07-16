@@ -34,7 +34,7 @@ set "MENU=이미지 다이어트로 압축"
 for %%E in (.jpg .jpeg .png .webp .bmp) do (
     set "KEY=HKCU\Software\Classes\SystemFileAssociations\%%E\shell\ImageDiet"
     reg add "!KEY!" /ve /d "!MENU!" /f >nul
-    reg add "!KEY!" /v Icon /d "\"%PYW%\"" /f >nul
+    reg add "!KEY!" /v Icon /d "\"%HERE%assets\imagediet.ico\"" /f >nul
     reg add "!KEY!" /v MultiSelectModel /d "Player" /f >nul
     reg add "!KEY!\command" /ve /d "\"%PYW%\" \"%GUI%\" \"%%1\"" /f >nul
 )

@@ -76,7 +76,7 @@ class App:
         root.resizable(False, False)
         try:
             root.iconbitmap(os.path.join(os.path.dirname(__file__),
-                                         "win11", "assets", "imagediet.ico"))
+                                         "assets", "imagediet.ico"))
         except Exception:
             pass
 
@@ -112,7 +112,7 @@ class App:
         self._logo = None
         try:
             self._logo = tk.PhotoImage(file=os.path.join(
-                os.path.dirname(__file__), "win11", "assets", "logo32.png"))
+                os.path.dirname(__file__), "assets", "logo32.png"))
             ttk.Label(header, image=self._logo, style="Card.TLabel").pack(side="left")
         except Exception:
             pass
