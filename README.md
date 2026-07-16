@@ -44,6 +44,18 @@ gh repo create image-diet --public --source=. --push
 gh api -X POST "repos/{owner}/image-diet/pages" -f "source[branch]=main" -f "source[path]=/"
 ```
 
+## 데스크톱(Windows) 설치 — GitHub에서
+
+탐색기 우클릭으로 쓰는 데스크톱 모드는 이 저장소를 내려받아 설치합니다. (Python + Pillow 필요: `pip install pillow`)
+
+1. **저장소 내려받기** — 아래 중 하나:
+   - GitHub 페이지에서 **Code → Download ZIP** 후 압축 해제, 또는
+   - `git clone https://github.com/sionhyeop/image-diet.git`
+2. **설치** — 압축 해제/클론한 폴더의 `shell\install.bat` 더블클릭 (관리자 권한 불필요).
+3. 이미지 파일을 우클릭 → **"이미지 다이어트로 압축"** → 압축/Base64/SVG/PDF 탭 창이 열립니다.
+
+> `shell` 폴더는 통째로 한 자리에 두세요. 옮겼다면 옮긴 위치에서 `install.bat`을 다시 실행하면 경로가 갱신됩니다. 제거는 `shell\uninstall.bat`. 자세한 내용은 [`shell/README.md`](shell/README.md).
+
 ## 파일 구성
 
 | 파일 | 역할 |
