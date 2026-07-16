@@ -1,5 +1,6 @@
 """복수 선택 취합: 첫 인스턴스가 서버가 되어 형제들의 파일 경로를 모은다.
 tkinter 미의존, 루프백 소켓만 사용."""
+import os
 import socket
 import threading
 import time
@@ -9,7 +10,13 @@ _MAGIC = b"IMGDIET1\n"
 
 def coalesce(argv_files, port=51737, window=0.8):
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if os.name == "nt":
+        try:
+            srv.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        except (AttributeError, OSError):
+            pass
+    else:
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         srv.bind(("127.0.0.1", port))
         srv.listen(16)
@@ -49,12 +56,18 @@ def coalesce(argv_files, port=51737, window=0.8):
                             if line:
                                 collected.append(line)
                         deadline[0] = time.time() + 0.25  # 새 파일 오면 조금 연장
+            except OSError:
+                pass
             finally:
                 conn.close()
 
     th = threading.Thread(target=accept_loop, daemon=True)
     th.start()
-    while time.time() < deadline[0]:
+    while True:
+        with lock:
+            d = deadline[0]
+        if time.time() >= d:
+            break
         time.sleep(0.05)
     stop.set()
     srv.close()
@@ -64,13 +77,14 @@ def coalesce(argv_files, port=51737, window=0.8):
 
 
 def _send_to_server(argv_files, port):
+    c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         c.settimeout(1.0)
         c.connect(("127.0.0.1", port))
         payload = _MAGIC + ("\n".join(argv_files) + "\n").encode("utf-8")
         c.sendall(payload)
-        c.close()
         return None
     except OSError:
         return list(argv_files)  # 우리 서버가 아니면 폴백: 단독 창
+    finally:
+        c.close()
