@@ -3,7 +3,7 @@ import base64
 import binascii
 import os
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 import compress
 
@@ -66,12 +66,13 @@ def to_data_uri_compressed(path: str, max_side: int = 1920, quality: float = 0.8
     """웹앱의 '압축해서 변환'과 동일: 긴 변 max_side 로 축소 후 WebP 재인코딩 → Data URI."""
     orig_bytes = os.path.getsize(path)
     with Image.open(path) as opened:
-        if opened.mode in ("RGBA", "LA") or "transparency" in opened.info:
-            img = opened.convert("RGBA")
-        elif opened.mode != "RGB":
-            img = opened.convert("RGB")
+        src = ImageOps.exif_transpose(opened)
+        if src.mode in ("RGBA", "LA") or "transparency" in src.info:
+            img = src.convert("RGBA")
+        elif src.mode != "RGB":
+            img = src.convert("RGB")
         else:
-            img = opened.copy()
+            img = src
         w, h = img.size
         scale = min(1.0, float(max_side) / max(w, h)) if max(w, h) else 1.0
         if scale < 1.0:

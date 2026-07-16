@@ -130,6 +130,8 @@ class Base64View(tk.Frame):
             return
         self._seq += 1
         seq = self._seq
+        self.stats.configure(text="변환 중…")
+        self.outcount.configure(text="")
         comp, q, src = self.do_comp.get(), self.q.get(), self.files[0]
         threading.Thread(target=self._enc_work, args=(src, comp, q, seq), daemon=True).start()
 

@@ -95,6 +95,17 @@ def test_compressed_variants_shapes(tmp_path):
     assert r["css"].startswith('background-image:url("data:image/webp;base64,') and r["css"].endswith('")')
 
 
+def test_compressed_applies_exif_orientation(tmp_path):
+    # Orientation=6 (90° 회전) 태그가 붙은 2000x1000 JPEG -> 회전 적용 후 960x1920 이어야 함
+    p = tmp_path / "rot.jpg"
+    im = Image.new("RGB", (2000, 1000), (200, 30, 30))
+    exif = Image.Exif()
+    exif[0x0112] = 6          # Orientation
+    im.save(str(p), "JPEG", exif=exif)
+    r = b64tool.to_data_uri_compressed(str(p), max_side=1920, quality=0.8)
+    assert (r["w"], r["h"]) == (960, 1920), (r["w"], r["h"])
+
+
 def test_compressed_preserves_palette_transparency(tmp_path):
     # 투명도를 가진 팔레트(P) PNG — 알파가 살아 있어야 함
     src = Image.new("RGBA", (80, 60), (255, 0, 0, 0))
