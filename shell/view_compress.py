@@ -53,7 +53,7 @@ class CompressView(tk.Frame):
         try:
             if self.winfo_exists():
                 self.after(0, fn, *args)
-        except tk.TclError:
+        except (tk.TclError, RuntimeError):
             pass
 
     def _show_settings(self):
@@ -77,6 +77,23 @@ class CompressView(tk.Frame):
         act = tk.Frame(self, bg=p["card"]); act.pack(fill="x", pady=(16, 0))
         W.RoundButton(act, "압축", self._start, p, "primary", w=INNER - 100, h=40).pack(side="left")
         W.RoundButton(act, "취소", self.winfo_toplevel().destroy, p, "ghost", w=92, h=40).pack(side="right")
+        self.preview = W.Preview(self, p, (180, 150))
+        self.preview.pack(pady=(12, 0))
+        if self.files:
+            threading.Thread(target=self._load_preview, args=(self.preview, self.files[0]),
+                              daemon=True).start()
+
+    def _load_preview(self, widget, path):
+        try:
+            from PIL import Image
+            img = Image.open(path).convert("RGB")
+        except Exception:
+            return
+        self._post(self._show_preview, widget, img)
+
+    def _show_preview(self, widget, img):
+        if widget.winfo_exists():
+            widget.set(img)
 
     def _start(self):
         try:
@@ -124,6 +141,11 @@ class CompressView(tk.Frame):
                            fill=p["ink"], font=("Segoe UI", 10, "bold"), anchor="w")
             cv.create_text(INNER - 14, 20, text="%d%% 가벼워짐 ↓" % pct,
                            fill=p["accent2"], font=("Segoe UI", 10, "bold"), anchor="e")
+        if getattr(self, "_first_out", None):
+            result_preview = W.Preview(self.tail, p, (180, 150))
+            result_preview.pack(pady=(12, 0))
+            threading.Thread(target=self._load_preview,
+                              args=(result_preview, self._first_out), daemon=True).start()
         b = tk.Frame(self.tail, bg=p["card"]); b.pack(fill="x", pady=(14, 0))
         W.RoundButton(b, "닫기", self.winfo_toplevel().destroy, p, "primary", w=INNER, h=40).pack()
         self.recenter()
@@ -142,6 +164,8 @@ class CompressView(tk.Frame):
                 except OSError:
                     csz = res.get("size_kb", 0) * 1024
                 done += 1; osum += osz; csum += csz
+                if getattr(self, "_first_out", None) is None:
+                    self._first_out = res["out_path"]
                 self._post(self._row, os.path.basename(path),
                            True, "%s → %s" % (W.human(osz), W.human(csz)))
             else:
