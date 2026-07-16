@@ -35,3 +35,21 @@ def test_empty_raises(tmp_path):
         assert False
     except ValueError:
         pass
+
+
+def test_page_preview_image_fit(tmp_path):
+    a = tmp_path / "a.png"; _img(str(a), (400, 200), (200, 30, 30))
+    im = pdftool.page_preview(str(a), "image", (100, 100))
+    from PIL import Image as _I
+    assert isinstance(im, _I.Image)
+    assert im.width <= 100 and im.height <= 100
+    # 원본 2:1 비율 유지 -> 100x50 근처
+    assert im.width > im.height
+
+
+def test_page_preview_a4_fit(tmp_path):
+    a = tmp_path / "a.png"; _img(str(a), (400, 200), (10, 10, 200))
+    im = pdftool.page_preview(str(a), "a4", (200, 300))
+    assert im.width <= 200 and im.height <= 300
+    # A4 세로 비율(595:842) -> 세로가 더 김
+    assert im.height > im.width

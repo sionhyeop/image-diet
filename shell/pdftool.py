@@ -24,6 +24,14 @@ def _fit_a4(im):
     return page
 
 
+def page_preview(path, fit, box):
+    im = _load_rgb(path)
+    page = _fit_a4(im) if fit == "a4" else im
+    thumb = page.copy()
+    thumb.thumbnail(box, Image.LANCZOS)
+    return thumb
+
+
 def images_to_pdf(paths, out_path, fit="image"):
     if not paths:
         raise ValueError("이미지가 없습니다.")
