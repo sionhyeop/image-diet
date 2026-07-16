@@ -1,4 +1,4 @@
-"""이미지 다이어트 — 탐색기 우클릭용 작은 창.
+"""이미지 다이어트 — 탐색기 우클릭용 팝업 창 (크롬 익스텐션 톤).
 사용법: pythonw compress_gui.pyw <이미지경로> [<이미지경로> ...]"""
 import json
 import os
@@ -39,46 +39,122 @@ def save_settings(target_kb, out_format):
         pass
 
 
+def _is_dark():
+    """Windows 앱 테마: AppsUseLightTheme=0 이면 다크."""
+    try:
+        import winreg
+        k = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        v, _ = winreg.QueryValueEx(k, "AppsUseLightTheme")
+        return v == 0
+    except Exception:
+        return False
+
+
+# 색 팔레트 (라이트/다크)
+def _palette(dark):
+    if dark:
+        return dict(bg="#202124", card="#292a2d", fg="#e8eaed",
+                    sub="#9aa0a6", border="#3c4043", accent="#8ab4f8",
+                    accent_fg="#202124", field="#303134")
+    return dict(bg="#f1f3f4", card="#ffffff", fg="#202124",
+                sub="#5f6368", border="#dadce0", accent="#1a73e8",
+                accent_fg="#ffffff", field="#ffffff")
+
+
 class App:
     def __init__(self, root, files):
         self.root = root
         self.files = files
         self.running = False
+        self.pal = _palette(_is_dark())
+        p = self.pal
+
         root.title("이미지 다이어트")
+        root.configure(bg=p["bg"])
         root.resizable(False, False)
+        try:
+            root.iconbitmap(os.path.join(os.path.dirname(__file__),
+                                         "win11", "assets", "imagediet.ico"))
+        except Exception:
+            pass
+
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        style.configure("Card.TFrame", background=p["card"])
+        style.configure("Card.TLabel", background=p["card"], foreground=p["fg"])
+        style.configure("Sub.TLabel", background=p["card"], foreground=p["sub"])
+        style.configure("Accent.TButton", background=p["accent"],
+                        foreground=p["accent_fg"], borderwidth=0, focusthickness=0,
+                        padding=(16, 8), font=("Segoe UI", 10, "bold"))
+        style.map("Accent.TButton",
+                  background=[("active", p["accent"]), ("pressed", p["accent"])])
+        style.configure("Ghost.TButton", background=p["card"], foreground=p["sub"],
+                        borderwidth=1, padding=(14, 8))
+        style.configure("TCombobox", fieldbackground=p["field"],
+                        background=p["field"], foreground=p["fg"])
+        style.configure("Diet.Horizontal.TProgressbar",
+                        background=p["accent"], troughcolor=p["field"], borderwidth=0)
+
+        # 외곽 여백 + 카드
+        outer = tk.Frame(root, bg=p["bg"])
+        outer.pack(fill="both", expand=True, padx=14, pady=14)
+        card = ttk.Frame(outer, style="Card.TFrame", padding=18)
+        card.pack(fill="both", expand=True)
+
+        # 헤더 (로고 + 제목)
+        header = ttk.Frame(card, style="Card.TFrame")
+        header.grid(column=0, row=0, columnspan=3, sticky="w", pady=(0, 14))
+        self._logo = None
+        try:
+            self._logo = tk.PhotoImage(file=os.path.join(
+                os.path.dirname(__file__), "win11", "assets", "logo32.png"))
+            ttk.Label(header, image=self._logo, style="Card.TLabel").pack(side="left")
+        except Exception:
+            pass
+        ttk.Label(header, text="  이미지 다이어트", style="Card.TLabel",
+                  font=("Segoe UI", 13, "bold")).pack(side="left")
 
         target0, fmt0 = load_settings()
-        frm = ttk.Frame(root, padding=14)
-        frm.grid()
+        ttk.Label(card, text=f"파일 {len(files)}개 선택됨", style="Sub.TLabel").grid(
+            column=0, row=1, columnspan=3, sticky="w", pady=(0, 10))
 
-        ttk.Label(frm, text=f"파일 {len(files)}개 선택됨").grid(
-            column=0, row=0, columnspan=3, sticky="w", pady=(0, 8))
-
-        ttk.Label(frm, text="목표 용량").grid(column=0, row=1, sticky="w")
+        ttk.Label(card, text="목표 용량", style="Card.TLabel").grid(
+            column=0, row=2, sticky="w", pady=4)
         self.kb = tk.StringVar(value=str(target0))
-        ttk.Entry(frm, textvariable=self.kb, width=8).grid(column=1, row=1, sticky="w")
-        ttk.Label(frm, text="KB").grid(column=2, row=1, sticky="w")
+        tk.Entry(card, textvariable=self.kb, width=8, bg=p["field"], fg=p["fg"],
+                 relief="flat", highlightthickness=1, highlightbackground=p["border"],
+                 insertbackground=p["fg"]).grid(column=1, row=2, sticky="w", pady=4)
+        ttk.Label(card, text="KB", style="Sub.TLabel").grid(column=2, row=2, sticky="w")
 
-        ttk.Label(frm, text="출력 형식").grid(column=0, row=2, sticky="w", pady=(6, 0))
-        labels = [l for l, _ in FORMATS]
-        self.fmt_label = tk.StringVar(
-            value=next(l for l, v in FORMATS if v == fmt0))
-        cb = ttk.Combobox(frm, textvariable=self.fmt_label, values=labels,
-                          state="readonly", width=14)
-        cb.grid(column=1, row=2, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(card, text="출력 형식", style="Card.TLabel").grid(
+            column=0, row=3, sticky="w", pady=4)
+        self.fmt_label = tk.StringVar(value=next(l for l, v in FORMATS if v == fmt0))
+        ttk.Combobox(card, textvariable=self.fmt_label, values=[l for l, _ in FORMATS],
+                     state="readonly", width=14).grid(
+            column=1, row=3, columnspan=2, sticky="w", pady=4)
 
-        self.go = ttk.Button(frm, text="압축", command=self.start)
-        self.go.grid(column=1, row=3, sticky="w", pady=10)
-        ttk.Button(frm, text="취소", command=root.destroy).grid(
-            column=2, row=3, sticky="w", pady=10)
+        btns = ttk.Frame(card, style="Card.TFrame")
+        btns.grid(column=0, row=4, columnspan=3, sticky="e", pady=(14, 6))
+        ttk.Button(btns, text="취소", style="Ghost.TButton",
+                   command=root.destroy).pack(side="right", padx=(8, 0))
+        self.go = ttk.Button(btns, text="압축", style="Accent.TButton", command=self.start)
+        self.go.pack(side="right")
 
-        self.status = tk.Text(frm, width=42, height=min(10, max(3, len(files))),
-                              state="disabled")
-        self.status.grid(column=0, row=4, columnspan=3, sticky="we")
+        self.prog = ttk.Progressbar(card, style="Diet.Horizontal.TProgressbar",
+                                    mode="determinate", maximum=len(files))
+        self.prog.grid(column=0, row=5, columnspan=3, sticky="we", pady=(6, 6))
+        self.status = tk.Text(card, width=40, height=min(8, max(2, len(files))),
+                              bg=p["card"], fg=p["fg"], relief="flat",
+                              highlightthickness=0, state="disabled", wrap="none")
+        self.status.grid(column=0, row=6, columnspan=3, sticky="we")
 
     def _fmt_value(self):
-        label = self.fmt_label.get()
-        return next(v for l, v in FORMATS if l == label)
+        return next(v for l, v in FORMATS if l == self.fmt_label.get())
 
     def log(self, line):
         self.status.configure(state="normal")
@@ -100,18 +176,19 @@ class App:
         save_settings(target, fmt)
         self.running = True
         self.go.configure(state="disabled")
+        self.prog.configure(value=0)
         threading.Thread(target=self._run, args=(target, fmt), daemon=True).start()
 
     def _run(self, target, fmt):
         for path in self.files:
             name = os.path.basename(path)
-            self.root.after(0, self.log, f"{name} → 처리 중…")
             res = compress.compress_image(path, target, fmt)
             if res.get("ok"):
-                self.root.after(0, self.log,
-                                f"  ✓ {os.path.basename(res['out_path'])}  {res['size_kb']}KB")
+                msg = f"✓ {os.path.basename(res['out_path'])}  {res['size_kb']}KB"
             else:
-                self.root.after(0, self.log, f"  ✗ 실패: {res.get('error','')[:40]}")
+                msg = f"✗ {name}: {res.get('error', '')[:38]}"
+            self.root.after(0, self.log, msg)
+            self.root.after(0, lambda: self.prog.step(1))
         self.root.after(0, self.log, "완료")
         self.root.after(0, lambda: self.go.configure(state="normal"))
         self.running = False
