@@ -144,7 +144,8 @@ class Base64View(tk.Frame):
                      "orig_bytes": os.path.getsize(src), "comp_bytes": 0}
                 note = ""
         except Exception as e:
-            self._post(lambda: self.stats.configure(text="변환 실패: %s" % str(e)[:40]))
+            msg = "변환 실패: %s" % str(e)[:40]
+            self._post(lambda: self._apply_err(msg, seq))
             return
         self._post(lambda: self._apply_enc(r, note, seq))
 
@@ -160,6 +161,11 @@ class Base64View(tk.Frame):
         self.stats.configure(text="원본 %s%s → 문자열 %s (%s%d%%)" % (
             W.human(r["orig_bytes"]), note, W.human(n), "+" if growth >= 0 else "−", abs(growth)))
         self.recenter()
+
+    def _apply_err(self, msg, seq):
+        if seq != self._seq or not self.winfo_exists():
+            return
+        self.stats.configure(text=msg)
 
     def _post(self, fn):
         try:
