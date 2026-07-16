@@ -1,4 +1,5 @@
 """압축 탭."""
+import json
 import os
 import threading
 import tkinter as tk
@@ -9,12 +10,39 @@ import widgets as W
 FORMATS = [("자동", "auto"), ("WebP", "webp"), ("JPEG", "jpeg"), ("PNG", "png")]
 INNER = 360
 
+_CFG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "image-diet-shell")
+_CFG_PATH = os.path.join(_CFG_DIR, "settings.json")
+
+
+def load_settings():
+    valid = {v for _, v in FORMATS}
+    try:
+        with open(_CFG_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+            fmt = str(d.get("out_format", "auto"))
+            if fmt not in valid:
+                fmt = "auto"
+            return int(d.get("target_kb", 200)), fmt
+    except Exception:
+        return 200, "auto"
+
+
+def save_settings(target_kb, out_format):
+    try:
+        os.makedirs(_CFG_DIR, exist_ok=True)
+        with open(_CFG_PATH, "w", encoding="utf-8") as f:
+            json.dump({"target_kb": target_kb, "out_format": out_format}, f)
+    except Exception:
+        pass
+
 
 class CompressView(tk.Frame):
     def __init__(self, parent, pal, files, recenter):
         super().__init__(parent, bg=pal["card"])
         self.pal, self.files, self.recenter = pal, files, recenter
-        self.kb = tk.StringVar(value="200")
+        t0, f0 = load_settings()
+        self._fmt0 = f0
+        self.kb = tk.StringVar(value=str(t0))
         self._show_settings()
 
     def _clear(self):
@@ -44,7 +72,7 @@ class CompressView(tk.Frame):
         tk.Label(cell, text="KB", bg=p["card"], fg=p["sub"], font=("Segoe UI", 10)).pack(side="left", padx=(8, 0))
         tk.Label(opts, text="출력 형식", bg=p["card"], fg=p["sub"], font=("Segoe UI", 10),
                  anchor="w").grid(row=1, column=0, sticky="w", pady=(10, 4))
-        self.seg = W.Segmented(opts, FORMATS, "auto", p, w=INNER - 74)
+        self.seg = W.Segmented(opts, FORMATS, self._fmt0, p, w=INNER - 74)
         self.seg.grid(row=1, column=1, sticky="w", pady=(10, 4))
         act = tk.Frame(self, bg=p["card"]); act.pack(fill="x", pady=(16, 0))
         W.RoundButton(act, "압축", self._start, p, "primary", w=INNER - 100, h=40).pack(side="left")
@@ -59,6 +87,7 @@ class CompressView(tk.Frame):
             messagebox.showerror("이미지 다이어트", "목표 용량은 양의 정수여야 합니다.")
             return
         fmt = self.seg.value
+        save_settings(target, fmt)
         self._show_progress()
         threading.Thread(target=self._run, args=(target, fmt), daemon=True).start()
 

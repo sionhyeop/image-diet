@@ -54,12 +54,15 @@ class Toolkit:
         self.root.after(1, lambda: self._show(int(self.tabbar.value)))
 
     def _show(self, idx):
+        if getattr(self, "_active", None) == idx:
+            return
         if self._cur is not None:
             self._cur.destroy()
         View = TABS[idx][1]
         self._cur = View(self.host, self.pal, self.files, self._center)
         self._cur.pack(fill="x")
         self._center()
+        self._active = idx
 
     def _center(self):
         self.root.update_idletasks()

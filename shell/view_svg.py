@@ -86,5 +86,5 @@ class SvgView(tk.Frame):
         if self._last and os.path.exists(self._last):
             try:
                 os.startfile(self._last)  # noqa: WPS (Windows 전용)
-            except Exception:
-                pass
+            except Exception as e:
+                messagebox.showerror("이미지 다이어트", "열기 실패: %s" % e)
