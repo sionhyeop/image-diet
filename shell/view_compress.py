@@ -21,6 +21,13 @@ class CompressView(tk.Frame):
         for w in self.winfo_children():
             w.destroy()
 
+    def _post(self, fn, *args):
+        try:
+            if self.winfo_exists():
+                self.after(0, fn, *args)
+        except tk.TclError:
+            pass
+
     def _show_settings(self):
         p = self.pal
         self._clear()
@@ -64,6 +71,8 @@ class CompressView(tk.Frame):
         self.recenter()
 
     def _row(self, name, ok, detail):
+        if not self.winfo_exists():
+            return
         p = self.pal
         row = tk.Frame(self.results, bg=p["card"]); row.pack(fill="x", pady=3)
         tk.Label(row, text=W.elide(name), bg=p["card"], fg=p["ink"], font=("Segoe UI", 10),
@@ -74,6 +83,8 @@ class CompressView(tk.Frame):
             W.chip(row, "✗ " + detail, p["warn"], p["warn_soft"], p["card"]).pack(side="right")
 
     def _finish(self, done, orig, comp):
+        if not self.winfo_exists():
+            return
         p = self.pal
         if done and orig > 0:
             pct = max(0, round((1 - comp / float(orig)) * 100))
@@ -102,10 +113,10 @@ class CompressView(tk.Frame):
                 except OSError:
                     csz = res.get("size_kb", 0) * 1024
                 done += 1; osum += osz; csum += csz
-                self.after(0, self._row, os.path.basename(path),
+                self._post(self._row, os.path.basename(path),
                            True, "%s → %s" % (W.human(osz), W.human(csz)))
             else:
-                self.after(0, self._row, os.path.basename(path), False,
+                self._post(self._row, os.path.basename(path), False,
                            (res.get("error", "") or "실패")[:18])
-            self.after(0, self.bar.set, (i + 1) / float(total))
-        self.after(0, self._finish, done, osum, csum)
+            self._post(self.bar.set, (i + 1) / float(total))
+        self._post(self._finish, done, osum, csum)

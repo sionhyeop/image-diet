@@ -47,6 +47,13 @@ class SvgView(tk.Frame):
         self.openbtn = W.RoundButton(b, "결과 열기", self._open, p, "ghost", w=102, h=40)
         self.openbtn.pack(side="right")
 
+    def _post(self, fn):
+        try:
+            if self.winfo_exists():
+                self.after(0, fn)
+        except tk.TclError:
+            pass
+
     def _preset(self, key):
         pr = svgtool.PRESETS[key]
         for k in ("colors", "detail", "simplify", "noise"):
@@ -71,9 +78,9 @@ class SvgView(tk.Frame):
             with open(out, "w", encoding="utf-8") as f:
                 f.write(svg)
             self._last = out
-            self.after(0, lambda: messagebox.showinfo("이미지 다이어트", "저장됨: %s" % out))
+            self._post(lambda: messagebox.showinfo("이미지 다이어트", "저장됨: %s" % out))
         except Exception as e:
-            self.after(0, lambda: messagebox.showerror("이미지 다이어트", str(e)))
+            self._post(lambda: messagebox.showerror("이미지 다이어트", str(e)))
 
     def _open(self):
         if self._last and os.path.exists(self._last):
