@@ -50,6 +50,7 @@ class SvgView(tk.Frame):
         self.preview = W.Preview(self, self.pal, (260, 220))
         self.preview.pack(pady=(10, 0))
         self._pending = None
+        self._gen = 0
         for v in self.vars.values():
             v.trace_add("write", lambda *a: self._schedule())
         self.smooth.trace_add("write", lambda *a: self._schedule())
@@ -71,16 +72,22 @@ class SvgView(tk.Frame):
             self.vars["colors"].get(), self.vars["detail"].get(),
             self.vars["simplify"].get(), self.vars["noise"].get(),
             self.vars["gap"].get(), self.smooth.get())
+        self._gen += 1
+        gen = self._gen
         src = self.files[0]
-        threading.Thread(target=self._render_work, args=(src, opts), daemon=True).start()
+        threading.Thread(target=self._render_work, args=(src, opts, gen), daemon=True).start()
 
-    def _render_work(self, src, opts):
+    def _render_work(self, src, opts, gen):
         try:
             img = Image.open(src).convert("RGB")
             preview_img = svgtool.rasterize(img, opts, box=(260, 220))
         except Exception:
             return
-        self._post(lambda: self.preview.set(preview_img))
+        self._post(lambda: self._apply_preview(preview_img, gen))
+
+    def _apply_preview(self, img, gen):
+        if gen == self._gen:
+            self.preview.set(img)
 
     def _post(self, fn):
         try:
