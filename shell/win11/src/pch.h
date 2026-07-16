@@ -1,0 +1,11 @@
+#pragma once
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <shlobj_core.h>
+#include <shobjidl_core.h>
+#include <shlwapi.h>
+#include <wrl/module.h>
+#include <wrl/implements.h>
+#include <wrl/client.h>
+#include <string>
+#include <vector>
