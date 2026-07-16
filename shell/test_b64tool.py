@@ -93,3 +93,21 @@ def test_compressed_variants_shapes(tmp_path):
     r = b64tool.to_data_uri_compressed(str(p))
     assert r["imgtag"].startswith('<img src="data:image/webp;base64,') and r["imgtag"].endswith('">')
     assert r["css"].startswith('background-image:url("data:image/webp;base64,') and r["css"].endswith('")')
+
+
+def test_compressed_preserves_palette_transparency(tmp_path):
+    # 투명도를 가진 팔레트(P) PNG — 알파가 살아 있어야 함
+    src = Image.new("RGBA", (80, 60), (255, 0, 0, 0))
+    for y in range(20, 40):
+        for x in range(20, 60):
+            src.putpixel((x, y), (255, 0, 0, 255))
+    p = tmp_path / "pal.png"
+    src.convert("P", palette=Image.Palette.ADAPTIVE, colors=8).save(
+        str(p), transparency=0)
+    r = b64tool.to_data_uri_compressed(str(p), quality=0.9)
+    raw = base64.b64decode(r["datauri"].split(",", 1)[1])
+    import io
+    with Image.open(io.BytesIO(raw)) as out:
+        assert out.mode in ("RGBA", "LA", "P"), out.mode
+        rgba = out.convert("RGBA")
+        assert rgba.getpixel((2, 2))[3] < 40    # 모서리는 투명해야 함
