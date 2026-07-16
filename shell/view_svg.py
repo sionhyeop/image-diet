@@ -47,6 +47,41 @@ class SvgView(tk.Frame):
         self.openbtn = W.RoundButton(b, "결과 열기", self._open, p, "ghost", w=102, h=40)
         self.openbtn.pack(side="right")
 
+        self.preview = W.Preview(self, self.pal, (260, 220))
+        self.preview.pack(pady=(10, 0))
+        self._pending = None
+        for v in self.vars.values():
+            v.trace_add("write", lambda *a: self._schedule())
+        self.smooth.trace_add("write", lambda *a: self._schedule())
+        self._schedule()  # 첫 렌더
+
+    def _schedule(self):
+        if self._pending is not None:
+            try:
+                self.after_cancel(self._pending)
+            except Exception:
+                pass
+        self._pending = self.after(400, self._render_preview)
+
+    def _render_preview(self):
+        self._pending = None
+        if not self.files:
+            return
+        opts = svgtool.opts_from_controls(
+            self.vars["colors"].get(), self.vars["detail"].get(),
+            self.vars["simplify"].get(), self.vars["noise"].get(),
+            self.vars["gap"].get(), self.smooth.get())
+        src = self.files[0]
+        threading.Thread(target=self._render_work, args=(src, opts), daemon=True).start()
+
+    def _render_work(self, src, opts):
+        try:
+            img = Image.open(src).convert("RGB")
+            preview_img = svgtool.rasterize(img, opts, box=(260, 220))
+        except Exception:
+            return
+        self._post(lambda: self.preview.set(preview_img))
+
     def _post(self, fn):
         try:
             if self.winfo_exists():
