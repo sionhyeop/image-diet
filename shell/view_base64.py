@@ -15,6 +15,14 @@ class Base64View(tk.Frame):
         # 인코딩
         tk.Label(self, text="이미지 → Base64", bg=p["card"], fg=p["ink"],
                  font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        self.preview = W.Preview(self, self.pal, (200, 150))
+        self.preview.pack(pady=(0, 6))
+        if self.files:
+            try:
+                from PIL import Image
+                self.preview.set(Image.open(self.files[0]).convert("RGB"))
+            except Exception:
+                pass
         self.enc = tk.Text(self, height=4, width=46, bg=p["field"], fg=p["ink"],
                            bd=0, relief="flat", wrap="char", insertbackground=p["ink"])
         self.enc.pack(fill="x", pady=(6, 6))
