@@ -93,7 +93,7 @@ class SvgView(tk.Frame):
         try:
             if self.winfo_exists():
                 self.after(0, fn)
-        except tk.TclError:
+        except (tk.TclError, RuntimeError):
             pass
 
     def _preset(self, key):
