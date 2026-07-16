@@ -6,7 +6,6 @@ import os
 _MAGIC = [
     (b"\x89PNG\r\n\x1a\n", "png", "image/png"),
     (b"\xff\xd8\xff", "jpg", "image/jpeg"),
-    (b"RIFF", "webp", "image/webp"),   # RIFF....WEBP
     (b"BM", "bmp", "image/bmp"),
     (b"GIF8", "gif", "image/gif"),
 ]
