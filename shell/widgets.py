@@ -1,5 +1,6 @@
 """공용 Tkinter 위젯·팔레트."""
 import tkinter as tk
+from PIL import Image
 
 
 # ───────────────────────── 팔레트 ─────────────────────────
@@ -58,6 +59,12 @@ def elide(name, keep=30):
     if len(name) <= keep:
         return name
     return name[:keep - 14] + "…" + name[-13:]
+
+
+def make_thumb(img, box):
+    im = img.copy()
+    im.thumbnail(box, Image.LANCZOS)
+    return im
 
 
 # ───────────────────────── 위젯 ─────────────────────────
@@ -135,3 +142,21 @@ class Bar(tk.Canvas):
         fw = max(self.h, int(self.w * max(0.0, min(1.0, frac))))
         self._fill = round_rect(self, 0, 0, fw, self.h, self.h // 2,
                                  fill=self.pal["accent"], outline="")
+
+
+class Preview(tk.Label):
+    def __init__(self, parent, pal, box):
+        super().__init__(parent, bg=pal["field"], bd=0)
+        self._pal, self._box = pal, box
+        self._ph = None
+
+    def set(self, pil_img):
+        try:
+            from PIL import ImageTk
+            thumb = make_thumb(pil_img, self._box)
+            self._ph = ImageTk.PhotoImage(thumb)
+            self.configure(image=self._ph, text="")
+        except Exception:
+            self._ph = None
+            self.configure(image="", text="(미리보기 불가)",
+                           fg=self._pal["sub"], font=("Segoe UI", 9))
