@@ -35,3 +35,20 @@ def test_fewer_colors_is_valid():
     o = svgtool.opts_from_controls(2, 2, 2, 2, 1.0, True)
     svg = svgtool.vectorize(_shape(), o)
     assert "<svg" in svg and "</svg>" in svg
+
+
+def test_rasterize_returns_image_within_box():
+    o = svgtool.opts_from_controls(6, 3, 2, 2, 1.0, True)
+    im = svgtool.rasterize(_shape(), o, box=(120, 100))
+    from PIL import Image as _I
+    assert isinstance(im, _I.Image)
+    assert im.mode == "RGB"
+    assert im.width <= 120 and im.height <= 100
+
+
+def test_rasterize_not_blank():
+    # 도형 이미지를 래스터화하면 배경 1색이 아니라 여러 색이 나와야 함
+    o = svgtool.opts_from_controls(6, 3, 2, 2, 1.0, True)
+    im = svgtool.rasterize(_shape(), o, box=(120, 100))
+    colors = im.getcolors(maxcolors=100000)
+    assert colors is not None and len(colors) >= 2
