@@ -180,7 +180,7 @@ class App:
         threading.Thread(target=self._run, args=(target, fmt), daemon=True).start()
 
     def _run(self, target, fmt):
-        for path in self.files:
+        for i, path in enumerate(self.files):
             name = os.path.basename(path)
             res = compress.compress_image(path, target, fmt)
             if res.get("ok"):
@@ -188,7 +188,7 @@ class App:
             else:
                 msg = f"✗ {name}: {res.get('error', '')[:38]}"
             self.root.after(0, self.log, msg)
-            self.root.after(0, lambda: self.prog.step(1))
+            self.root.after(0, lambda v=i + 1: self.prog.configure(value=v))
         self.root.after(0, self.log, "완료")
         self.root.after(0, lambda: self.go.configure(state="normal"))
         self.running = False

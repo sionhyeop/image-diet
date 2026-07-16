@@ -23,6 +23,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 # 관리자 PowerShell
 powershell -ExecutionPolicy Bypass -File uninstall.ps1
 ```
+uninstall.ps1은 중복 방지를 위해 legacy install.bat 방식의 우클릭 항목도 함께 제거합니다. legacy 방식을 계속 쓰려면 상위 폴더의 install.bat을 다시 실행하세요.
 
 ## 무충돌 재설치
 `install.ps1`은 실행 시 먼저 이전 흔적(패키지·인증서·설정·legacy 항목)을 모두 지운 뒤 새로 설치합니다.
