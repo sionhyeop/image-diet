@@ -5275,6 +5275,17 @@ textarea {
 
   $('#splitRun').addEventListener('click', function () { splitRun(); });
 
+  $('#splitZip').addEventListener('click', function () {
+    if (!splitState.tiles.length) return;
+    var base = baseName(splitState.file ? splitState.file.name : 'image');
+    makeZip(splitState.tiles.map(function (t) {
+      return { name: t.name, blob: t.blob };
+    })).then(function (zip) {
+      saveBlob(zip, base + '-분할.zip');
+      toast('ZIP으로 ' + splitState.tiles.length + '조각을 저장했어요.');
+    }).catch(function () { toast('ZIP 생성에 실패했어요.'); });
+  });
+
   /* ================= metadata: JPEG EXIF + PNG text chunks ================= */
   var META_TAGS = {
     0x010E: 'desc', 0x010F: 'make', 0x0110: 'model', 0x0112: 'orientation',
