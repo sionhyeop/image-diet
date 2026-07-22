@@ -484,6 +484,23 @@ textarea {
 .ex-item p { margin: 6px 0; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-item .ex-btns { display: flex; gap: 4px; }
 .ex-item .btn { flex: 1; padding: 5px 4px; font-size: 12px; min-height: 0; }
+/* 이미지 분할 — 가이드라인 미리보기와 조각 격자 */
+.split-preview-wrap {
+  margin: 10px 0 0; padding: 12px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 12px; text-align: center;
+}
+.split-preview { max-width: 100%; height: auto; border-radius: 8px; display: inline-block; }
+.split-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+.split-tile {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 8px; text-align: center; min-width: 0;
+}
+.split-tile img {
+  width: 100%; height: 84px; object-fit: contain; border-radius: 8px;
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
+}
+.split-tile p { margin: 6px 0; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-tile .btn { width: 100%; padding: 5px 4px; font-size: 12px; min-height: 0; }
 #exGhost {
   position: fixed; z-index: 300; pointer-events: none; opacity: .92;
   transform: translate(-50%, -65%); filter: drop-shadow(0 8px 20px rgba(0, 0, 0, .35));
@@ -552,6 +569,7 @@ textarea {
   <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
     <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
     <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경·요소</button>
+    <button class="tab" id="tabSplit" role="tab" aria-selected="false" aria-controls="panel-split" type="button">이미지 분할</button>
     <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
     <button class="tab" id="tabPdf" role="tab" aria-selected="false" aria-controls="panel-pdf" type="button">PDF 만들기</button>
     <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
@@ -750,6 +768,66 @@ textarea {
     </div>
   </section>
 
+  <section id="panel-split" role="tabpanel" aria-labelledby="tabSplit" hidden>
+    <div class="card b64-card">
+      <h2>이미지 분할 (격자로 자르기)</h2>
+      <div class="dropzone dropzone-sm" id="splitDropzone" role="button" tabindex="0" aria-label="분할할 이미지 선택 또는 드래그하여 추가">
+        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP / GIF</p>
+        <input type="file" id="splitFile" accept="image/*" hidden>
+      </div>
+      <div id="splitBody" hidden>
+        <p class="field-label" style="margin-top:16px">미리보기 <span class="sub">— 자를 위치를 선으로 보여줘요</span></p>
+        <div class="split-preview-wrap">
+          <canvas id="splitCanvas" class="split-preview"></canvas>
+        </div>
+        <div class="settings-grid svg-opts">
+          <div class="field">
+            <label class="field-label" for="splitCols">가로 조각 수 <output id="splitColsOut" for="splitCols">3</output><span class="sub"> — 세로선으로 나눠요</span></label>
+            <input type="range" id="splitCols" min="1" max="10" step="1" value="3">
+          </div>
+          <div class="field">
+            <label class="field-label" for="splitRows">세로 조각 수 <output id="splitRowsOut" for="splitRows">3</output><span class="sub"> — 가로선으로 나눠요</span></label>
+            <input type="range" id="splitRows" min="1" max="10" step="1" value="3">
+          </div>
+          <div class="field field-wide">
+            <span class="field-label">자주 쓰는 배치</span>
+            <div class="chips" id="splitPresets">
+              <button type="button" class="chip" data-split-preset="2x2">2 × 2</button>
+              <button type="button" class="chip" data-split-preset="3x3">3 × 3</button>
+              <button type="button" class="chip" data-split-preset="3x1">가로 3줄</button>
+              <button type="button" class="chip" data-split-preset="1x3">세로 3줄</button>
+            </div>
+          </div>
+          <div class="field field-wide">
+            <span class="field-label">출력 형식 <span class="sub">— 자동은 투명도가 있으면 알아서 맞춰요</span></span>
+            <div class="chips" id="splitFormats">
+              <button type="button" class="chip on" data-split-fmt="auto">자동</button>
+              <button type="button" class="chip" data-split-fmt="webp">WebP</button>
+              <button type="button" class="chip" data-split-fmt="jpeg">JPEG</button>
+              <button type="button" class="chip" data-split-fmt="png">PNG</button>
+            </div>
+          </div>
+          <div class="field field-wide">
+            <label class="field-label" for="splitQ">품질 <output id="splitQOut" for="splitQ">85</output>%<span class="sub"> — PNG는 품질 조절이 없어요</span></label>
+            <input type="range" id="splitQ" min="0.4" max="0.95" step="0.01" value="0.85">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="splitRun" type="button">분할하기</button>
+          <button class="btn" id="splitClear" type="button">비우기</button>
+        </div>
+        <p class="muted" id="splitStat" role="status"></p>
+      </div>
+      <div id="splitResultWrap" hidden>
+        <p class="field-label">분할 결과 <output id="splitCount"></output></p>
+        <ul id="splitGrid" class="split-grid"></ul>
+        <div class="btn-row">
+          <button class="btn primary" id="splitZip" type="button">전체 ZIP으로 저장</button>
+        </div>
+      </div>
+    </div>
+  </section>
   <section id="panel-svg" role="tabpanel" aria-labelledby="tabSvg" hidden>
     <div class="card b64-card">
       <h2>이미지 → SVG 벡터 변환</h2>
@@ -1100,6 +1178,7 @@ textarea {
   var tabs = [
     { btn: $('#tabCompress'), panel: $('#panel-compress'), key: 'compress', label: '이미지 압축', desc: '사진 용량을 화질 그대로 줄여요' },
     { btn: $('#tabBg'), panel: $('#panel-bg'), key: 'bg', label: '배경 제거 · 요소 추출', desc: '클릭 한 번으로 배경을 지우고 원하는 요소만 뽑아요' },
+    { btn: $('#tabSplit'), panel: $('#panel-split'), key: 'split', label: '이미지 분할', desc: '사진을 격자로 잘라 한꺼번에 저장해요' },
     { btn: $('#tabSvg'), panel: $('#panel-svg'), key: 'svg', label: 'SVG 변환', desc: '이미지를 선명한 벡터 SVG로 바꿔요' },
     { btn: $('#tabPdf'), panel: $('#panel-pdf'), key: 'pdf', label: 'PDF 만들기', desc: '이미지 여러 장을 PDF 한 권으로 묶어요' },
     { btn: $('#tabBase64'), panel: $('#panel-base64'), key: 'base64', label: 'Base64 도구', desc: '이미지 ↔ Data URI 변환' },
@@ -2368,6 +2447,9 @@ textarea {
     } else if (!$('#panel-bg').hidden) {
       loadCutFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 사용해요.');
+    } else if (!$('#panel-split').hidden) {
+      loadSplitFile(files[0]);
+      if (files.length > 1) toast('첫 번째 이미지만 분할해요.');
     } else if (!$('#panel-svg').hidden) {
       vectorizeFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
@@ -4909,6 +4991,163 @@ textarea {
       if (cutMode === 'bg' && bgState.srcCanvas) { bgSetupDisplay(); bgRender(); }
       else if (cutMode === 'extract' && exState.srcCanvas) { exSetupDisplay(); exRender(null); }
     });
+  });
+
+  /* ================= 이미지 분할 (n×m) =================
+     경계는 Math.round(total * i / n)로 잡는다. 반올림 분수라 조각 크기 차이가
+     1px을 넘지 않고, 빈틈·겹침 없이 원본 전체를 정확히 덮는다.
+     floor 누적 방식은 오른쪽·아래 끝 픽셀이 잘려 나가므로 쓰지 않는다. */
+  var SPLIT_MAX_TILES = 100;
+  var splitState = {
+    file: null, source: null, url: null, hasAlpha: false,
+    cols: 3, rows: 3, format: 'auto', quality: 0.85,
+    tiles: [], busy: false
+  };
+
+  function splitEdges(total, n) {
+    var out = [];
+    for (var i = 0; i <= n; i++) out.push(Math.round(total * i / n));
+    return out;
+  }
+
+  function splitReleaseTiles() {
+    splitState.tiles.forEach(function (t) { URL.revokeObjectURL(t.url); });
+    splitState.tiles = [];
+    $('#splitGrid').textContent = '';
+    $('#splitCount').textContent = '';
+    $('#splitResultWrap').hidden = true;
+  }
+
+  function splitReleaseSource() {
+    if (splitState.url) URL.revokeObjectURL(splitState.url);
+    if (splitState.source && typeof splitState.source.close === 'function') {
+      try { splitState.source.close(); } catch (e) {}
+    }
+    splitState.url = null;
+    splitState.source = null;
+    splitState.file = null;
+  }
+
+  /* 미리보기: 원본을 가로 640px 이내로 축소해 그리고, 같은 비율 위치에 격자선을 긋는다.
+     흰 3px을 먼저 긋고 강조색 1px을 덮어 밝은 사진·어두운 사진 모두에서 보이게 한다. */
+  function splitDrawPreview() {
+    var src = splitState.source;
+    var canvas = $('#splitCanvas');
+    if (!src) return;
+    var w = srcW(src), h = srcH(src);
+    if (!w || !h) return;
+    var scale = Math.min(1, 640 / w);
+    var cw = Math.max(1, Math.round(w * scale));
+    var ch = Math.max(1, Math.round(h * scale));
+    canvas.width = cw;
+    canvas.height = ch;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(src, 0, 0, cw, ch);
+    var xs = splitEdges(cw, splitState.cols);
+    var ys = splitEdges(ch, splitState.rows);
+    var i;
+    function line(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    for (var pass = 0; pass < 2; pass++) {
+      ctx.strokeStyle = pass === 0 ? 'rgba(255,255,255,.9)' : '#3182f6';
+      ctx.lineWidth = pass === 0 ? 3 : 1;
+      for (i = 1; i < xs.length - 1; i++) line(xs[i] + .5, 0, xs[i] + .5, ch);
+      for (i = 1; i < ys.length - 1; i++) line(0, ys[i] + .5, cw, ys[i] + .5);
+    }
+  }
+
+  function splitSyncStat() {
+    var n = splitState.cols * splitState.rows;
+    var src = splitState.source;
+    var msg = '조각 ' + n + '개';
+    if (src) {
+      var xs = splitEdges(srcW(src), splitState.cols);
+      var ys = splitEdges(srcH(src), splitState.rows);
+      msg += ' · 한 조각 약 ' + (xs[1] - xs[0]) + '×' + (ys[1] - ys[0]) + 'px';
+    }
+    $('#splitStat').textContent = msg;
+  }
+
+  function loadSplitFile(file) {
+    if (!file) return;
+    decodeToSource(file).then(function (res) {
+      splitReleaseTiles();
+      splitReleaseSource();
+      splitState.file = file;
+      splitState.source = res.source;
+      splitState.url = res.url;
+      splitState.hasAlpha = detectAlpha(res.source);
+      $('#splitBody').hidden = false;
+      splitDrawPreview();
+      splitSyncStat();
+    }).catch(function (err) {
+      toast(err && err.message ? err.message : '이 이미지는 열 수 없어요.');
+    });
+  }
+
+  /* --- 입력 배선 --- */
+  $('#splitDropzone').addEventListener('click', function () { $('#splitFile').click(); });
+  $('#splitDropzone').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#splitFile').click(); }
+  });
+  $('#splitFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (f) loadSplitFile(f);
+    e.target.value = '';
+  });
+
+  function splitOnGridChange() {
+    splitReleaseTiles();
+    splitDrawPreview();
+    splitSyncStat();
+  }
+  $('#splitCols').addEventListener('input', function () {
+    splitState.cols = parseInt(this.value, 10) || 1;
+    $('#splitColsOut').textContent = splitState.cols;
+    splitOnGridChange();
+  });
+  $('#splitRows').addEventListener('input', function () {
+    splitState.rows = parseInt(this.value, 10) || 1;
+    $('#splitRowsOut').textContent = splitState.rows;
+    splitOnGridChange();
+  });
+  document.querySelectorAll('#splitPresets .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var parts = b.dataset.splitPreset.split('x');
+      splitState.cols = parseInt(parts[0], 10);
+      splitState.rows = parseInt(parts[1], 10);
+      $('#splitCols').value = splitState.cols;
+      $('#splitRows').value = splitState.rows;
+      $('#splitColsOut').textContent = splitState.cols;
+      $('#splitRowsOut').textContent = splitState.rows;
+      splitOnGridChange();
+    });
+  });
+  document.querySelectorAll('#splitFormats .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      splitState.format = b.dataset.splitFmt;
+      document.querySelectorAll('#splitFormats .chip').forEach(function (o) {
+        o.classList.toggle('on', o === b);
+      });
+      $('#splitQ').disabled = splitState.format === 'png';
+      splitReleaseTiles();
+    });
+  });
+  $('#splitQ').addEventListener('input', function () {
+    splitState.quality = parseFloat(this.value);
+    $('#splitQOut').textContent = Math.round(splitState.quality * 100);
+    splitReleaseTiles();
+  });
+  $('#splitClear').addEventListener('click', function () {
+    splitReleaseTiles();
+    splitReleaseSource();
+    $('#splitBody').hidden = true;
+    $('#splitStat').textContent = '';
   });
 
   /* ================= metadata: JPEG EXIF + PNG text chunks ================= */
@@ -7466,7 +7705,9 @@ textarea {
     get bgEngine() { return bgEngine; },
     loadCutFile: loadCutFile,
     bgComposeFull: bgComposeFull,
-    get exState() { return exState; }
+    get exState() { return exState; },
+    splitEdges: splitEdges,
+    get splitState() { return splitState; }
   };
 
   /* ================= service worker ================= */
