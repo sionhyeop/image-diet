@@ -5001,7 +5001,7 @@ textarea {
   var splitState = {
     file: null, source: null, url: null, hasAlpha: false,
     cols: 3, rows: 3, format: 'auto', quality: 0.85,
-    tiles: [], busy: false
+    tiles: [], busy: false, seq: 0
   };
 
   function splitEdges(total, n) {
@@ -5075,7 +5075,13 @@ textarea {
 
   function loadSplitFile(file) {
     if (!file) return;
+    var seq = ++splitState.seq;
     decodeToSource(file).then(function (res) {
+      if (seq !== splitState.seq) {
+        if (res.url) URL.revokeObjectURL(res.url);
+        if (res.source && typeof res.source.close === 'function') { try { res.source.close(); } catch (e) {} }
+        return;
+      }
       splitReleaseTiles();
       splitReleaseSource();
       splitState.file = file;
@@ -7707,7 +7713,8 @@ textarea {
     bgComposeFull: bgComposeFull,
     get exState() { return exState; },
     splitEdges: splitEdges,
-    get splitState() { return splitState; }
+    get splitState() { return splitState; },
+    loadSplitFile: loadSplitFile
   };
 
   /* ================= service worker ================= */
