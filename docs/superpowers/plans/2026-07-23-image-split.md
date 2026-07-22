@@ -18,7 +18,30 @@
 - 조각 수 범위: 가로·세로 각각 **1~10**, 총 조각 **100개 이하**.
 - 조각 이름: `<원본이름>_<행>-<열>.<확장자>` (1부터, row-major). ZIP 이름: `<원본이름>-분할.zip`.
 - 경계 계산은 반드시 `Math.round(total * i / n)` — `floor` 누적 금지(끝 픽셀 유실).
-- 검증은 Chrome DevTools MCP로 실제 브라우저에서 수행한다. `file://` 로 `index.html`을 연다.
+- 검증은 실제 브라우저(headless Chrome)에서 수행한다. 아래 하네스를 쓴다.
+
+### 검증 하네스
+
+준비는 이미 끝나 있다. WSL 안에 puppeteer + headless Chrome이 설치돼 있고, 러너가 있다.
+
+```
+WORK=/tmp/claude-1000/-mnt-c-dev-2026-soma-downsizing-img/55711f7a-de73-41da-8beb-10fd68659fbb/scratchpad
+```
+
+검증 스크립트를 `$WORK/check.js`에 쓰고 (값을 하나 반환하는 **표현식** 하나 — 아래 태스크의 코드 블록이 그대로 그 형태다. Promise를 반환하면 러너가 기다린다) 다음과 같이 실행한다.
+
+```bash
+cd "$WORK" && node run.mjs check.js --tab split
+```
+
+옵션:
+- `--tab split` — 로드 직후 분할 탭을 연다 (`location.hash = '#split'`)
+- `--shot out.png` — 전체 페이지 스크린샷을 파일로 저장 (`Read` 도구로 확인)
+- `--dark` — 다크 모드(`prefers-color-scheme: dark`)로 렌더
+
+러너는 스크립트 반환값에 이어 `[page errors]` 줄을 출력한다. **`none`이 아니면 실패로 간주한다.**
+
+각 태스크의 "Chrome DevTools MCP로 …" / "`evaluate_script`로 …" 지시는 모두 이 하네스를 뜻한다. `take_screenshot`은 `--shot`으로, `wait_for`는 스크립트 안의 `setTimeout`/`await`으로 대신한다.
 
 ## File Structure
 
