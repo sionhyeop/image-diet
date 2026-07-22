@@ -5108,6 +5108,7 @@ textarea {
   });
 
   function splitOnGridChange() {
+    ++splitState.seq;
     splitReleaseTiles();
     splitDrawPreview();
     splitSyncStat();
@@ -5141,15 +5142,18 @@ textarea {
         o.classList.toggle('on', o === b);
       });
       $('#splitQ').disabled = splitState.format === 'png';
+      ++splitState.seq;
       splitReleaseTiles();
     });
   });
   $('#splitQ').addEventListener('input', function () {
     splitState.quality = parseFloat(this.value);
     $('#splitQOut').textContent = Math.round(splitState.quality * 100);
+    ++splitState.seq;
     splitReleaseTiles();
   });
   $('#splitClear').addEventListener('click', function () {
+    ++splitState.seq;
     splitReleaseTiles();
     splitReleaseSource();
     $('#splitBody').hidden = true;
@@ -5217,6 +5221,7 @@ textarea {
       return Promise.resolve();
     }
     splitReleaseTiles();
+    var seq = ++splitState.seq;
     splitState.busy = true;
     $('#splitRun').disabled = true;
     $('#splitStat').textContent = '자르는 중…';
@@ -5235,11 +5240,16 @@ textarea {
 
     var failed = 0;
     var idx = 0;
+    /* 도중에 그리드/형식/품질 변경, 새 이미지 로드, 비우기가 splitState.seq를 올리면
+       이 실행은 즉시 낡은 것으로 취급한다: 남은 조각은 인코딩하지 않고, 이미 만든
+       조각의 objectURL은 반드시 반납해 새는 것을 막는다. */
     function next() {
+      if (seq !== splitState.seq) { splitReleaseTiles(); return Promise.resolve(); }
       if (idx >= jobs.length) return Promise.resolve();
       var j = jobs[idx++];
       $('#splitStat').textContent = '자르는 중… ' + idx + ' / ' + jobs.length;
       return splitEncodeTile(j.x, j.y, j.w, j.h, mime, splitState.quality).then(function (blob) {
+        if (seq !== splitState.seq) { splitReleaseTiles(); return; }
         if (!blob) { failed++; return; }
         splitState.tiles.push({
           blob: blob, url: URL.createObjectURL(blob),
@@ -5250,12 +5260,13 @@ textarea {
     }
 
     return next().then(function () {
+      if (seq !== splitState.seq) return; // 낡은 실행: 렌더링도 성공 토스트도 하지 않는다
       splitRenderTiles();
       splitSyncStat();
       if (failed) toast(failed + '조각은 저장할 수 없는 형식이라 건너뛰었어요.');
       else toast(splitState.tiles.length + '조각으로 잘랐어요.');
     }).catch(function () {
-      toast('분할에 실패했어요.');
+      if (seq === splitState.seq) toast('분할에 실패했어요.');
     }).then(function () {
       splitState.busy = false;
       $('#splitRun').disabled = false;
