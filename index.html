@@ -538,7 +538,13 @@ textarea {
 .split-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 12px 0 0; }
 .split-pager-btn { padding: 6px 15px; min-height: 0; font-size: 15px; line-height: 1; }
 .split-pager-btn:disabled { opacity: .35; cursor: default; }
-.split-pager-label { font-weight: 700; font-size: 13.5px; color: var(--text); min-width: 150px; text-align: center; }
+.split-pager-mid { display: flex; align-items: center; gap: 8px; width: 300px; max-width: 58vw; }
+input.split-prefix {
+  flex: 1 1 auto; min-width: 0; width: auto; padding: 5px 9px; font-size: 13px; font-weight: 700;
+  text-align: center; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text);
+}
+input.split-prefix:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.split-pager-count { flex: none; font-size: 12.5px; font-weight: 700; color: var(--muted); min-width: 52px; text-align: right; }
 .split-tile {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 12px; padding: 8px; text-align: center; min-width: 0;
@@ -550,13 +556,21 @@ textarea {
 .split-qitem p { margin: 5px 0 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split-qitem .btn { padding: 3px 6px; font-size: 11px; min-height: 0; width: 100%; }
 .split-shot { position: relative; }
-input.split-name {
-  position: absolute; left: 4px; right: 4px; bottom: 4px; width: auto;
-  padding: 3px 6px; font-size: 11px; font-weight: 700; text-align: center;
+.split-name {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; display: flex; align-items: center;
+  padding: 2px 4px; border-radius: 6px;
   color: #fff; background: rgba(15, 23, 42, .62); border: 1px solid rgba(255, 255, 255, .35);
-  border-radius: 6px;
 }
-input.split-name:focus { background: rgba(15, 23, 42, .85); outline: 2px solid var(--accent); }
+.split-name .pre {
+  flex: 1 1 auto; min-width: 0; font-size: 10.5px; font-weight: 700; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .85;
+}
+input.split-name-num {
+  flex: none; width: 4.2em; padding: 1px 4px; font-size: 11px; font-weight: 800; text-align: left;
+  color: #fff; background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .45);
+  border-radius: 4px;
+}
+input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px solid var(--accent); }
 .split-tile img {
   width: 100%; height: 84px; object-fit: contain; border-radius: 8px; cursor: pointer;
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
@@ -956,12 +970,11 @@ input.split-name:focus { background: rgba(15, 23, 42, .85); outline: 2px solid v
         <p class="field-label">분할 결과 <output id="splitCount"></output> <span class="sub">— 조각을 클릭하면 크게 볼 수 있어요</span></p>
         <div class="split-pager" id="splitPager" hidden>
           <button class="btn split-pager-btn" id="splitPrev" type="button" aria-label="이전 원본 이미지">◀</button>
-          <span class="split-pager-label" id="splitPagerLabel" role="status"></span>
+          <span class="split-pager-mid">
+            <input type="text" id="splitPrefix" class="split-prefix" maxlength="60" aria-label="이 원본의 이름 접두사" title="이 원본의 이름 접두사 — 조각 이름이 한꺼번에 바뀌어요">
+            <span class="split-pager-count" id="splitPagerCount" role="status"></span>
+          </span>
           <button class="btn split-pager-btn" id="splitNext" type="button" aria-label="다음 원본 이미지">▶</button>
-        </div>
-        <div class="field" style="margin-top:10px">
-          <label class="field-label" for="splitPrefix">이 원본의 이름 접두사 <span class="sub">— 바꾸면 이 원본의 조각 이름이 한꺼번에 바뀌어요</span></label>
-          <input type="text" id="splitPrefix" maxlength="80" placeholder="이미지">
         </div>
         <ul id="splitGrid" class="split-grid"></ul>
         <div class="btn-row">
@@ -5906,33 +5919,23 @@ input.split-name:focus { background: rgba(15, 23, 42, .85); outline: 2px solid v
 
     /* 페이저 */
     var pager = $('#splitPager');
-    if (groups.length > 1) {
-      pager.hidden = false;
-      $('#splitPagerLabel').textContent = group.name + ' (' + (splitState.page + 1) + ' / ' + groups.length + ')';
-      $('#splitPrev').disabled = splitState.page === 0;
-      $('#splitNext').disabled = splitState.page === groups.length - 1;
-    } else {
-      /* 원본 1장: 이름만 보이고 화살표는 비활성 */
-      pager.hidden = false;
-      $('#splitPagerLabel').textContent = group.name + ' (1 / 1)';
-      $('#splitPrev').disabled = true;
-      $('#splitNext').disabled = true;
-    }
+    pager.hidden = false;
+    $('#splitPagerCount').textContent = (splitState.page + 1) + ' / ' + groups.length;
+    $('#splitPrev').disabled = splitState.page === 0;
+    $('#splitNext').disabled = splitState.page === groups.length - 1;
 
     /* 이 원본의 이름 접두사 — 바꾸면 이 원본의 조각 이름이 한꺼번에 바뀐다
        (직접 이름을 고친 조각은 그대로 둔다) */
     var pre = $('#splitPrefix');
     pre.value = group.name;
-    var tileInputs = [];
+    var preLabels = [];
     pre.oninput = function () {
       var base = splitSafeName(pre.value) || '이미지';
       group.tiles.forEach(function (t, ti) {
         t.srcName = base;
-        if (t.custom) return;
-        t.name = base + '_' + t.code + '.' + t.ext;
-        if (tileInputs[ti]) tileInputs[ti].value = base + '_' + t.code;
+        t.name = base + '_' + t.suffix + '.' + t.ext;
+        if (preLabels[ti]) preLabels[ti].textContent = base + '_';
       });
-      $('#splitPagerLabel').textContent = base + ' (' + (splitState.page + 1) + ' / ' + groups.length + ')';
     };
 
     /* 현재 원본의 조각 격자 */
@@ -5952,22 +5955,29 @@ input.split-name:focus { background: rgba(15, 23, 42, .85); outline: 2px solid v
       img.addEventListener('click', function () {
         openLightbox(t.url, t.name + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size));
       });
-      /* 사진 위에서 바로 이 조각의 이름을 고친다 (확장자는 자동) */
-      var nameIn = document.createElement('input');
-      nameIn.type = 'text';
-      nameIn.className = 'split-name';
-      nameIn.value = t.name.replace(/\.[^.]+$/, '');
-      nameIn.title = '이 조각의 파일 이름';
-      nameIn.setAttribute('aria-label', '조각 파일 이름');
-      nameIn.addEventListener('input', function () {
-        var v = splitSafeName(nameIn.value);
-        t.custom = true;
-        t.name = (v || (t.srcName + '_' + t.code)) + '.' + t.ext;
+      /* 사진 위 이름칸 — 접두사는 고정으로 보여주고 뒷자리만 고칠 수 있다 */
+      var nameBox = document.createElement('div');
+      nameBox.className = 'split-name';
+      var preSpan = document.createElement('span');
+      preSpan.className = 'pre';
+      preSpan.textContent = t.srcName + '_';
+      var numIn = document.createElement('input');
+      numIn.type = 'text';
+      numIn.className = 'split-name-num';
+      numIn.value = t.suffix;
+      numIn.title = '이 조각의 뒷자리 (접두사는 위 이름칸에서 바꿔요)';
+      numIn.setAttribute('aria-label', '조각 번호');
+      numIn.addEventListener('input', function () {
+        var v = splitSafeName(numIn.value).replace(/[^0-9A-Za-z_-]/g, '');
+        t.suffix = v || t.code;
+        t.name = t.srcName + '_' + t.suffix + '.' + t.ext;
         img.alt = t.name;
       });
-      tileInputs.push(nameIn);
+      preLabels.push(preSpan);
+      nameBox.appendChild(preSpan);
+      nameBox.appendChild(numIn);
       shot.appendChild(img);
-      shot.appendChild(nameIn);
+      shot.appendChild(nameBox);
       var p = document.createElement('p');
       p.textContent = t.code + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size);
       var dl = document.createElement('button');
@@ -6057,7 +6067,7 @@ input.split-name:focus { background: rgba(15, 23, 42, .85); outline: 2px solid v
         splitState.tiles.push({
           blob: blob, url: URL.createObjectURL(blob),
           w: j.w, h: j.h, r: j.r + 1, c: j.c + 1, code: code,
-          srcId: j.srcId, srcName: j.base, ext: j.ext, custom: false,
+          srcId: j.srcId, srcName: j.base, ext: j.ext, suffix: code,
           name: j.base + '_' + code + '.' + j.ext
         });
       }).then(next);
