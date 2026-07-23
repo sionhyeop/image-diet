@@ -158,6 +158,11 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .chip:disabled { opacity: .45; cursor: not-allowed; }
 .field-wide { grid-column: 1 / -1; }
 /* 자주 쓰는 배치 + 출력 형식을 한 행에 나란히 (좁은 화면에선 세로로 쌓임) */
+/* 미리보기(왼쪽)와 조각 수·배치·품질 설정(오른쪽)을 나란히 */
+.split-config { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; align-items: start; }
+.split-config-preview { min-width: 0; }
+.split-config .settings-grid { align-content: start; }
+@media (max-width: 760px) { .split-config { grid-template-columns: 1fr; } }
 /* 조각 수 직접 입력용 인라인 숫자칸 (전역 input[type=number] width:100%를 눌러야 하므로
    input.num-inline으로 동일 specificity·뒤 정의로 이긴다) */
 input.num-inline {
@@ -840,9 +845,12 @@ textarea {
         <ul id="splitQueue" class="split-queue"></ul>
       </div>
       <div id="splitBody" hidden>
+        <div class="split-config">
+        <div class="split-config-preview">
         <p class="field-label" style="margin-top:16px">미리보기 <span class="sub" id="splitPreviewHint">— 자를 위치를 선으로 보여줘요</span></p>
         <div class="split-preview-wrap">
           <canvas id="splitCanvas" class="split-preview"></canvas>
+        </div>
         </div>
         <div class="settings-grid svg-opts">
           <div class="field">
@@ -866,9 +874,9 @@ textarea {
             <div class="field">
               <span class="field-label">출력 형식 <span class="sub">— 자동은 투명도가 있으면 알아서 맞춰요</span></span>
               <div class="chips" id="splitFormats">
-                <button type="button" class="chip on" data-split-fmt="auto">자동</button>
+                <button type="button" class="chip" data-split-fmt="auto">자동</button>
                 <button type="button" class="chip" data-split-fmt="webp">WebP</button>
-                <button type="button" class="chip" data-split-fmt="jpeg">JPEG</button>
+                <button type="button" class="chip on" data-split-fmt="jpeg">JPEG</button>
                 <button type="button" class="chip" data-split-fmt="png">PNG</button>
               </div>
             </div>
@@ -877,6 +885,7 @@ textarea {
             <label class="field-label" for="splitQ">품질 <span class="sub">(용량)</span> <output id="splitQOut" for="splitQ">85</output>%<span class="sub"> — PNG는 품질 조절이 없어요</span></label>
             <input type="range" id="splitQ" min="0.4" max="0.95" step="0.01" value="0.85">
           </div>
+        </div>
         </div>
         <div class="btn-row">
           <button class="btn primary" id="splitRun" type="button">분할하기</button>
@@ -5073,7 +5082,7 @@ textarea {
   var splitUid = 0;
   var splitState = {
     items: [],
-    cols: 3, rows: 3, format: 'auto', quality: 0.85,
+    cols: 3, rows: 3, format: 'jpeg', quality: 0.85,
     tiles: [], busy: false, runSeq: 0, page: 0
   };
 
