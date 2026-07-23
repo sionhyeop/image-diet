@@ -881,7 +881,9 @@ textarea {
         <ul id="splitGrid" class="split-grid"></ul>
         <div class="btn-row">
           <button class="btn" id="splitZipOne" type="button">이 원본 전체 ZIP</button>
+          <button class="btn" id="splitSaveOne" type="button">이 원본 개별 저장</button>
           <button class="btn primary" id="splitZip" type="button">전체 ZIP으로 저장</button>
+          <button class="btn" id="splitSaveAll" type="button">전체 개별 저장</button>
         </div>
       </div>
     </div>
@@ -5500,6 +5502,33 @@ textarea {
   $('#splitRun').addEventListener('click', function () { splitRun(); });
   $('#splitPrev').addEventListener('click', function () { splitGotoPage(-1); });
   $('#splitNext').addEventListener('click', function () { splitGotoPage(1); });
+
+  /* 조각들을 ZIP 없이 하나씩 내려받는다. 브라우저 다중 다운로드 스로틀을 피하려고
+     200ms 간격으로 나눠 부르고, 조각마다 저장바가 뜨지 않게 anchorSave를 직접 쓴다.
+     20개를 넘으면 실수로 대량 다운로드가 쏟아지지 않도록 한 번 확인받는다. */
+  function splitSaveEach(tiles) {
+    if (!tiles.length) return;
+    if (tiles.length > 20 &&
+        !window.confirm(tiles.length + '개 파일을 하나씩 내려받아요. 계속할까요?')) return;
+    toast(tiles.length + '개를 개별로 저장하고 있어요…');
+    var i = 0;
+    function step() {
+      if (i >= tiles.length) return;
+      anchorSave(tiles[i].blob, tiles[i].name);
+      i++;
+      if (i < tiles.length) setTimeout(step, 200);
+    }
+    step();
+  }
+
+  $('#splitSaveOne').addEventListener('click', function () {
+    var groups = splitGroups();
+    if (!groups.length) return;
+    splitSaveEach(groups[Math.min(splitState.page, groups.length - 1)].tiles);
+  });
+  $('#splitSaveAll').addEventListener('click', function () {
+    splitSaveEach(splitState.tiles);
+  });
 
   /* 이 원본 전체 ZIP — 현재 페이지 원본의 조각만 묶는다 */
   $('#splitZipOne').addEventListener('click', function () {
