@@ -158,6 +158,19 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .chip:disabled { opacity: .45; cursor: not-allowed; }
 .field-wide { grid-column: 1 / -1; }
 /* 자주 쓰는 배치 + 출력 형식을 한 행에 나란히 (좁은 화면에선 세로로 쌓임) */
+/* 배경 일괄 제거 — 이미지 목록과 상태 배지 */
+.bg-batch-list { list-style: none; padding: 10px; margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; }
+.bg-batch-item { width: 108px; text-align: center; }
+.bg-batch-item .bg-batch-thumb {
+  width: 108px; height: 84px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border); display: block;
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
+}
+.bg-batch-item p { margin: 5px 0 0; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bg-batch-badge { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.bg-batch-badge.wait { color: var(--muted); background: var(--panel); border: 1px solid var(--border); }
+.bg-batch-badge.busy { color: var(--accent-strong); background: var(--accent-soft); }
+.bg-batch-badge.done { color: var(--ok); background: var(--ok-soft); }
+.bg-batch-badge.fail { color: var(--danger); background: var(--danger-soft); }
 /* 미리보기(왼쪽)와 조각 수·배치·품질 설정(오른쪽)을 나란히 */
 .split-config { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; align-items: start; }
 .split-config-preview { min-width: 0; }
@@ -737,7 +750,7 @@ textarea {
   <section id="panel-bg" role="tabpanel" aria-labelledby="tabBg" hidden>
     <div class="card b64-card">
       <h2>배경 제거 · 요소 추출</h2>
-      <div class="field" style="margin-bottom:12px">
+      <div class="field" id="cutModeField" style="margin-bottom:12px">
         <div class="seg-slide" id="cutModeSeg" role="tablist" aria-label="배경 제거 / 요소 추출 전환">
           <div class="seg-thumb" aria-hidden="true"></div>
           <button type="button" class="seg-opt on" data-cutmode="bg" role="tab" aria-selected="true">🪄 배경 제거</button>
@@ -746,8 +759,8 @@ textarea {
       </div>
       <div class="dropzone dropzone-sm" id="bgDropzone" role="button" tabindex="0" aria-label="배경을 제거할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
-        <input type="file" id="bgFile" accept="image/*" hidden>
+        <p class="dz-hint">여러 장을 한 번에 고르면 일괄 배경 제거예요 · Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
+        <input type="file" id="bgFile" accept="image/*" multiple hidden>
       </div>
       <div id="cutShared" hidden>
         <div class="field svg-opts">
@@ -761,6 +774,34 @@ textarea {
           <label class="field-label" for="bgTol">인식 민감도 <output id="bgTolOut">18</output><span class="sub"> — 높일수록 과감히 인식해요 (두 도구 공통)</span></label>
           <input type="range" id="bgTol" min="3" max="60" step="1" value="18">
         </div>
+      </div>
+      <div id="bgBatch" hidden>
+        <p class="field-label" style="margin-top:14px">배경을 제거할 이미지 <output id="bgBatchCount"></output> <span class="sub">— 위 엔진·민감도 설정으로 한꺼번에 처리해요</span></p>
+        <ul id="bgBatchList" class="bg-batch-list"></ul>
+        <div class="settings-grid svg-opts">
+          <div class="field">
+            <span class="field-label">출력 형식</span>
+            <div class="chips" id="bgBatchFmt">
+              <button type="button" class="chip on" data-bgbfmt="png">PNG (투명)</button>
+              <button type="button" class="chip" data-bgbfmt="webp">WebP (투명)</button>
+              <button type="button" class="chip" data-bgbfmt="jpeg">JPEG (배경색)</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="bgBatchQ">압축 품질 <output id="bgBatchQOut">80</output>%<span class="sub"> — PNG는 무손실</span></label>
+            <input type="range" id="bgBatchQ" min="0.4" max="0.95" step="0.01" value="0.8">
+          </div>
+          <div class="field" id="bgBatchJpegField" hidden>
+            <label class="field-label" for="bgBatchJpegBg">JPEG 배경색</label>
+            <input type="color" id="bgBatchJpegBg" value="#ffffff">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="bgBatchRun" type="button">일괄 배경 제거</button>
+          <button class="btn" id="bgBatchZip" type="button" disabled>ZIP으로 저장</button>
+          <button class="btn" id="bgBatchClear" type="button">비우기</button>
+        </div>
+        <p class="muted" id="bgBatchStat" role="status"></p>
       </div>
       <div id="bgBody" hidden>
         <div class="field svg-opts">
@@ -2527,8 +2568,7 @@ textarea {
     if (!$('#panel-meta').hidden) {
       loadMetaFile(files[0]);
     } else if (!$('#panel-bg').hidden) {
-      loadCutFile(files[0]);
-      if (files.length > 1) toast('첫 번째 이미지만 사용해요.');
+      bgAcceptFiles(files);
     } else if (!$('#panel-split').hidden) {
       loadSplitFiles(files);
     } else if (!$('#panel-svg').hidden) {
@@ -4438,30 +4478,207 @@ textarea {
       toast('PNG 저장 완료 (' + fmtBytes(b.size) + ')');
     }, 'image/png');
   });
-  $('#bgSaveOpt').addEventListener('click', function () {
-    if (!bgState.mask) return;
-    var q = parseFloat($('#bgQ').value);
-    var fmt = $('#bgOutFmt').value;
-    var composed = bgComposeFull();
-    var work;
+  /* 배경 제거 결과 캔버스를 형식대로 인코딩 -> {b, ext}. 단일 편집기와 일괄 처리 공유.
+     png=투명·무손실, webp=투명+품질(미지원 시 png), jpeg=배경색 채움+품질. */
+  function bgComposedBlob(composed, W, H, fmt, q, jpegBg) {
     if (fmt === 'jpeg') {
       var c = document.createElement('canvas');
-      c.width = bgState.W; c.height = bgState.H;
+      c.width = W; c.height = H;
       var x = c.getContext('2d');
-      x.fillStyle = $('#bgJpegBg').value;
-      x.fillRect(0, 0, c.width, c.height);
+      x.fillStyle = jpegBg || '#ffffff';
+      x.fillRect(0, 0, W, H);
       x.drawImage(composed, 0, 0);
-      work = encodeCanvas(c, 'image/jpeg', q).then(function (b) { return { b: b, ext: 'jpg' }; });
-    } else {
-      work = encodeCanvas(composed, supportsWebP ? 'image/webp' : 'image/png', supportsWebP ? q : undefined)
-        .then(function (b) { return { b: b, ext: supportsWebP ? 'webp' : 'png' }; });
+      return encodeCanvas(c, 'image/jpeg', q).then(function (b) { return { b: b, ext: 'jpg' }; });
     }
-    work.then(function (res) {
-      if (!res.b) return toast('저장에 실패했어요.');
-      saveBlob(res.b, baseName(bgState.file.name || 'image') + '-nobg.' + res.ext);
-      toast('압축 저장 완료 (' + fmtBytes(res.b.size) + ')');
+    if (fmt === 'png') {
+      return encodeCanvas(composed, 'image/png').then(function (b) { return { b: b, ext: 'png' }; });
+    }
+    return encodeCanvas(composed, supportsWebP ? 'image/webp' : 'image/png', supportsWebP ? q : undefined)
+      .then(function (b) { return { b: b, ext: supportsWebP ? 'webp' : 'png' }; });
+  }
+  $('#bgSaveOpt').addEventListener('click', function () {
+    if (!bgState.mask) return;
+    bgComposedBlob(bgComposeFull(), bgState.W, bgState.H, $('#bgOutFmt').value,
+        parseFloat($('#bgQ').value), $('#bgJpegBg').value)
+      .then(function (res) {
+        if (!res.b) return toast('저장에 실패했어요.');
+        saveBlob(res.b, baseName(bgState.file.name || 'image') + '-nobg.' + res.ext);
+        toast('압축 저장 완료 (' + fmtBytes(res.b.size) + ')');
+      });
+  });
+
+  /* ================= 배경 일괄 제거 =================
+     2장 이상이면 단일 편집기 대신 이 패널로 처리한다. 편집 세션이 없으므로
+     bgState를 스크래치로 써서 기존 마스크·합성 파이프라인을 그대로 재사용한다. */
+  var bgBatch = { items: [], busy: false, seq: 0, fmt: 'png' };
+
+  function bgBatchViewSync() {
+    var on = bgBatch.items.length > 0;
+    $('#bgBatch').hidden = !on;
+    $('#cutModeField').hidden = on;
+    if (on) {
+      $('#cutShared').hidden = false;   /* 엔진·민감도는 일괄에도 적용 */
+      $('#bgBody').hidden = true;
+      $('#exBody').hidden = true;
+    } else {
+      syncCutMode();
+    }
+  }
+
+  var BG_BATCH_LABEL = { wait: '대기', busy: '처리 중…', done: '완료', fail: '실패' };
+  function bgBatchRenderList() {
+    var ul = $('#bgBatchList');
+    ul.textContent = '';
+    bgBatch.items.forEach(function (it) {
+      var li = document.createElement('li');
+      li.className = 'bg-batch-item';
+      var img = document.createElement('img');
+      img.className = 'bg-batch-thumb';
+      img.src = (it.status === 'done' && it.resultUrl) ? it.resultUrl : it.thumbUrl;
+      img.alt = it.name;
+      var p = document.createElement('p');
+      p.textContent = it.name;
+      var badge = document.createElement('span');
+      badge.className = 'bg-batch-badge ' + it.status;
+      badge.textContent = BG_BATCH_LABEL[it.status] || '대기';
+      li.appendChild(img);
+      li.appendChild(p);
+      li.appendChild(badge);
+      ul.appendChild(li);
+    });
+    $('#bgBatchCount').textContent = bgBatch.items.length ? bgBatch.items.length + '장' : '';
+  }
+
+  function bgBatchClear() {
+    bgBatch.seq++;
+    bgBatch.busy = false;
+    bgBatch.items.forEach(function (it) {
+      if (it.thumbUrl) URL.revokeObjectURL(it.thumbUrl);
+      if (it.resultUrl) URL.revokeObjectURL(it.resultUrl);
+    });
+    bgBatch.items = [];
+    /* 배치가 스크래치로 쓴 단일 상태를 비워, 패널을 닫아도 낡은 편집기가 뜨지 않게 */
+    bgState.srcCanvas = null; bgState.mask = null; bgState.dispImg = null;
+    exState.srcCanvas = null;
+    $('#bgBatchList').textContent = '';
+    $('#bgBatchCount').textContent = '';
+    $('#bgBatchStat').textContent = '';
+    $('#bgBatchZip').disabled = true;
+    $('#bgBatchRun').disabled = false;
+    bgBatchViewSync();
+  }
+
+  function bgEnterBatch(files) {
+    bgBatchClear();
+    files.forEach(function (f) {
+      bgBatch.items.push({
+        file: f, name: f.name || '이미지', status: 'wait',
+        thumbUrl: URL.createObjectURL(f), blob: null, ext: '', resultUrl: null,
+        srcCanvas: null, W: 0, H: 0
+      });
+    });
+    bgBatchViewSync();
+    bgBatchRenderList();
+  }
+
+  /* 한 장: bgState를 스크래치로 채우고 기존 마스크·합성 파이프라인을 돌린다 */
+  function bgBatchOne(item) {
+    bgState.srcCanvas = item.srcCanvas;
+    bgState.W = item.W; bgState.H = item.H;
+    bgState.strokes = []; bgState.workMask = null; bgState.mask = null;
+    var mk = (bgEngine !== 'classic')
+      ? bgAutoMaskAI(function () {}).catch(function () {
+          bgEngine = 'classic'; syncBgEngineChips(); return bgAutoMaskClassic();
+        })
+      : Promise.resolve().then(bgAutoMaskClassic);
+    return mk.then(function () {
+      if (!bgState.workMask) throw new Error('마스크 실패');
+      bgReplayMask();
+      return bgComposedBlob(bgComposeFull(), item.W, item.H, bgBatch.fmt,
+        parseFloat($('#bgBatchQ').value), $('#bgBatchJpegBg').value);
+    });
+  }
+
+  function bgBatchRun() {
+    if (bgBatch.busy || !bgBatch.items.length) return Promise.resolve();
+    bgBatch.busy = true;
+    var seq = ++bgBatch.seq;
+    $('#bgBatchRun').disabled = true;
+    $('#bgBatchZip').disabled = true;
+    bgBatch.items.forEach(function (it) { if (it.status !== 'done') it.status = 'wait'; });
+    bgBatchRenderList();
+    var idx = 0;
+    function next() {
+      if (seq !== bgBatch.seq) return Promise.resolve();  /* 낡은 실행: 폐기 */
+      if (idx >= bgBatch.items.length) return Promise.resolve();
+      var it = bgBatch.items[idx++];
+      if (it.status === 'done') return next();            /* 이미 끝난 건 건너뛴다 */
+      $('#bgBatchStat').textContent = '처리 중… ' + idx + ' / ' + bgBatch.items.length;
+      it.status = 'busy'; bgBatchRenderList();
+      var prep = it.srcCanvas
+        ? Promise.resolve(it)
+        : bgPrepCanvas(it.file).then(function (p) { it.srcCanvas = p.srcCanvas; it.W = p.W; it.H = p.H; return it; });
+      return prep.then(bgBatchOne).then(function (res) {
+        if (seq !== bgBatch.seq) return;
+        if (!res || !res.b) { it.status = 'fail'; }
+        else {
+          it.blob = res.b; it.ext = res.ext; it.status = 'done';
+          if (it.resultUrl) URL.revokeObjectURL(it.resultUrl);
+          it.resultUrl = URL.createObjectURL(res.b);
+        }
+        bgBatchRenderList();
+      }).catch(function () {
+        if (seq !== bgBatch.seq) return;
+        it.status = 'fail'; bgBatchRenderList();
+      }).then(next);
+    }
+    return next().then(function () {
+      if (seq !== bgBatch.seq) return;
+      bgBatch.busy = false;
+      $('#bgBatchRun').disabled = false;
+      var done = 0, fail = 0;
+      bgBatch.items.forEach(function (it) { if (it.status === 'done') done++; else if (it.status === 'fail') fail++; });
+      $('#bgBatchZip').disabled = done === 0;
+      $('#bgBatchStat').textContent = '완료 ' + done + '장' + (fail ? ' · 실패 ' + fail + '장' : '');
+      if (done) toast(done + '장의 배경을 제거했어요.');
+    });
+  }
+
+  function bgBatchZip() {
+    var done = bgBatch.items.filter(function (it) { return it.status === 'done' && it.blob; });
+    if (!done.length) return;
+    makeZip(done.map(function (it) {
+      return { name: baseName(it.name) + '-nobg.' + it.ext, blob: it.blob };
+    })).then(function (zip) {
+      saveBlob(zip, '배경제거.zip');
+      toast('ZIP으로 ' + done.length + '장을 저장했어요.');
+    }).catch(function () { toast('ZIP 생성에 실패했어요.'); });
+  }
+
+  $('#bgBatchRun').addEventListener('click', function () { bgBatchRun(); });
+  $('#bgBatchZip').addEventListener('click', bgBatchZip);
+  $('#bgBatchClear').addEventListener('click', function () { bgBatchClear(); });
+  document.querySelectorAll('#bgBatchFmt .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      bgBatch.fmt = b.dataset.bgbfmt;
+      document.querySelectorAll('#bgBatchFmt .chip').forEach(function (o) { o.classList.toggle('on', o === b); });
+      $('#bgBatchJpegField').hidden = bgBatch.fmt !== 'jpeg';
     });
   });
+  $('#bgBatchQ').addEventListener('input', function () {
+    $('#bgBatchQOut').textContent = Math.round(parseFloat(this.value) * 100);
+  });
+
+  /* 배경 탭 파일 수용: 1장이면 단일 편집기, 2장 이상이면 일괄 */
+  function bgAcceptFiles(fileList) {
+    var files = [];
+    Array.prototype.forEach.call(fileList || [], function (f) {
+      if (f && ((f.type && f.type.indexOf('image/') === 0) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name || ''))) files.push(f);
+    });
+    if (!files.length) return;
+    if (files.length === 1) { bgBatchClear(); loadCutFile(files[0]); }
+    else bgEnterBatch(files);
+  }
   bindShare('#bgShare', function () {
     if (!bgState.mask) return [];
     return encodeCanvas(bgComposeFull(), 'image/png').then(function (b) {
@@ -4478,9 +4695,9 @@ textarea {
   });
   var bgFileInput = $('#bgFile');
   bgFileInput.addEventListener('change', function () {
-    var f = bgFileInput.files && bgFileInput.files[0];
+    var fs = Array.prototype.slice.call(bgFileInput.files || []);
     bgFileInput.value = '';
-    if (f) loadCutFile(f);
+    bgAcceptFiles(fs);
   });
   var bgDropzone = $('#bgDropzone');
   bgDropzone.addEventListener('click', function () { bgFileInput.click(); });
@@ -5023,15 +5240,10 @@ textarea {
   var cutSeq = 0;
   /* 이미지를 1회만 디코드해 두 도구가 같은 캔버스를 공유 —
      배경 제거↔요소 추출 전환이 재로딩 없이 즉시 이루어진다 */
-  function loadCutFile(f) {
-    cutFile = f;
-    var seq = ++cutSeq;
-    decodeToSource(f).then(function (dec) {
-      if (seq !== cutSeq) {
-        if (dec.url) URL.revokeObjectURL(dec.url);
-        if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
-        return;
-      }
+  /* 파일 하나를 디코드해 배경 제거용 캔버스(리사이즈·1920 상한 적용)로 만든다.
+     단일 편집기(loadCutFile)와 일괄 처리(bgBatch)가 공유한다. */
+  function bgPrepCanvas(file) {
+    return decodeToSource(file).then(function (dec) {
       var w = srcW(dec.source) || 512, h = srcH(dec.source) || 512;
       var lim = clampDims(w, h);
       if (lim) { w = lim.w; h = lim.h; }
@@ -5040,8 +5252,17 @@ textarea {
       var canvas = drawScaled(dec.source, w, h, null);
       if (dec.url) URL.revokeObjectURL(dec.url);
       if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
-      bgInitFromCanvas(f, canvas, w, h);
-      exInitFromCanvas(f, canvas, w, h);
+      return { srcCanvas: canvas, W: w, H: h, name: file.name || '이미지' };
+    });
+  }
+
+  function loadCutFile(f) {
+    cutFile = f;
+    var seq = ++cutSeq;
+    bgPrepCanvas(f).then(function (p) {
+      if (seq !== cutSeq) return; /* 낡은 로드: 준비된 캔버스는 그냥 버린다(원본 리소스는 이미 해제됨) */
+      bgInitFromCanvas(f, p.srcCanvas, p.W, p.H);
+      exInitFromCanvas(f, p.srcCanvas, p.W, p.H);
       syncCutMode();
       if (cutMode === 'bg') { bgSetupDisplay(); bgRender(); }
       else { exSetupDisplay(); exRender(null); }
@@ -8174,7 +8395,11 @@ textarea {
     get splitState() { return splitState; },
     splitRun: function () { return splitRun(); },
     loadSplitFile: loadSplitFile,
-    loadSplitFiles: loadSplitFiles
+    loadSplitFiles: loadSplitFiles,
+    bgEnterBatch: bgEnterBatch,
+    bgBatchRun: function () { return bgBatchRun(); },
+    bgBatchClear: function () { return bgBatchClear(); },
+    get bgBatch() { return bgBatch; }
   };
 
   /* ================= service worker ================= */
