@@ -4146,7 +4146,10 @@ textarea {
 
   function bgRecompute() {
     if (!bgState.srcCanvas) return Promise.resolve();
-    var seq = bgState.seq;
+    /* seq를 올려 진행 중이던 recompute(엔진 전환·탭 재분리 등)를 낡은 것으로 만든다.
+       안 그러면 로드 시 u2net과 SAM 전환이 같은 seq를 공유해 서로의 결과를 잘못된
+       라벨로 렌더/내보내는 레이스가 생긴다. */
+    var seq = ++bgState.seq;
     var stats = $('#bgStats');
     var run;
     if (bgEngine === 'sam') {
@@ -4196,6 +4199,7 @@ textarea {
     if (bgState.srcCanvas) bgRecompute();
     if (exState.srcCanvas) { exState.aiPred = null; exState.aiS = 0; exComputeAI(); }
   }
+  var bgSamPending = false;   /* SAM 다운로드 요청이 아직 유효한지 — 도중에 다른 엔진 선택 시 취소 */
   document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
     b.addEventListener('click', function () {
       var eng = b.dataset.engine;
@@ -4203,14 +4207,19 @@ textarea {
       if (eng === 'sam') {
         /* SAM은 모델(약 13MB)이 필요 — 없으면 받고 나서 적용. 요소 추출과 모델 공유. */
         if (samState.enc && samState.dec) { samState.on = true; syncSamBtn(); bgApplyEngine('sam'); return; }
-        if (samState.downloading) return;
-        samState.downloading = true;
+        if (samState.downloading) { bgSamPending = true; return; }
+        samState.downloading = true; bgSamPending = true;
         $('#bgStats').textContent = 'SAM 모델 받는 중… 0%';
-        samDownload(function (f) { $('#bgStats').textContent = 'SAM 모델 받는 중… ' + Math.round(f * 100) + '%'; })
-          .then(function () { samState.downloading = false; samState.on = true; syncSamBtn(); bgApplyEngine('sam'); toast('SAM 정밀 분리를 켰어요.'); })
-          .catch(function () { samState.downloading = false; $('#bgStats').textContent = 'SAM 모델을 받지 못했어요.'; toast('SAM 모델을 받지 못했어요.'); });
+        samDownload(function (f) { if (bgSamPending) $('#bgStats').textContent = 'SAM 모델 받는 중… ' + Math.round(f * 100) + '%'; })
+          .then(function () {
+            samState.downloading = false;
+            if (!bgSamPending) return;   /* 도중에 사용자가 다른 엔진을 골랐으면 적용하지 않는다 */
+            bgSamPending = false; samState.on = true; syncSamBtn(); bgApplyEngine('sam'); toast('SAM 정밀 분리를 켰어요.');
+          })
+          .catch(function () { samState.downloading = false; bgSamPending = false; $('#bgStats').textContent = 'SAM 모델을 받지 못했어요.'; toast('SAM 모델을 받지 못했어요.'); });
         return;
       }
+      bgSamPending = false;   /* 다른 엔진을 골랐으니 대기 중이던 SAM 적용을 취소 */
       bgApplyEngine(eng);
     });
   });
@@ -6090,15 +6099,19 @@ textarea {
          2) 남은 것 중 '클릭점이 속한 연결 요소'(pm>0로 연결)가 가장 큰 마스크를 고른다 →
             사람은 머리·몸통·다리가 연결돼 통째로, 떨어진 다른 물체는 제외.
          소프트 경계는 아래에서 요소를 2px 팽창해 살린다. */
-      var validArea = Math.max(1, (pre.rw / 4) * (pre.rh / 4));
+      /* 커버리지는 패딩을 뺀 '유효 영역'(rw/4 × rh/4)에서만 센다 — 비정사각형에서 패딩의
+         잡음 양수가 pos를 부풀려 정상 물체가 scene으로 오인되던 버그를 막는다. */
+      var vw = Math.min(MS, Math.max(1, Math.round(pre.rw / 4)));
+      var vh = Math.min(MS, Math.max(1, Math.round(pre.rh / 4)));
+      var validArea = vw * vh;
       var stack = new Int32Array(CN);
-      var best = -1, bestArea = -1, bestComp = null, fbBest = 0;
+      var best = -1, bestArea = -1, bestComp = null;
       for (var k = 0; k < K; k++) {
-        if (ious[k] > ious[fbBest]) fbBest = k;
         if (ious[k] < 0.3) continue;
         var off0 = k * CN;
-        var pos = 0, t; for (t = 0; t < CN; t++) if (pm.data[off0 + t] > 0) pos++;
-        if (pos / validArea > 0.85) continue;              /* 전체(scene) 마스크 제외 */
+        var pos = 0, yv, xv;
+        for (yv = 0; yv < vh; yv++) { var rowo = off0 + yv * MS; for (xv = 0; xv < vw; xv++) if (pm.data[rowo + xv] > 0) pos++; }
+        if (pos / validArea > 0.92) continue;              /* 이미지를 거의 다 덮는 scene 마스크만 제외 */
         if (pm.data[off0 + clickI] <= 0) continue;
         var comp = new Uint8Array(CN), sp = 0, area0 = 1;
         comp[clickI] = 1; stack[sp++] = clickI;
@@ -6111,7 +6124,9 @@ textarea {
         }
         if (area0 > bestArea) { bestArea = area0; best = k; bestComp = comp; }
       }
-      if (best < 0) { best = fbBest; bestComp = null; }     /* 모두 scene거나 클릭 밖이면 best-iou */
+      /* 어떤 마스크도 클릭점을 담지 못하면(배경/틈 클릭) null → 호출부가 색 폴백/‘못 찾음’으로.
+         클릭과 무관한 whole 마스크를 억지로 돌려주지 않는다. */
+      if (best < 0) return null;
       /* 클릭 요소를 2px 팽창 → 소프트 경계(막 바깥 반투명 램프)를 되살린다 */
       if (bestComp) {
         var dil = new Uint8Array(CN);
