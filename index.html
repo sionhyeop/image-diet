@@ -6133,9 +6133,9 @@ textarea {
         for (var pI = 0; pI < CN; pI++) {
           if (!bestComp[pI]) continue;
           var pxD = pI % MS, pyD = (pI / MS) | 0;
-          for (var dy = -2; dy <= 2; dy++) {
+          for (var dy = -1; dy <= 1; dy++) {
             var ny = pyD + dy; if (ny < 0 || ny >= MS) continue;
-            for (var dx = -2; dx <= 2; dx++) {
+            for (var dx = -1; dx <= 1; dx++) {
               var nx = pxD + dx; if (nx < 0 || nx >= MS) continue;
               dil[ny * MS + nx] = 1;
             }
@@ -6159,10 +6159,48 @@ textarea {
       }
       mx.putImageData(id, 0, 0);
       var W = samState.embW, H = samState.embH;
+
+      /* --- 엣지 정밀화: 256 마스크를 그대로 확대하면 ~7배 보간이라 테두리가 뭉갠다.
+         u2net 경로와 같은 방식으로, 작업 해상도(긴 변 768)에서 원본을 가이드로 삼아
+         guidedFilter를 돌려 실제 이미지 경계에 스냅시키고 좁은 램프로 또렷하게 만든다. */
+      var RS2 = 768, rw2, rh2;
+      if (W >= H) { rw2 = Math.min(W, RS2); rh2 = Math.max(1, Math.round(rw2 * H / W)); }
+      else { rh2 = Math.min(H, RS2); rw2 = Math.max(1, Math.round(rh2 * W / H)); }
+      var refCanvas = document.createElement('canvas');
+      refCanvas.width = rw2; refCanvas.height = rh2;
+      var rx2 = refCanvas.getContext('2d', { willReadFrequently: true });
+      rx2.imageSmoothingEnabled = true; rx2.imageSmoothingQuality = 'high';
+      rx2.drawImage(mc, 0, 0, vw, vh, 0, 0, rw2, rh2);
+      var mData = rx2.getImageData(0, 0, rw2, rh2).data;
+      rx2.clearRect(0, 0, rw2, rh2);
+      rx2.drawImage(samState.embCanvas, 0, 0, rw2, rh2);
+      var gData = rx2.getImageData(0, 0, rw2, rh2).data;
+      var rn2 = rw2 * rh2, pMask2 = new Float32Array(rn2), guide2 = new Float32Array(rn2);
+      for (var m2 = 0, k2 = 0; m2 < rn2; m2++, k2 += 4) {
+        pMask2[m2] = mData[k2 + 3] / 255;
+        guide2[m2] = (0.299 * gData[k2] + 0.587 * gData[k2 + 1] + 0.114 * gData[k2 + 2]) / 255;
+      }
+      var gr = Math.max(2, Math.round(rw2 / 200));
+      var refined2 = guidedFilter(guide2, pMask2, rw2, rh2, gr, 4e-4);
+      /* 0.5 기준 좁은 램프 — 경계는 얇은 안티앨리어싱만 남기고 또렷하게 */
+      var lo2 = 0.35, hi2 = 0.62;
+      var ac = document.createElement('canvas'); ac.width = rw2; ac.height = rh2;
+      var acx = ac.getContext('2d');
+      var aid = acx.createImageData(rw2, rh2);
+      for (var a2 = 0; a2 < rn2; a2++) {
+        var v2 = refined2[a2], av;
+        if (v2 <= lo2) av = 0;
+        else if (v2 >= hi2) av = 255;
+        else { var tt2 = (v2 - lo2) / (hi2 - lo2); tt2 = tt2 * tt2 * (3 - 2 * tt2); av = Math.round(255 * tt2); }
+        var qa = a2 * 4;
+        aid.data[qa] = 255; aid.data[qa + 1] = 255; aid.data[qa + 2] = 255; aid.data[qa + 3] = av;
+      }
+      acx.putImageData(aid, 0, 0);
+
       var full = document.createElement('canvas'); full.width = W; full.height = H;
       var fx = full.getContext('2d', { willReadFrequently: true });
       fx.imageSmoothingEnabled = true; fx.imageSmoothingQuality = 'high';
-      fx.drawImage(mc, 0, 0, pre.rw / 4, pre.rh / 4, 0, 0, W, H);
+      fx.drawImage(ac, 0, 0, rw2, rh2, 0, 0, W, H);
       var fd = fx.getImageData(0, 0, W, H).data;
       var minX = W, minY = H, maxX = 0, maxY = 0, area = 0;
       for (var yy = 0; yy < H; yy++) {
