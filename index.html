@@ -549,6 +549,14 @@ textarea {
 .split-qitem img { width: 88px; height: 66px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; background: var(--panel); }
 .split-qitem p { margin: 5px 0 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split-qitem .btn { padding: 3px 6px; font-size: 11px; min-height: 0; width: 100%; }
+.split-shot { position: relative; }
+input.split-name {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; width: auto;
+  padding: 3px 6px; font-size: 11px; font-weight: 700; text-align: center;
+  color: #fff; background: rgba(15, 23, 42, .62); border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 6px;
+}
+input.split-name:focus { background: rgba(15, 23, 42, .85); outline: 2px solid var(--accent); }
 .split-tile img {
   width: 100%; height: 84px; object-fit: contain; border-radius: 8px; cursor: pointer;
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
@@ -950,6 +958,10 @@ textarea {
           <button class="btn split-pager-btn" id="splitPrev" type="button" aria-label="이전 원본 이미지">◀</button>
           <span class="split-pager-label" id="splitPagerLabel" role="status"></span>
           <button class="btn split-pager-btn" id="splitNext" type="button" aria-label="다음 원본 이미지">▶</button>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label class="field-label" for="splitPrefix">이 원본의 이름 접두사 <span class="sub">— 바꾸면 이 원본의 조각 이름이 한꺼번에 바뀌어요</span></label>
+          <input type="text" id="splitPrefix" maxlength="80" placeholder="이미지">
         </div>
         <ul id="splitGrid" class="split-grid"></ul>
         <div class="btn-row">
@@ -5592,6 +5604,12 @@ textarea {
 
   /* 조각을 원본(srcId)별로 묶는다. 묶음 순서는 대기열(items) 순서를 따르고,
      조각이 하나도 없는(전부 인코딩 실패한) 원본은 건너뛴다. */
+  /* 파일명으로 쓸 수 없는 문자 정리 */
+  function splitSafeName(v) {
+    var t = String(v == null ? '' : v).replace(/[\\/:*?"<>|\r\n]+/g, '').replace(/^\s+|\s+$/g, '');
+    return t;
+  }
+
   function splitGroups() {
     var byId = {};
     splitState.tiles.forEach(function (t) {
@@ -5901,6 +5919,22 @@ textarea {
       $('#splitNext').disabled = true;
     }
 
+    /* 이 원본의 이름 접두사 — 바꾸면 이 원본의 조각 이름이 한꺼번에 바뀐다
+       (직접 이름을 고친 조각은 그대로 둔다) */
+    var pre = $('#splitPrefix');
+    pre.value = group.name;
+    var tileInputs = [];
+    pre.oninput = function () {
+      var base = splitSafeName(pre.value) || '이미지';
+      group.tiles.forEach(function (t, ti) {
+        t.srcName = base;
+        if (t.custom) return;
+        t.name = base + '_' + t.code + '.' + t.ext;
+        if (tileInputs[ti]) tileInputs[ti].value = base + '_' + t.code;
+      });
+      $('#splitPagerLabel').textContent = base + ' (' + (splitState.page + 1) + ' / ' + groups.length + ')';
+    };
+
     /* 현재 원본의 조각 격자 */
     var ul = $('#splitGrid');
     ul.textContent = '';
@@ -5908,6 +5942,8 @@ textarea {
     group.tiles.forEach(function (t) {
       var li = document.createElement('li');
       li.className = 'split-tile';
+      var shot = document.createElement('div');
+      shot.className = 'split-shot';
       var img = document.createElement('img');
       img.src = t.url;
       img.alt = t.name;
@@ -5916,6 +5952,22 @@ textarea {
       img.addEventListener('click', function () {
         openLightbox(t.url, t.name + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size));
       });
+      /* 사진 위에서 바로 이 조각의 이름을 고친다 (확장자는 자동) */
+      var nameIn = document.createElement('input');
+      nameIn.type = 'text';
+      nameIn.className = 'split-name';
+      nameIn.value = t.name.replace(/\.[^.]+$/, '');
+      nameIn.title = '이 조각의 파일 이름';
+      nameIn.setAttribute('aria-label', '조각 파일 이름');
+      nameIn.addEventListener('input', function () {
+        var v = splitSafeName(nameIn.value);
+        t.custom = true;
+        t.name = (v || (t.srcName + '_' + t.code)) + '.' + t.ext;
+        img.alt = t.name;
+      });
+      tileInputs.push(nameIn);
+      shot.appendChild(img);
+      shot.appendChild(nameIn);
       var p = document.createElement('p');
       p.textContent = t.code + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size);
       var dl = document.createElement('button');
@@ -5923,7 +5975,7 @@ textarea {
       dl.type = 'button';
       dl.textContent = '저장';
       dl.addEventListener('click', function () { saveBlob(t.blob, t.name); });
-      li.appendChild(img);
+      li.appendChild(shot);
       li.appendChild(p);
       li.appendChild(dl);
       ul.appendChild(li);
@@ -6005,7 +6057,7 @@ textarea {
         splitState.tiles.push({
           blob: blob, url: URL.createObjectURL(blob),
           w: j.w, h: j.h, r: j.r + 1, c: j.c + 1, code: code,
-          srcId: j.srcId, srcName: j.base,
+          srcId: j.srcId, srcName: j.base, ext: j.ext, custom: false,
           name: j.base + '_' + code + '.' + j.ext
         });
       }).then(next);
