@@ -768,6 +768,7 @@ textarea {
           <span class="field-label">인식 엔진 <span class="sub">— 배경 제거·요소 추출이 함께 쓰는 공통 설정</span></span>
           <div class="chips" id="bgEngineChips">
             <button type="button" class="chip on" data-engine="fast">⚡ 빠른 AI (권장)</button>
+            <button type="button" class="chip" data-engine="hq">🏆 고품질 (머리카락 · 약 42MB)</button>
             <button type="button" class="chip" data-engine="classic">🎨 색상 기반 (단색 배경)</button>
             <button type="button" class="chip" data-engine="sam">🎯 정밀 (SAM · 물체 하나 · 약 13MB)</button>
           </div>
@@ -3859,10 +3860,16 @@ textarea {
 
   /* ---------- AI 엔진 (온디바이스 ONNX: 경량 U²-Net-p만 — 큰 모델 다운로드 없음) ---------- */
   var AI_MODELS = {
-    fast: { file: 'models/u2netp.onnx', S: 320, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225], label: 'U²-Net', mb: 4 }
+    fast: { file: 'models/u2netp.onnx', S: 320, mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225], label: 'U²-Net', mb: 4 },
+    /* 고품질: RMBG-1.4(양자화). 머리카락·저대비 경계에 강하다. 외부 CDN에서 1회 받아
+       Cache Storage에 저장하므로 이후엔 오프라인. 입력 1024², 정규화 mean .5 / std 1. */
+    hq: {
+      file: 'https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx',
+      remote: true, S: 1024, mean: [0.5, 0.5, 0.5], std: [1, 1, 1], label: 'RMBG-1.4', mb: 42
+    }
   };
-  var bgEngine = 'fast'; /* 'fast' | 'classic' */
-  function aiModelKey() { return 'fast'; }
+  var bgEngine = 'fast'; /* 'fast' | 'hq' | 'classic' | 'sam' */
+  function aiModelKey() { return bgEngine === 'hq' ? 'hq' : 'fast'; }
   function syncBgEngineChips() {
     document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
       b.classList.toggle('on', b.dataset.engine === bgEngine);
@@ -3913,7 +3920,14 @@ textarea {
     if (aiLoadPromises[key]) return aiLoadPromises[key];
     var m = AI_MODELS[key];
     var p = loadOrt()
-      .then(function () { return fetchWithProgress(m.file, onProgress); })
+      .then(function () {
+        /* 외부 CDN 모델은 Cache Storage에 저장해 재방문 시 다시 받지 않는다 */
+        if (m.remote) {
+          if (navigator.storage && navigator.storage.persist) { try { navigator.storage.persist(); } catch (e) {} }
+          return samFetchModel(m.file, onProgress);
+        }
+        return fetchWithProgress(m.file, onProgress);
+      })
       .then(function (buf) { return ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }); })
       .then(function (sess) { aiSessions[key] = sess; return sess; });
     aiLoadPromises[key] = p;
