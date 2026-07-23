@@ -67,19 +67,26 @@ input, select, textarea { font: inherit; color: inherit; }
 /* 오른쪽에 나란히 못 앉는 폭이면 깔끔하게 숨김 */
 @media (max-width: 720px) { .pill { display: none; } }
 
-/* ---------- tabs (헤더 안 흰 밴드 위) ---------- */
+/* ---------- tabs (헤더 안 흰 밴드 위) ----------
+   스크롤해도 로고는 흘러가고 이 탭 줄만 화면 위에 붙어있게 sticky로 띄운다.
+   그래서 margin-top 대신 padding-top(롱핸드)만 써서 .wrap의 좌우 padding(20px)을
+   그대로 물려받는다 — padding 숏핸드를 쓰면 그 20px이 지워진다. */
 .tabs {
-  display: flex; gap: 4px; margin: 14px auto 0; padding-bottom: 12px;
+  display: flex; gap: 4px; padding-top: 14px; padding-bottom: 12px;
   overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  position: sticky; top: 0; z-index: 40;
+  background: var(--panel); border-bottom: 1px solid var(--border);
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
+  display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid transparent; background: transparent; color: var(--muted);
   padding: 8px 16px; border-radius: 999px; font-weight: 700; font-size: 14px;
   flex: none; touch-action: manipulation;
   transition: color .15s, background .15s, box-shadow .15s;
 }
+.tab svg { width: 16px; height: 16px; flex: none; }
 .tab:hover { color: var(--text); background: var(--panel-2); }
 .tab[aria-selected="true"] {
   background: var(--accent); border-color: var(--accent); color: #fff;
@@ -486,15 +493,27 @@ textarea {
 .ex-item .btn { flex: 1; padding: 5px 4px; font-size: 12px; min-height: 0; }
 /* 이미지 분할 — 가이드라인 미리보기와 조각 격자 */
 .split-preview-wrap {
-  margin: 10px 0 0; padding: 12px; background: var(--panel-2);
+  margin: 10px auto 0; padding: 12px; background: var(--panel-2);
   border: 1px solid var(--border); border-radius: 12px; text-align: center;
+  max-width: 380px;
 }
 .split-preview { max-width: 100%; height: auto; border-radius: 8px; display: inline-block; }
 .split-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+.split-group-label {
+  grid-column: 1 / -1; font-size: 12.5px; font-weight: 700; color: var(--muted);
+  padding-top: 10px; margin-top: 2px; border-top: 1px dashed var(--border); text-align: left;
+}
+.split-group-label:first-child { border-top: none; padding-top: 0; margin-top: 0; }
 .split-tile {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 12px; padding: 8px; text-align: center; min-width: 0;
 }
+/* 분할 대기열 — 여러 이미지를 동시에 담아두는 목록 */
+.split-queue { list-style: none; padding: 10px; margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; }
+.split-qitem { width: 88px; text-align: center; }
+.split-qitem img { width: 88px; height: 66px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; background: var(--panel); }
+.split-qitem p { margin: 5px 0 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-qitem .btn { padding: 3px 6px; font-size: 11px; min-height: 0; width: 100%; }
 .split-tile img {
   width: 100%; height: 84px; object-fit: contain; border-radius: 8px;
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
@@ -567,13 +586,34 @@ textarea {
     </div>
   </div>
   <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
-    <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">압축하기</button>
-    <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">배경·요소</button>
-    <button class="tab" id="tabSplit" role="tab" aria-selected="false" aria-controls="panel-split" type="button">이미지 분할</button>
-    <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">SVG 변환</button>
-    <button class="tab" id="tabPdf" role="tab" aria-selected="false" aria-controls="panel-pdf" type="button">PDF 만들기</button>
-    <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">Base64 도구</button>
-    <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">메타데이터</button>
+    <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M20 9h-4a1 1 0 0 1-1-1V4M4 15h4a1 1 0 0 1 1 1v4M15 20v-4a1 1 0 0 1 1-1h4"/></svg>
+      압축하기
+    </button>
+    <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><path d="M8 7.5 20 20M20 4 8 16.5"/></svg>
+      배경·요소
+    </button>
+    <button class="tab" id="tabSplit" role="tab" aria-selected="false" aria-controls="panel-split" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M12 3.5v17M3.5 12h17"/></svg>
+      이미지 분할
+    </button>
+    <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17c3-7 6-10 9-10s5 4 7 4"/><circle cx="4" cy="17" r="1.5"/><circle cx="20" cy="11" r="1.5"/></svg>
+      SVG 변환
+    </button>
+    <button class="tab" id="tabPdf" role="tab" aria-selected="false" aria-controls="panel-pdf" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4"/></svg>
+      PDF 만들기
+    </button>
+    <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6 4 12l5 6M15 6l5 6-5 6"/></svg>
+      Base64 도구
+    </button>
+    <button class="tab" id="tabMeta" role="tab" aria-selected="false" aria-controls="panel-meta" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 4H19a1 1 0 0 1 1 1v7.5a1 1 0 0 1-.3.7l-8 8a1 1 0 0 1-1.4 0l-6.5-6.5a1 1 0 0 1 0-1.4l8-8a1 1 0 0 1 .7-.3Z"/><circle cx="15.5" cy="8" r="1.2" fill="currentColor" stroke="none"/></svg>
+      메타데이터
+    </button>
   </nav>
 </header>
 
@@ -771,13 +811,17 @@ textarea {
   <section id="panel-split" role="tabpanel" aria-labelledby="tabSplit" hidden>
     <div class="card b64-card">
       <h2>이미지 분할 (격자로 자르기)</h2>
-      <div class="dropzone dropzone-sm" id="splitDropzone" role="button" tabindex="0" aria-label="분할할 이미지 선택 또는 드래그하여 추가">
+      <div class="dropzone dropzone-sm" id="splitDropzone" role="button" tabindex="0" aria-label="분할할 이미지 선택 또는 드래그하여 추가 — 여러 장 선택 가능">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP / GIF</p>
-        <input type="file" id="splitFile" accept="image/*" hidden>
+        <p class="dz-hint">여러 장을 한 번에 골라도 돼요 · Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP / GIF</p>
+        <input type="file" id="splitFile" accept="image/*" multiple hidden>
+      </div>
+      <div id="splitQueueWrap" hidden>
+        <p class="field-label">추가된 이미지 <output id="splitQueueCount"></output></p>
+        <ul id="splitQueue" class="split-queue"></ul>
       </div>
       <div id="splitBody" hidden>
-        <p class="field-label" style="margin-top:16px">미리보기 <span class="sub">— 자를 위치를 선으로 보여줘요</span></p>
+        <p class="field-label" style="margin-top:16px">미리보기 <span class="sub" id="splitPreviewHint">— 자를 위치를 선으로 보여줘요</span></p>
         <div class="split-preview-wrap">
           <canvas id="splitCanvas" class="split-preview"></canvas>
         </div>
@@ -2448,8 +2492,7 @@ textarea {
       loadCutFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 사용해요.');
     } else if (!$('#panel-split').hidden) {
-      loadSplitFile(files[0]);
-      if (files.length > 1) toast('첫 번째 이미지만 분할해요.');
+      loadSplitFiles(files);
     } else if (!$('#panel-svg').hidden) {
       vectorizeFile(files[0]);
       if (files.length > 1) toast('첫 번째 이미지만 SVG로 변환해요.');
@@ -4998,10 +5041,11 @@ textarea {
      1px을 넘지 않고, 빈틈·겹침 없이 원본 전체를 정확히 덮는다.
      floor 누적 방식은 오른쪽·아래 끝 픽셀이 잘려 나가므로 쓰지 않는다. */
   var SPLIT_MAX_TILES = 100;
+  var splitUid = 0;
   var splitState = {
-    file: null, source: null, url: null, hasAlpha: false,
+    items: [],
     cols: 3, rows: 3, format: 'auto', quality: 0.85,
-    tiles: [], busy: false, loadSeq: 0, runSeq: 0
+    tiles: [], busy: false, runSeq: 0
   };
 
   function splitEdges(total, n) {
@@ -5018,27 +5062,77 @@ textarea {
     $('#splitResultWrap').hidden = true;
   }
 
-  function splitReleaseSource() {
-    if (splitState.url) URL.revokeObjectURL(splitState.url);
-    if (splitState.source && typeof splitState.source.close === 'function') {
-      try { splitState.source.close(); } catch (e) {}
+  function splitReleaseItem(item) {
+    item.removed = true;
+    if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl);
+    if (item.decodeUrl) URL.revokeObjectURL(item.decodeUrl);
+    if (item.source && typeof item.source.close === 'function') {
+      try { item.source.close(); } catch (e) {}
     }
-    splitState.url = null;
-    splitState.source = null;
-    splitState.file = null;
   }
 
-  /* 미리보기: 원본을 가로 640px 이내로 축소해 그리고, 같은 비율 위치에 격자선을 긋는다.
+  function splitReleaseItems() {
+    splitState.items.forEach(splitReleaseItem);
+    splitState.items = [];
+  }
+
+  function splitRenderQueue() {
+    var wrap = $('#splitQueueWrap');
+    var ul = $('#splitQueue');
+    ul.textContent = '';
+    splitState.items.forEach(function (item) {
+      var li = document.createElement('li');
+      li.className = 'split-qitem';
+      var img = document.createElement('img');
+      img.src = item.thumbUrl;
+      img.alt = item.file.name || '이미지';
+      var p = document.createElement('p');
+      p.textContent = item.file.name || '이미지';
+      var rm = document.createElement('button');
+      rm.className = 'btn';
+      rm.type = 'button';
+      rm.textContent = '✕ 빼기';
+      rm.setAttribute('aria-label', (item.file.name || '이미지') + ' 대기열에서 빼기');
+      rm.addEventListener('click', function () { splitRemoveItem(item); });
+      li.appendChild(img);
+      li.appendChild(p);
+      li.appendChild(rm);
+      ul.appendChild(li);
+    });
+    $('#splitQueueCount').textContent = splitState.items.length ? splitState.items.length + '장' : '';
+    wrap.hidden = splitState.items.length === 0;
+  }
+
+  function splitRemoveItem(item) {
+    var idx = splitState.items.indexOf(item);
+    if (idx < 0) return;
+    splitState.items.splice(idx, 1);
+    splitReleaseItem(item);
+    ++splitState.runSeq;
+    splitReleaseTiles();
+    splitRenderQueue();
+    if (!splitState.items.length) {
+      $('#splitBody').hidden = true;
+      $('#splitStat').textContent = '';
+    } else {
+      splitDrawPreview();
+      splitSyncStat();
+    }
+  }
+
+  /* 미리보기: 대기열 맨 앞 이미지를 기준으로 가로·세로 420px 이내로 축소해 그리고
+     같은 비율 위치에 격자선을 긋는다. 세로도 함께 제한해야 긴 세로 스크린샷을
+     넣었을 때 미리보기가 화면을 넘겨 조작부를 밀어내지 않는다. 여러 장이어도
+     격자 칸 수는 모두 같으므로 대표로 한 장만 보여준다.
      흰 3px을 먼저 긋고 강조색 1px을 덮어 밝은 사진·어두운 사진 모두에서 보이게 한다. */
   function splitDrawPreview() {
-    var src = splitState.source;
+    var active = splitState.items[0];
+    var src = active && active.source;
     var canvas = $('#splitCanvas');
     if (!src) return;
     var w = srcW(src), h = srcH(src);
     if (!w || !h) return;
-    /* 가로 640px 이내로만이 아니라 세로 520px 이내로도 맞춘다. 긴 세로 스크린샷을
-       넣어도 미리보기가 화면을 넘어가 조작부가 저 아래로 밀려나지 않도록. */
-    var scale = Math.min(1, 640 / w, 520 / h);
+    var scale = Math.min(1, 420 / w, 420 / h);
     var cw = Math.max(1, Math.round(w * scale));
     var ch = Math.max(1, Math.round(h * scale));
     canvas.width = cw;
@@ -5065,42 +5159,64 @@ textarea {
 
   function splitSyncStat() {
     var n = splitState.cols * splitState.rows;
-    var src = splitState.source;
-    var msg = '조각 ' + n + '개';
-    if (src) {
-      var xs = splitEdges(srcW(src), splitState.cols);
-      var ys = splitEdges(srcH(src), splitState.rows);
-      msg += ' · 한 조각 약 ' + (xs[1] - xs[0]) + '×' + (ys[1] - ys[0]) + 'px';
+    var count = splitState.items.length;
+    var msg;
+    if (count > 1) {
+      msg = '이미지 ' + count + '장 · 이미지마다 ' + n + '조각 · 총 ' + (n * count) + '조각';
+    } else {
+      msg = '조각 ' + n + '개';
+      var src = count === 1 ? splitState.items[0].source : null;
+      if (src) {
+        var xs = splitEdges(srcW(src), splitState.cols);
+        var ys = splitEdges(srcH(src), splitState.rows);
+        msg += ' · 한 조각 약 ' + (xs[1] - xs[0]) + '×' + (ys[1] - ys[0]) + 'px';
+      }
     }
     $('#splitStat').textContent = msg;
+    $('#splitPreviewHint').textContent = count > 1
+      ? '— 자를 위치를 선으로 보여줘요 (첫 번째 이미지 기준, 나머지도 같은 격자로 잘려요)'
+      : '— 자를 위치를 선으로 보여줘요';
   }
 
-  function loadSplitFile(file) {
-    if (!file) return;
-    /* loadSeq는 이 로드만의 토큰이다. runSeq도 함께 올려 진행 중이던 분할을 중단시킨다.
-       설정 변경(그리드/형식/품질)은 runSeq만 올리므로, 디코드 대기 중인 로드를 지우지 않는다. */
-    var seq = ++splitState.loadSeq;
-    ++splitState.runSeq;
-    decodeToSource(file).then(function (res) {
-      if (seq !== splitState.loadSeq) {
-        if (res.url) URL.revokeObjectURL(res.url);
-        if (res.source && typeof res.source.close === 'function') { try { res.source.close(); } catch (e) {} }
-        return;
-      }
-      splitReleaseTiles();
-      splitReleaseSource();
-      splitState.file = file;
-      splitState.source = res.source;
-      splitState.url = res.url;
-      splitState.hasAlpha = detectAlpha(res.source);
-      $('#splitBody').hidden = false;
-      splitDrawPreview();
-      splitSyncStat();
-    }).catch(function (err) {
-      if (seq !== splitState.loadSeq) return; // 더 새 로드가 진행 중이면 낡은 오류는 알리지 않는다
-      toast(err && err.message ? err.message : '이 이미지는 열 수 없어요.');
+  function loadSplitFiles(fileList) {
+    var files = [];
+    var skipped = 0;
+    Array.prototype.forEach.call(fileList || [], function (f) {
+      if (f && ((f.type && f.type.indexOf('image/') === 0) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name || ''))) files.push(f);
+      else skipped++;
     });
+    if (skipped > 0) toast('이미지가 아닌 파일 ' + skipped + '개는 건너뛰었어요.');
+    if (!files.length) return;
+    ++splitState.runSeq; // 진행 중이던 분할이 있었다면 낡은 것으로 만든다
+    splitReleaseTiles();
+    files.forEach(function (f) {
+      var item = {
+        id: ++splitUid, file: f, source: null, decodeUrl: null,
+        thumbUrl: URL.createObjectURL(f), hasAlpha: false, removed: false
+      };
+      splitState.items.push(item);
+      decodeToSource(f).then(function (res) {
+        if (item.removed) {
+          if (res.url) URL.revokeObjectURL(res.url);
+          if (res.source && typeof res.source.close === 'function') { try { res.source.close(); } catch (e) {} }
+          return;
+        }
+        item.source = res.source;
+        item.decodeUrl = res.url;
+        item.hasAlpha = detectAlpha(res.source);
+        if (splitState.items[0] === item) splitDrawPreview();
+        splitSyncStat();
+      }).catch(function (err) {
+        if (item.removed) return;
+        var idx = splitState.items.indexOf(item);
+        if (idx >= 0) { splitState.items.splice(idx, 1); splitReleaseItem(item); splitRenderQueue(); }
+        toast((err && err.message) || ((f.name || '이 이미지') + '는 열 수 없어요.'));
+      });
+    });
+    $('#splitBody').hidden = false;
+    splitRenderQueue();
   }
+  function loadSplitFile(file) { if (file) loadSplitFiles([file]); }
 
   /* --- 입력 배선 --- */
   $('#splitDropzone').addEventListener('click', function () { $('#splitFile').click(); });
@@ -5108,8 +5224,7 @@ textarea {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#splitFile').click(); }
   });
   $('#splitFile').addEventListener('change', function (e) {
-    var f = e.target.files && e.target.files[0];
-    if (f) loadSplitFile(f);
+    if (e.target.files && e.target.files.length) loadSplitFiles(e.target.files);
     e.target.value = '';
   });
 
@@ -5159,26 +5274,27 @@ textarea {
     splitReleaseTiles();
   });
   $('#splitClear').addEventListener('click', function () {
-    ++splitState.loadSeq;
     ++splitState.runSeq;
     splitReleaseTiles();
-    splitReleaseSource();
+    splitReleaseItems();
+    splitRenderQueue();
     $('#splitBody').hidden = true;
     $('#splitStat').textContent = '';
   });
 
-  /* 형식 자동 규칙은 압축 탭의 resolveFormat과 같게 맞춘다 */
-  function splitResolveFormat() {
+  /* 형식 자동 규칙은 압축 탭의 resolveFormat과 같게 맞춘다.
+     이미지마다 투명도 유무가 다를 수 있어 hasAlpha를 인자로 받는다. */
+  function splitResolveFormat(hasAlpha) {
     if (splitState.format === 'webp') return supportsWebP ? 'image/webp' : 'image/jpeg';
     if (splitState.format === 'jpeg') return 'image/jpeg';
     if (splitState.format === 'png') return 'image/png';
-    if (splitState.hasAlpha) return supportsWebP ? 'image/webp' : 'image/png';
+    if (hasAlpha) return supportsWebP ? 'image/webp' : 'image/png';
     return supportsWebP ? 'image/webp' : 'image/jpeg';
   }
 
   /* 조각 하나를 원본 픽셀 그대로(리사이즈 없이) 잘라 인코딩한다.
      JPEG는 투명도를 못 담으므로 흰 배경을 먼저 깔고 그린다. */
-  function splitEncodeTile(sx, sy, sw, sh, mime, quality) {
+  function splitEncodeTile(source, sx, sy, sw, sh, mime, quality) {
     var canvas = document.createElement('canvas');
     canvas.width = sw;
     canvas.height = sh;
@@ -5187,7 +5303,7 @@ textarea {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, sw, sh);
     }
-    ctx.drawImage(splitState.source, sx, sy, sw, sh, 0, 0, sw, sh);
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
     return encodeCanvas(canvas, mime, mime === 'image/png' ? undefined : quality);
   }
 
@@ -5195,7 +5311,16 @@ textarea {
     var ul = $('#splitGrid');
     ul.textContent = '';
     ul.style.gridTemplateColumns = 'repeat(' + splitState.cols + ', minmax(0, 1fr))';
+    var multi = splitState.items.length > 1;
+    var lastSrc;
     splitState.tiles.forEach(function (t) {
+      if (multi && t.srcId !== lastSrc) {
+        lastSrc = t.srcId;
+        var label = document.createElement('li');
+        label.className = 'split-group-label';
+        label.textContent = t.srcName;
+        ul.appendChild(label);
+      }
       var li = document.createElement('li');
       li.className = 'split-tile';
       var img = document.createElement('img');
@@ -5214,40 +5339,56 @@ textarea {
       ul.appendChild(li);
     });
     var total = splitState.tiles.reduce(function (s, t) { return s + t.blob.size; }, 0);
-    var orig = splitState.file ? splitState.file.size : 0;
-    $('#splitCount').textContent = splitState.tiles.length + '조각 · 원본 ' +
+    var orig = splitState.items.reduce(function (s, it) { return s + (it.file ? it.file.size : 0); }, 0);
+    var countLabel = multi
+      ? splitState.tiles.length + '조각 (이미지 ' + splitState.items.length + '장)'
+      : splitState.tiles.length + '조각';
+    $('#splitCount').textContent = countLabel + ' · 원본 ' +
       fmtBytes(orig) + ' → 합계 ' + fmtBytes(total);
     $('#splitResultWrap').hidden = splitState.tiles.length === 0;
   }
 
   function splitRun() {
-    if (splitState.busy || !splitState.source) return Promise.resolve();
+    if (splitState.busy || !splitState.items.length) return Promise.resolve();
     var cols = splitState.cols, rows = splitState.rows;
     if (cols * rows > SPLIT_MAX_TILES) {
       toast('조각은 ' + SPLIT_MAX_TILES + '개까지만 만들 수 있어요.');
       return Promise.resolve();
     }
+    /* 아직 디코딩이 끝나지 않은 이미지는 이번 실행에서 빼고, 나머지만 자른다 */
+    var ready = splitState.items.filter(function (it) { return it.source && !it.removed; });
+    if (!ready.length) return Promise.resolve();
+
     splitReleaseTiles();
     var seq = ++splitState.runSeq;
     splitState.busy = true;
     $('#splitRun').disabled = true;
     $('#splitStat').textContent = '자르는 중…';
 
-    var xs = splitEdges(srcW(splitState.source), cols);
-    var ys = splitEdges(srcH(splitState.source), rows);
-    var mime = splitResolveFormat();
-    var ext = extFor(mime);
-    var base = baseName(splitState.file ? splitState.file.name : 'image');
+    /* 같은 파일명이 여러 장이면 조각 이름이 겹치지 않게 -2, -3처럼 번호를 붙인다 */
+    var usedBase = {};
     var jobs = [];
-    for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < cols; c++) {
-        jobs.push({ r: r, c: c, x: xs[c], y: ys[r], w: xs[c + 1] - xs[c], h: ys[r + 1] - ys[r] });
+    ready.forEach(function (item) {
+      var base = baseName(item.file.name || '이미지');
+      if (usedBase[base]) { usedBase[base]++; base = base + '-' + usedBase[base]; }
+      else usedBase[base] = 1;
+      var mime = splitResolveFormat(item.hasAlpha);
+      var ext = extFor(mime);
+      var xs = splitEdges(srcW(item.source), cols);
+      var ys = splitEdges(srcH(item.source), rows);
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < cols; c++) {
+          jobs.push({
+            source: item.source, srcId: item.id, base: base, mime: mime, ext: ext,
+            r: r, c: c, x: xs[c], y: ys[r], w: xs[c + 1] - xs[c], h: ys[r + 1] - ys[r]
+          });
+        }
       }
-    }
+    });
 
     var failed = 0;
     var idx = 0;
-    /* 도중에 그리드/형식/품질 변경, 새 이미지 로드, 비우기가 splitState.runSeq를 올리면
+    /* 도중에 그리드/형식/품질 변경, 이미지 추가·제거, 비우기가 splitState.runSeq를 올리면
        이 실행은 즉시 낡은 것으로 취급한다: 남은 조각은 인코딩하지 않고, 이미 만든
        조각의 objectURL은 반드시 반납해 새는 것을 막는다. */
     function next() {
@@ -5255,13 +5396,14 @@ textarea {
       if (idx >= jobs.length) return Promise.resolve();
       var j = jobs[idx++];
       $('#splitStat').textContent = '자르는 중… ' + idx + ' / ' + jobs.length;
-      return splitEncodeTile(j.x, j.y, j.w, j.h, mime, splitState.quality).then(function (blob) {
+      return splitEncodeTile(j.source, j.x, j.y, j.w, j.h, j.mime, splitState.quality).then(function (blob) {
         if (seq !== splitState.runSeq) { splitReleaseTiles(); return; }
         if (!blob) { failed++; return; }
         splitState.tiles.push({
           blob: blob, url: URL.createObjectURL(blob),
           w: j.w, h: j.h, r: j.r + 1, c: j.c + 1,
-          name: base + '_' + (j.r + 1) + '-' + (j.c + 1) + '.' + ext
+          srcId: j.srcId, srcName: j.base,
+          name: j.base + '_' + (j.r + 1) + '-' + (j.c + 1) + '.' + j.ext
         });
       }).then(next);
     }
@@ -5269,14 +5411,16 @@ textarea {
     return next().then(function () {
       if (seq !== splitState.runSeq) {
         /* 낡은 실행: 렌더링도 성공 토스트도 하지 않는다. 다만 '자르는 중… N/M'이
-           그대로 얼어붙지 않도록 상태줄은 현재 이미지 기준으로 되돌린다. */
-        if (splitState.source) splitSyncStat(); else $('#splitStat').textContent = '';
+           그대로 얼어붙지 않도록 상태줄은 현재 대기열 기준으로 되돌린다. */
+        if (splitState.items.length) splitSyncStat(); else $('#splitStat').textContent = '';
         return;
       }
       splitRenderTiles();
       splitSyncStat();
-      if (failed) toast(failed + '조각은 저장할 수 없는 형식이라 건너뛰었어요.');
-      else toast(splitState.tiles.length + '조각으로 잘랐어요.');
+      var pendingNote = ready.length < splitState.items.length
+        ? ' (아직 불러오는 중인 ' + (splitState.items.length - ready.length) + '장은 빠졌어요)' : '';
+      if (failed) toast(failed + '조각은 저장할 수 없는 형식이라 건너뛰었어요.' + pendingNote);
+      else toast(splitState.tiles.length + '조각으로 잘랐어요.' + pendingNote);
     }).catch(function () {
       if (seq === splitState.runSeq) toast('분할에 실패했어요.');
     }).then(function () {
@@ -5289,7 +5433,9 @@ textarea {
 
   $('#splitZip').addEventListener('click', function () {
     if (!splitState.tiles.length) return;
-    var base = baseName(splitState.file ? splitState.file.name : 'image');
+    var base = splitState.items.length === 1
+      ? baseName(splitState.items[0].file.name || 'image')
+      : '분할';
     /* blob 개수는 압축 전에 확정해 둔다. 압축 도중 재분할로 tiles가 비워져도
        토스트가 "0조각"으로 어긋나지 않도록. */
     var entries = splitState.tiles.map(function (t) {
@@ -7860,7 +8006,8 @@ textarea {
     splitEdges: splitEdges,
     get splitState() { return splitState; },
     splitRun: function () { return splitRun(); },
-    loadSplitFile: loadSplitFile
+    loadSplitFile: loadSplitFile,
+    loadSplitFiles: loadSplitFiles
   };
 
   /* ================= service worker ================= */
