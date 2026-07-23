@@ -50,8 +50,8 @@ input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- header (탭 라인까지 흰 밴드) ---------- */
 .site-header {
-  background: var(--panel); border-bottom: 1px solid var(--border);
-  padding: 24px 0 0; margin-bottom: 22px;
+  background: var(--panel);
+  padding: 24px 0 14px;
 }
 .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 14px; }
@@ -67,16 +67,21 @@ input, select, textarea { font: inherit; color: inherit; }
 /* 오른쪽에 나란히 못 앉는 폭이면 깔끔하게 숨김 */
 @media (max-width: 720px) { .pill { display: none; } }
 
-/* ---------- tabs (헤더 안 흰 밴드 위) ----------
-   스크롤해도 로고는 흘러가고 이 탭 줄만 화면 위에 붙어있게 sticky로 띄운다.
-   그래서 margin-top 대신 padding-top(롱핸드)만 써서 .wrap의 좌우 padding(20px)을
-   그대로 물려받는다 — padding 숏핸드를 쓰면 그 20px이 지워진다. */
+/* ---------- tabs (헤더 아래, 스크롤해도 상단에 고정) ----------
+   sticky는 "부모 박스 안에서만" 붙어 있다. 그래서 탭 줄을 짧은 .site-header
+   안에 두면 헤더가 화면 밖으로 나갈 때 탭도 같이 사라진다. 이를 피하려고
+   탭 줄을 헤더 밖 body 직속(.tabs-bar)으로 빼서, 스크롤 컨테이너(body) 전체에
+   걸쳐 상단에 붙게 한다. 전체 너비 배경은 .tabs-bar가, 가운데 정렬(.wrap)은
+   안쪽 .tabs가 맡는다. */
+.tabs-bar {
+  position: sticky; top: 0; z-index: 40;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  margin-bottom: 22px;
+}
 .tabs {
   display: flex; gap: 4px; padding-top: 14px; padding-bottom: 12px;
   overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
-  position: sticky; top: 0; z-index: 40;
-  background: var(--panel); border-bottom: 1px solid var(--border);
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
@@ -585,6 +590,9 @@ textarea {
       <button class="btn btn-share" id="shareTool" type="button" title="지금 보고 있는 도구 링크를 공유해요"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
     </div>
   </div>
+  </header>
+
+  <div class="tabs-bar">
   <nav class="tabs wrap" role="tablist" aria-label="도구 선택">
     <button class="tab" id="tabCompress" role="tab" aria-selected="true" aria-controls="panel-compress" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M20 9h-4a1 1 0 0 1-1-1V4M4 15h4a1 1 0 0 1 1 1v4M15 20v-4a1 1 0 0 1 1-1h4"/></svg>
@@ -615,7 +623,7 @@ textarea {
       메타데이터
     </button>
   </nav>
-</header>
+  </div>
 
 <main class="wrap">
   <section id="panel-compress" role="tabpanel" aria-labelledby="tabCompress">
