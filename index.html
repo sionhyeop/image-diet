@@ -4036,7 +4036,9 @@ textarea {
       /* 민감도 슬라이더 → 임계. 좁은 램프로 깔끔한 컷아웃(얇은 안티앨리어싱만) */
       var tol = parseInt($('#bgTol').value, 10);
       var t = 0.12 + (tol - 3) / 57 * 0.55;
-      var lo = Math.max(0, t - 0.045), hi = Math.min(1, t + 0.045);
+      /* 저신뢰 전경(배경과 비슷한 다리 등)이 통째로 0이 되지 않게 낮은 쪽 램프를 넓혀
+         서서히 사라지게 한다. 배경 잔재는 아래 코어 보호형 halo-trim이 정리한다. */
+      var lo = Math.max(0, t - 0.11), hi = Math.min(1, t + 0.05);
       var alpha = new Uint8Array(rn);
       for (var a2 = 0; a2 < rn; a2++) {
         var pv = refined[a2];
@@ -4057,24 +4059,44 @@ textarea {
   }
   /* refined<t 인 픽셀 중 테두리에서 연결된 것은 배경으로 확정(알파 0).
      피사체 코어에서 삐져나온 반투명 후광 링을 제거한다. */
+  /* 후광(halo) 제거 + 피사체 코어 연결 보호.
+     1) 테두리에서 refined<t 인 배경 후보를 번지게 해 배경 집합(bgv)을 만든다.
+     2) 고신뢰 코어(refined≥coreT)에서 link 문턱 이상으로 이어지는 픽셀을 전경(fg)으로
+        번지게 한다 — 배경과 색이 비슷해 신뢰도가 낮아도, 본체에 붙어 있으면 피사체의
+        일부(다리 등)로 보고 보호한다.
+     3) 배경으로 확정하되 코어에 연결된 전경은 남긴다. */
   function bgTrimHalo(alpha, refined, w, h, t) {
     var n = w * h;
-    var bgv = new Uint8Array(n);
     var stack = new Int32Array(n);
-    var sp = 0;
-    var lowT = t; /* refined가 t 미만이면 배경 후보 */
-    var seed = function (i) { if (!bgv[i] && refined[i] < lowT) { bgv[i] = 1; stack[sp++] = i; } };
-    for (var x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
-    for (var y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+    var sp = 0, i;
+
+    var bgv = new Uint8Array(n);
+    var seedBg = function (k) { if (!bgv[k] && refined[k] < t) { bgv[k] = 1; stack[sp++] = k; } };
+    for (var x = 0; x < w; x++) { seedBg(x); seedBg((h - 1) * w + x); }
+    for (var y = 0; y < h; y++) { seedBg(y * w); seedBg(y * w + w - 1); }
     while (sp > 0) {
-      var u = stack[--sp];
-      var ux = u % w;
-      if (ux > 0) seed(u - 1);
-      if (ux < w - 1) seed(u + 1);
-      if (u >= w) seed(u - w);
-      if (u < n - w) seed(u + w);
+      var u = stack[--sp], ux = u % w;
+      if (ux > 0) seedBg(u - 1);
+      if (ux < w - 1) seedBg(u + 1);
+      if (u >= w) seedBg(u - w);
+      if (u < n - w) seedBg(u + w);
     }
-    for (var i = 0; i < n; i++) if (bgv[i]) alpha[i] = 0;
+
+    var coreT = Math.min(0.95, t + 0.2);   /* 확실한 피사체 코어 */
+    var link = t * 0.6;                     /* 코어에서 이어붙는 최소 신뢰도(저대비 다리 포함) */
+    var fg = new Uint8Array(n);
+    sp = 0;
+    var seedFg = function (k) { if (!fg[k] && refined[k] >= link) { fg[k] = 1; stack[sp++] = k; } };
+    for (i = 0; i < n; i++) if (refined[i] >= coreT) seedFg(i);
+    while (sp > 0) {
+      var u2 = stack[--sp], ux2 = u2 % w;
+      if (ux2 > 0) seedFg(u2 - 1);
+      if (ux2 < w - 1) seedFg(u2 + 1);
+      if (u2 >= w) seedFg(u2 - w);
+      if (u2 < n - w) seedFg(u2 + w);
+    }
+
+    for (i = 0; i < n; i++) if (bgv[i] && !fg[i]) alpha[i] = 0;
   }
   function bgRecompute() {
     if (!bgState.srcCanvas) return Promise.resolve();
@@ -8410,7 +8432,8 @@ textarea {
     bgEnterBatch: bgEnterBatch,
     bgBatchRun: function () { return bgBatchRun(); },
     bgBatchClear: function () { return bgBatchClear(); },
-    get bgBatch() { return bgBatch; }
+    get bgBatch() { return bgBatch; },
+    bgTrimHalo: bgTrimHalo
   };
 
   /* ================= service worker ================= */
