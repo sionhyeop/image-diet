@@ -811,7 +811,7 @@ textarea {
           <input type="range" id="bgFeather" min="0" max="5" step="1" value="0">
         </div>
         <div class="field svg-opts">
-          <span class="field-label">도구 <span class="sub">— 비교: 드래그로 경계선 이동 · 브러시: 그려서 부분 수정</span></span>
+          <span class="field-label">도구 <span class="sub">— 비교: 드래그로 경계선 이동 · 브러시: 영역을 칠하면 그 안에서 배경(지우개)·피사체(복원)만 알아서 골라 처리해요</span></span>
           <div class="chips" id="bgTools">
             <button type="button" class="chip on" data-bgtool="compare">↔ 비교</button>
             <button type="button" class="chip" data-bgtool="erase">🧽 배경 지우기</button>
@@ -3813,7 +3813,7 @@ textarea {
   var bgState = {
     file: null, srcCanvas: null, W: 0, H: 0,
     workMask: null, workW: 0, workH: 0,
-    mask: null, strokes: [], tool: 'compare', divider: 0,
+    mask: null, strokes: [], previewStroke: null, tool: 'compare', divider: 0,
     dispImg: null, dispW: 0, dispH: 0, seq: 0, revealed: false
   };
   var bgCanvas = $('#bgCanvas'), bgBox = $('#bgBox');
@@ -4318,7 +4318,148 @@ textarea {
     for (var i = 0; i < bgState.strokes.length; i++) bgApplyStroke(mx, bgState.strokes[i], null);
   }
 
+  /* 스트로크 경로를 흰색으로 칠한 영역 비트맵과 bbox를 만든다 (스마트 지우개용) */
+  function bgStrokeRegion(st, W, H) {
+    var pts = st.points, pad = st.size / 2 + 2;
+    var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, i;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i][0] < minX) minX = pts[i][0];
+      if (pts[i][0] > maxX) maxX = pts[i][0];
+      if (pts[i][1] < minY) minY = pts[i][1];
+      if (pts[i][1] > maxY) maxY = pts[i][1];
+    }
+    var x0 = Math.max(0, Math.floor(minX - pad)), y0 = Math.max(0, Math.floor(minY - pad));
+    var x1 = Math.min(W, Math.ceil(maxX + pad)), y1 = Math.min(H, Math.ceil(maxY + pad));
+    var bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+    var rc = document.createElement('canvas'); rc.width = bw; rc.height = bh;
+    var rx = rc.getContext('2d', { willReadFrequently: true });
+    rx.translate(-x0, -y0);
+    rx.strokeStyle = '#fff'; rx.fillStyle = '#fff';
+    rx.lineWidth = st.size; rx.lineCap = 'round'; rx.lineJoin = 'round';
+    if (pts.length === 1) {
+      rx.beginPath(); rx.arc(pts[0][0], pts[0][1], st.size / 2, 0, Math.PI * 2); rx.fill();
+    } else {
+      rx.beginPath(); rx.moveTo(pts[0][0], pts[0][1]);
+      for (i = 1; i < pts.length; i++) rx.lineTo(pts[i][0], pts[i][1]);
+      rx.stroke();
+    }
+    return { x0: x0, y0: y0, bw: bw, bh: bh, data: rx.getImageData(0, 0, bw, bh).data };
+  }
+
+  /* 칠한 영역을 통째로 처리하지 않고, 그 안에서 '추정되는 부분'만 바꾼다.
+     - 배경 지우개(restore=false): 배경으로 추정되는 픽셀만 지움 → 영역에 든 피사체는 남음
+     - 복원하기(restore=true):    피사체로 추정되는 픽셀만 되살림 → 배경은 그대로 둠
+     기준색은 (1) 칠한 영역 안·주변에서 이미 배경(투명)/피사체(불투명)로 판정된 픽셀의
+     평균색, 없으면 (2) 지우개는 테두리색·복원은 현재 피사체 평균색. 기준색과 가까우면서
+     시드에서 연결된 픽셀만 바꿔 반대편이 뚫리지 않게 한다. 바뀐 픽셀 수를 돌려준다. */
+  function bgSmartPaint(mx, st, restore) {
+    var W = bgState.W, H = bgState.H;
+    var reg = bgStrokeRegion(st, W, H);
+    var bw = reg.bw, bh = reg.bh, n = bw * bh, i;
+    var inReg = new Uint8Array(n);
+    for (i = 0; i < n; i++) if (reg.data[i * 4 + 3] > 40) inReg[i] = 1;
+
+    var sc = document.createElement('canvas'); sc.width = bw; sc.height = bh;
+    var sx2 = sc.getContext('2d', { willReadFrequently: true });
+    sx2.drawImage(bgState.srcCanvas, reg.x0, reg.y0, bw, bh, 0, 0, bw, bh);
+    var src = sx2.getImageData(0, 0, bw, bh).data;
+    var maskImg = mx.getImageData(reg.x0, reg.y0, bw, bh);
+    var md = maskImg.data;
+
+    /* 시드: 지우개는 이미 배경(투명)인 곳, 복원은 이미 피사체(불투명)인 곳 — 자신 또는 이웃 */
+    var wantOpaque = !!restore;
+    var isSide = function (idx) { var a = md[idx * 4 + 3]; return wantOpaque ? a >= 128 : a < 128; };
+    var seeds = [], sr = 0, sg = 0, sb = 0, sn = 0;
+    for (var y = 0; y < bh; y++) {
+      for (var x = 0; x < bw; x++) {
+        var idx = y * bw + x;
+        if (!inReg[idx]) continue;
+        var hit = isSide(idx);
+        if (!hit) {
+          if (x > 0 && isSide(idx - 1)) hit = true;
+          else if (x < bw - 1 && isSide(idx + 1)) hit = true;
+          else if (y > 0 && isSide(idx - bw)) hit = true;
+          else if (y < bh - 1 && isSide(idx + bw)) hit = true;
+        }
+        if (hit) {
+          seeds.push(idx);
+          var p4 = idx * 4;
+          sr += src[p4]; sg += src[p4 + 1]; sb += src[p4 + 2]; sn++;
+        }
+      }
+    }
+    var ref;
+    if (sn >= 10) ref = [sr / sn, sg / sn, sb / sn];
+    else ref = restore ? bgForegroundColor() : bgBorderColor();
+
+    var tol = parseInt($('#bgTol').value, 10);
+    var thr = 9 * Math.pow(tol * 2.55, 2);
+    var near = function (idx) {
+      var p = idx * 4, dr = src[p] - ref[0], dg = src[p + 1] - ref[1], db = src[p + 2] - ref[2];
+      return (2 * dr * dr + 4 * dg * dg + 3 * db * db) <= thr;
+    };
+
+    var kill = new Uint8Array(n), stack = new Int32Array(n), sp = 0, erased = 0;
+    if (sn >= 10) {
+      /* 시드에서 색이 비슷한 곳으로만 번져 나간다 — 피사체 안쪽이 뚫리지 않는다 */
+      for (i = 0; i < seeds.length; i++) { var sidx = seeds[i]; if (!kill[sidx] && near(sidx)) { kill[sidx] = 1; stack[sp++] = sidx; } }
+      while (sp > 0) {
+        var u = stack[--sp], ux = u % bw;
+        if (ux > 0 && inReg[u - 1] && !kill[u - 1] && near(u - 1)) { kill[u - 1] = 1; stack[sp++] = u - 1; }
+        if (ux < bw - 1 && inReg[u + 1] && !kill[u + 1] && near(u + 1)) { kill[u + 1] = 1; stack[sp++] = u + 1; }
+        if (u >= bw && inReg[u - bw] && !kill[u - bw] && near(u - bw)) { kill[u - bw] = 1; stack[sp++] = u - bw; }
+        if (u < n - bw && inReg[u + bw] && !kill[u + bw] && near(u + bw)) { kill[u + bw] = 1; stack[sp++] = u + bw; }
+      }
+    } else {
+      for (i = 0; i < n; i++) if (inReg[i] && near(i)) kill[i] = 1;
+    }
+    var target = restore ? 255 : 0;
+    for (i = 0; i < n; i++) {
+      if (!kill[i]) continue;
+      if (md[i * 4 + 3] === target) continue;
+      md[i * 4 + 3] = target;
+      erased++;
+    }
+    if (erased) mx.putImageData(maskImg, reg.x0, reg.y0);
+    return erased;
+  }
+
+  /* 현재 피사체(불투명 영역) 평균색 — 복원의 기준색 후보 */
+  function bgForegroundColor() {
+    var s = Math.min(1, 96 / Math.max(bgState.W, bgState.H));
+    var w = Math.max(2, Math.round(bgState.W * s)), h = Math.max(2, Math.round(bgState.H * s));
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(bgState.srcCanvas, 0, 0, w, h);
+    var sd = x.getImageData(0, 0, w, h).data;
+    x.clearRect(0, 0, w, h);
+    if (bgState.mask) x.drawImage(bgState.mask, 0, 0, w, h);
+    var mdd = x.getImageData(0, 0, w, h).data;
+    var r = 0, g = 0, b = 0, cnt = 0;
+    for (var i = 0; i < w * h; i++) {
+      if (mdd[i * 4 + 3] < 128) continue;
+      r += sd[i * 4]; g += sd[i * 4 + 1]; b += sd[i * 4 + 2]; cnt++;
+    }
+    return cnt ? [r / cnt, g / cnt, b / cnt] : [128, 128, 128];
+  }
+
+  /* 이미지 테두리 평균색 — 스마트 지우개의 기준색 후보 */
+  function bgBorderColor() {
+    var s = Math.min(1, 64 / Math.max(bgState.W, bgState.H));
+    var w = Math.max(2, Math.round(bgState.W * s)), h = Math.max(2, Math.round(bgState.H * s));
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(bgState.srcCanvas, 0, 0, w, h);
+    var d = x.getImageData(0, 0, w, h).data;
+    var r = 0, g = 0, b = 0, cnt = 0;
+    var acc = function (p) { r += d[p]; g += d[p + 1]; b += d[p + 2]; cnt++; };
+    for (var i = 0; i < w; i++) { acc(i * 4); acc(((h - 1) * w + i) * 4); }
+    for (var j = 0; j < h; j++) { acc(j * w * 4); acc((j * w + w - 1) * 4); }
+    return cnt ? [r / cnt, g / cnt, b / cnt] : [255, 255, 255];
+  }
+
   function bgApplyStroke(mx, st, fromIdx) {
+    if (st.mode === 'smart' || st.mode === 'smartRestore') { bgSmartPaint(mx, st, st.mode === 'smartRestore'); return; }
     mx.save();
     mx.globalCompositeOperation = st.mode === 'erase' ? 'destination-out' : 'source-over';
     mx.strokeStyle = '#fff';
@@ -4390,6 +4531,24 @@ textarea {
     ctx.restore();
     ctx.fillStyle = '#3182f6';
     ctx.fillRect(divX - 1, 0, 2, dh);
+    if (bgState.previewStroke) {
+      /* 지금 표시 중인 영역 — 이 안에서 추정된 부분만 손을 뗄 때 바뀐다 */
+      var pst = bgState.previewStroke, sc2 = dw / bgState.W;
+      ctx.save();
+      ctx.strokeStyle = pst.mode === 'smartRestore' ? 'rgba(34,197,94,.45)' : 'rgba(240,68,82,.45)';
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = pst.size * sc2;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      var pp = pst.points;
+      if (pp.length === 1) {
+        ctx.beginPath(); ctx.arc(pp[0][0] * sc2, pp[0][1] * sc2, pst.size * sc2 / 2, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.moveTo(pp[0][0] * sc2, pp[0][1] * sc2);
+        for (var qi = 1; qi < pp.length; qi++) ctx.lineTo(pp[qi][0] * sc2, pp[qi][1] * sc2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     if (cursor && bgState.tool !== 'compare') {
       var rect = bgCanvas.getBoundingClientRect();
       var r = parseInt($('#bgBrush').value, 10) / 2 * (dw / (rect.width || dw));
@@ -4425,14 +4584,16 @@ textarea {
       bgRender();
     } else {
       if (!bgState.mask) return;
+      /* 브러시는 칠한 자리를 그대로 바꾸지 않고, 표시한 영역 안에서 배경(지우개) 또는
+         피사체(복원)로 추정되는 부분만 바꾼다. 드래그 중엔 영역만 미리보기로 보여주고
+         손을 뗄 때 한 번에 적용한다. */
       var st = {
-        mode: bgState.tool === 'erase' ? 'erase' : 'restore',
+        mode: bgState.tool === 'erase' ? 'smart' : 'smartRestore',
         size: Math.max(2, parseInt($('#bgBrush').value, 10) * (bgState.W / pos.rw)),
         points: [[pos.fx, pos.fy]]
       };
-      bgState.strokes.push(st);
-      bgApplyStroke(bgState.mask.getContext('2d'), st, null);
       bgPainting = { mode: 'paint', stroke: st };
+      bgState.previewStroke = st;
       bgRender({ x: pos.dx, y: pos.dy });
     }
   });
@@ -4443,16 +4604,24 @@ textarea {
       bgState.divider = Math.max(0, Math.min(100, pos.dx / bgState.dispW * 100));
       bgRender();
     } else if (bgPainting && bgPainting.mode === 'paint') {
-      var st = bgPainting.stroke;
-      st.points.push([pos.fx, pos.fy]);
-      bgApplyStroke(bgState.mask.getContext('2d'), st, st.points.length - 1);
+      bgPainting.stroke.points.push([pos.fx, pos.fy]);
       bgRender({ x: pos.dx, y: pos.dy });
     } else if (bgState.tool !== 'compare') {
       bgRender({ x: pos.dx, y: pos.dy });
     }
   });
   function bgPtrEnd() {
+    var p = bgPainting;
     bgPainting = null;
+    bgState.previewStroke = null;
+    if (p && p.mode === 'paint' && bgState.mask) {
+      var st = p.stroke;
+      var changed = bgSmartPaint(bgState.mask.getContext('2d'), st, st.mode === 'smartRestore');
+      if (changed) bgState.strokes.push(st);
+      else toast(st.mode === 'smartRestore'
+        ? '되살릴 피사체를 찾지 못했어요 — 인식 민감도를 높여보세요.'
+        : '지울 배경을 찾지 못했어요 — 인식 민감도를 높여보세요.');
+    }
     bgRender();
   }
   bgCanvas.addEventListener('pointerup', bgPtrEnd);
@@ -8758,6 +8927,7 @@ textarea {
     bgBatchClear: function () { return bgBatchClear(); },
     get bgBatch() { return bgBatch; },
     bgTrimHalo: bgTrimHalo,
+    bgSmartPaint: function (mx, st, r) { return bgSmartPaint(mx, st, r); },
     get samState() { return samState; },
     samPreprocess: samPreprocess,
     samEnsureEmbedding: function () { return samEnsureEmbedding(); },
