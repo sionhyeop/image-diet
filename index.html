@@ -858,9 +858,11 @@ textarea {
       <div id="exBody" hidden>
         <div class="field svg-opts" id="exSamField">
           <div class="chips">
-            <button type="button" class="chip" id="exSamBtn">🎯 AI 정밀 분리 — 물체 단위로 (모델 약 13MB 받기)</button>
+            <button type="button" class="chip" id="exSamBtn">🎯 AI 정밀 분리 — 준비 중…</button>
           </div>
-          <p class="sub" id="exSamNote" style="margin:6px 0 0">색이 비슷한 물체도 하나씩 정확히 떼어내요. 처음 켤 때만 외부(HuggingFace)에서 모델을 받아요 — 이후엔 오프라인으로 동작해요.</p>
+          <p class="sub" id="exSamNote" style="margin:6px 0 0">물체 단위로 하나씩 떼어내요 — 기본으로 켜집니다. 처음 한 번만 외부(HuggingFace)에서 모델(약 13MB)을 받고, 이후엔 오프라인으로 동작해요.</p>
+          <label class="field-label" for="exScope" style="margin-top:12px">추출 범위 <output id="exScopeOut" for="exScope">보통</output><span class="sub"> — 작게: 부위 하나 · 크게: 물체 전체</span></label>
+          <input type="range" id="exScope" min="1" max="5" step="1" value="3">
         </div>
         <div class="bg-wrap svg-opts">
           <div class="cmp-box" id="exBox"><canvas id="exCanvas"></canvas></div>
@@ -5538,6 +5540,7 @@ textarea {
     $('#bgBody').hidden = !(cutMode === 'bg' && bgState.srcCanvas);
     $('#exBody').hidden = !(cutMode === 'extract' && exState.srcCanvas);
     $('#cutShared').hidden = $('#bgBody').hidden && $('#exBody').hidden;
+    if (!$('#exBody').hidden) exAutoEnableSam();   /* 요소 추출은 정밀 분리가 기본 */
   }
   document.querySelectorAll('#cutModeSeg .seg-opt').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -6218,7 +6221,7 @@ textarea {
       var vh = Math.min(MS, Math.max(1, Math.round(pre.rh / 4)));
       var validArea = vw * vh;
       var stack = new Int32Array(CN);
-      var best = -1, bestArea = -1, bestComp = null;
+      var cands = [];
       for (var k = 0; k < K; k++) {
         if (ious[k] < 0.3) continue;
         var off0 = k * CN;
@@ -6235,11 +6238,17 @@ textarea {
           if (u >= MS && !comp[u - MS] && pm.data[off0 + u - MS] > 0) { comp[u - MS] = 1; stack[sp++] = u - MS; area0++; }
           if (u < CN - MS && !comp[u + MS] && pm.data[off0 + u + MS] > 0) { comp[u + MS] = 1; stack[sp++] = u + MS; area0++; }
         }
-        if (area0 > bestArea) { bestArea = area0; best = k; bestComp = comp; }
+        cands.push({ k: k, area: area0, comp: comp });
       }
       /* 어떤 마스크도 클릭점을 담지 못하면(배경/틈 클릭) null → 호출부가 색 폴백/‘못 찾음’으로.
          클릭과 무관한 whole 마스크를 억지로 돌려주지 않는다. */
-      if (best < 0) return null;
+      if (!cands.length) return null;
+      /* 추출 범위 슬라이더로 부위(작게) ~ 물체 전체(크게) 중에서 고른다 */
+      cands.sort(function (a, b) { return a.area - b.area; });
+      var pick = Math.round((exScope - 1) / 4 * (cands.length - 1));
+      if (pick < 0) pick = 0;
+      if (pick > cands.length - 1) pick = cands.length - 1;
+      var best = cands[pick].k, bestComp = cands[pick].comp;
       /* 클릭 요소를 2px 팽창 → 소프트 경계(막 바깥 반투명 램프)를 되살린다 */
       if (bestComp) {
         var dil = new Uint8Array(CN);
@@ -6393,6 +6402,45 @@ textarea {
   function syncSamBtn() {
     var btn = $('#exSamBtn');
     if (btn && samState.on) { btn.classList.add('on'); btn.textContent = '🎯 AI 정밀 분리 켜짐'; }
+  }
+
+  /* 요소 추출은 정밀 분리를 기본으로 쓴다 — 추출 화면에 들어오면 모델을 자동으로 받아 켠다.
+     실패해도 전경맵(덩어리)·색 기반으로 계속 동작하고, 자동 재시도는 하지 않는다(버튼으로 수동). */
+  var exSamAutoTried = false;
+  /* 추출 범위 1(작게)~5(크게) — SAM이 주는 부위/부분/전체 후보 중 어느 크기를 고를지 */
+  var exScope = 3;
+  var EX_SCOPE_LABEL = { 1: '아주 작게', 2: '작게', 3: '보통', 4: '크게', 5: '아주 크게' };
+  (function () {
+    var sl = $('#exScope');
+    if (!sl) return;
+    sl.addEventListener('input', function () {
+      exScope = parseInt(this.value, 10) || 3;
+      $('#exScopeOut').textContent = EX_SCOPE_LABEL[exScope] || '보통';
+    });
+  })();
+  function exAutoEnableSam() {
+    if (samState.on || samState.downloading) return;
+    if (samState.enc && samState.dec) { samState.on = true; syncSamBtn(); samEnsureEmbedding(); return; }
+    if (exSamAutoTried) return;
+    exSamAutoTried = true;
+    var btn = $('#exSamBtn'), hint = $('#exHint');
+    samState.downloading = true;
+    if (btn) btn.textContent = '🎯 정밀 분리 준비 중… 0%';
+    if (hint) hint.textContent = '🎯 정밀 분리 모델을 준비하는 중… (최초 1회 약 13MB, 이후 오프라인)';
+    samDownload(function (f) {
+      var pct = Math.round(f * 100);
+      if (btn) btn.textContent = '🎯 정밀 분리 준비 중… ' + pct + '%';
+      if (hint) hint.textContent = '🎯 정밀 분리 모델 내려받는 중… ' + pct + '%';
+    }).then(function () {
+      samState.downloading = false;
+      samState.on = true;
+      syncSamBtn();
+      samEnsureEmbedding();
+    }).catch(function () {
+      samState.downloading = false;
+      if (btn) btn.textContent = '🎯 AI 정밀 분리 — 다시 시도 (모델 받기 실패)';
+      if (hint) hint.textContent = '정밀 분리 모델을 받지 못했어요 — 전경 인식으로 잡아요.';
+    });
   }
   $('#exSamBtn').addEventListener('click', function () {
     if (samState.downloading) return;
