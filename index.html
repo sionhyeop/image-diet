@@ -770,7 +770,6 @@ textarea {
             <button type="button" class="chip on" data-engine="fast">⚡ 빠른 AI (권장)</button>
             <button type="button" class="chip" data-engine="hq">🏆 고품질 (머리카락 · 약 42MB)</button>
             <button type="button" class="chip" data-engine="classic">🎨 색상 기반 (단색 배경)</button>
-            <button type="button" class="chip" data-engine="sam">🎯 정밀 (SAM · 물체 하나 · 약 13MB)</button>
           </div>
         </div>
         <div class="field svg-opts">
@@ -3814,7 +3813,7 @@ textarea {
   var bgState = {
     file: null, srcCanvas: null, W: 0, H: 0,
     workMask: null, workW: 0, workH: 0,
-    mask: null, strokes: [], tool: 'compare', divider: 50,
+    mask: null, strokes: [], tool: 'compare', divider: 0,
     dispImg: null, dispW: 0, dispH: 0, seq: 0, revealed: false
   };
   var bgCanvas = $('#bgCanvas'), bgBox = $('#bgBox');
@@ -3825,18 +3824,17 @@ textarea {
   function bgRevealAnim() {
     if (bgRevealRAF) { cancelAnimationFrame(bgRevealRAF); bgRevealRAF = null; }
     if (!bgState.mask) { bgRender(); return; }
-    var dur = 1150, start = null;
+    var dur = 800, start = null;
     var ease = function (t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; };
     function frame(ts) {
       if (start === null) start = ts;
       var p = Math.min(1, (ts - start) / dur);
-      var d;
-      if (p < 0.6) { d = 100 - ease(p / 0.6) * 100; }       /* 원본(100) → 결과 전체(0) 훑기 */
-      else { d = ease((p - 0.6) / 0.4) * 50; }               /* 결과(0) → 가운데(50) 정착 */
-      bgState.divider = d;
+      /* 원본(100) → 결과 전체(0)로 한 번 훑고 결과에서 멈춘다. 기본 화면은 배경이 지워진
+         결과만 보이고, 원본과 섞어 보고 싶으면 비교 바를 직접 끌면 된다. */
+      bgState.divider = 100 - ease(p) * 100;
       bgRender();
       if (p < 1) { bgRevealRAF = requestAnimationFrame(frame); }
-      else { bgState.divider = 50; bgRender(); bgRevealRAF = null; }
+      else { bgState.divider = 0; bgRender(); bgRevealRAF = null; }
     }
     bgRevealRAF = requestAnimationFrame(frame);
   }
@@ -3851,10 +3849,9 @@ textarea {
     bgState.file = f;
     bgState.W = w; bgState.H = h;
     bgState.strokes = [];
-    bgState.divider = 50;
+    bgState.divider = 0;
     bgState.mask = null;
     bgState.revealed = false;
-    bgSamPoint = null;   /* 새 이미지: SAM 클릭 교정 점 초기화(자동 점 사용) */
     bgStopReveal();
   }
 
@@ -4120,61 +4117,15 @@ textarea {
 
     for (i = 0; i < n; i++) if (bgv[i] && !fg[i]) alpha[i] = 0;
   }
-  /* SAM 배경 제거용 자동 점: 테두리 평균색과 가장 다른 영역의 무게중심(피사체 추정).
-     모델 없이 저해상에서 수 ms. bgSamPoint(클릭 교정)가 있으면 그걸 우선한다. */
-  var bgSamPoint = null;
-  function bgSamAutoPoint(srcCanvas, W, H) {
-    var s = Math.min(1, 72 / Math.max(W, H));
-    var w = Math.max(2, Math.round(W * s)), h = Math.max(2, Math.round(H * s));
-    var c = document.createElement('canvas'); c.width = w; c.height = h;
-    var x = c.getContext('2d', { willReadFrequently: true });
-    x.drawImage(srcCanvas, 0, 0, w, h);
-    var d = x.getImageData(0, 0, w, h).data;
-    var br = 0, bgc = 0, bb = 0, bc = 0;
-    var acc = function (p) { br += d[p]; bgc += d[p + 1]; bb += d[p + 2]; bc++; };
-    for (var i = 0; i < w; i++) { acc(i * 4); acc(((h - 1) * w + i) * 4); }
-    for (var jj = 0; jj < h; jj++) { acc(jj * w * 4); acc((jj * w + w - 1) * 4); }
-    br /= bc; bgc /= bc; bb /= bc;
-    var sx = 0, sy = 0, sw = 0;
-    for (var y = 0; y < h; y++) {
-      for (var xx = 0; xx < w; xx++) {
-        var p = (y * w + xx) * 4, dr = d[p] - br, dg = d[p + 1] - bgc, db = d[p + 2] - bb;
-        var wgt = dr * dr + dg * dg + db * db;
-        sx += xx * wgt; sy += y * wgt; sw += wgt;
-      }
-    }
-    if (sw <= 0) return { ox: W / 2, oy: H / 2 };
-    return { ox: (sx / sw) * (W / w), oy: (sy / sw) * (H / h) };
-  }
-  /* SAM으로 피사체 마스크 → bgState.workMask (원본 W×H). 기존 파이프라인이 이어받는다. */
-  function bgAutoMaskSAM() {
-    return samEnsureEmbedding(bgState.srcCanvas, bgState.W, bgState.H).then(function (ok) {
-      if (!ok || !samState.emb) throw new Error('SAM 임베딩 실패');
-      var pt = bgSamPoint || bgSamAutoPoint(bgState.srcCanvas, bgState.W, bgState.H);
-      return samMaskAt(pt.ox, pt.oy);
-    }).then(function (m) {
-      if (!m) throw new Error('SAM 마스크 없음');
-      bgState.workMask = m.canvas; bgState.workW = m.W; bgState.workH = m.H;
-    });
-  }
-
   function bgRecompute() {
     if (!bgState.srcCanvas) return Promise.resolve();
-    /* seq를 올려 진행 중이던 recompute(엔진 전환·탭 재분리 등)를 낡은 것으로 만든다.
-       안 그러면 로드 시 u2net과 SAM 전환이 같은 seq를 공유해 서로의 결과를 잘못된
-       라벨로 렌더/내보내는 레이스가 생긴다. */
+    /* seq를 올려 진행 중이던 recompute(엔진 전환 등)를 낡은 것으로 만든다. 안 그러면
+       로드 시의 계산과 엔진 전환이 같은 seq를 공유해 서로의 결과를 잘못된 라벨로
+       렌더/내보내는 레이스가 생긴다. */
     var seq = ++bgState.seq;
     var stats = $('#bgStats');
     var run;
-    if (bgEngine === 'sam') {
-      stats.textContent = '🎯 SAM이 피사체를 분리하는 중…';
-      run = bgAutoMaskSAM().catch(function () {
-        if (bgState.seq !== seq) return;
-        bgEngine = 'fast'; syncBgEngineChips();
-        toast('SAM 분리에 실패해 기본 AI로 전환했어요.');
-        return bgAutoMaskAI(function () {});
-      });
-    } else if (bgEngine !== 'classic') {
+    if (bgEngine !== 'classic') {
       var key = aiModelKey(), m = AI_MODELS[key];
       var ready = !!aiSessions[key];
       stats.textContent = ready
@@ -4198,8 +4149,8 @@ textarea {
       bgReplayMask();
       if (!bgState.revealed) { bgState.revealed = true; bgRevealAnim(); }
       else bgRender();
-      var eng = bgEngine === 'classic' ? '색상' : bgEngine === 'sam' ? 'SAM' : AI_MODELS[aiModelKey()].label;
-      var tip = bgEngine === 'sam' ? ' — 남길 피사체를 클릭하면 다시 잡고, 브러시로 다듬어요' : ' — 브러시로 다듬을 수 있어요';
+      var eng = bgEngine === 'classic' ? '색상' : AI_MODELS[aiModelKey()].label;
+      var tip = ' — 브러시로 다듬을 수 있어요';
       stats.textContent = (bgState.file.name || '이미지') + ' · ' + bgState.W + '×' + bgState.H +
         ' · ' + eng + ' 인식 완료' + tip;
     }).catch(function () {
@@ -4213,27 +4164,10 @@ textarea {
     if (bgState.srcCanvas) bgRecompute();
     if (exState.srcCanvas) { exState.aiPred = null; exState.aiS = 0; exComputeAI(); }
   }
-  var bgSamPending = false;   /* SAM 다운로드 요청이 아직 유효한지 — 도중에 다른 엔진 선택 시 취소 */
   document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
     b.addEventListener('click', function () {
       var eng = b.dataset.engine;
       if (bgEngine === eng) return;
-      if (eng === 'sam') {
-        /* SAM은 모델(약 13MB)이 필요 — 없으면 받고 나서 적용. 요소 추출과 모델 공유. */
-        if (samState.enc && samState.dec) { samState.on = true; syncSamBtn(); bgApplyEngine('sam'); return; }
-        if (samState.downloading) { bgSamPending = true; return; }
-        samState.downloading = true; bgSamPending = true;
-        $('#bgStats').textContent = 'SAM 모델 받는 중… 0%';
-        samDownload(function (f) { if (bgSamPending) $('#bgStats').textContent = 'SAM 모델 받는 중… ' + Math.round(f * 100) + '%'; })
-          .then(function () {
-            samState.downloading = false;
-            if (!bgSamPending) return;   /* 도중에 사용자가 다른 엔진을 골랐으면 적용하지 않는다 */
-            bgSamPending = false; samState.on = true; syncSamBtn(); bgApplyEngine('sam'); toast('SAM 정밀 분리를 켰어요.');
-          })
-          .catch(function () { samState.downloading = false; bgSamPending = false; $('#bgStats').textContent = 'SAM 모델을 받지 못했어요.'; toast('SAM 모델을 받지 못했어요.'); });
-        return;
-      }
-      bgSamPending = false;   /* 다른 엔진을 골랐으니 대기 중이던 SAM 적용을 취소 */
       bgApplyEngine(eng);
     });
   });
@@ -4478,14 +4412,13 @@ textarea {
     };
   }
 
-  var bgPainting = null, bgTapStart = null;
+  var bgPainting = null;
   bgCanvas.addEventListener('pointerdown', function (e) {
     if (!bgState.dispImg) return;
     e.preventDefault();
     bgStopReveal();
     try { bgCanvas.setPointerCapture(e.pointerId); } catch (err) {}
     var pos = bgPos(e);
-    bgTapStart = { x: e.clientX, y: e.clientY, fx: pos.fx, fy: pos.fy };
     if (bgState.tool === 'compare') {
       bgPainting = { mode: 'divider' };
       bgState.divider = Math.max(0, Math.min(100, pos.dx / bgState.dispW * 100));
@@ -4522,21 +4455,8 @@ textarea {
     bgPainting = null;
     bgRender();
   }
-  bgCanvas.addEventListener('pointerup', function (e) {
-    /* SAM 엔진 + 비교 도구에서 '탭'(거의 안 움직임)하면 그 지점을 남길 피사체로 다시 분리 */
-    if (bgEngine === 'sam' && bgState.tool === 'compare' && bgTapStart && bgState.srcCanvas) {
-      var moved = Math.hypot(e.clientX - bgTapStart.x, e.clientY - bgTapStart.y);
-      if (moved < 8) {
-        bgSamPoint = { ox: bgTapStart.fx, oy: bgTapStart.fy };
-        bgTapStart = null; bgPainting = null;
-        bgRecompute();
-        return;
-      }
-    }
-    bgTapStart = null;
-    bgPtrEnd();
-  });
-  bgCanvas.addEventListener('pointercancel', function () { bgTapStart = null; bgPtrEnd(); });
+  bgCanvas.addEventListener('pointerup', bgPtrEnd);
+  bgCanvas.addEventListener('pointercancel', bgPtrEnd);
   bgCanvas.addEventListener('pointerleave', function () { if (!bgPainting) bgRender(); });
 
   document.querySelectorAll('#bgTools .chip[data-bgtool]').forEach(function (b) {
@@ -4725,13 +4645,8 @@ textarea {
     bgState.srcCanvas = item.srcCanvas;
     bgState.W = item.W; bgState.H = item.H;
     bgState.strokes = []; bgState.workMask = null; bgState.mask = null;
-    bgSamPoint = null;   /* 일괄은 이미지마다 자동 점 */
     var mk;
-    if (bgEngine === 'sam') {
-      mk = bgAutoMaskSAM().catch(function () {
-        bgEngine = 'fast'; syncBgEngineChips(); return bgAutoMaskAI(function () {});
-      });
-    } else if (bgEngine !== 'classic') {
+    if (bgEngine !== 'classic') {
       mk = bgAutoMaskAI(function () {}).catch(function () {
         bgEngine = 'classic'; syncBgEngineChips(); return bgAutoMaskClassic();
       });
@@ -4888,7 +4803,7 @@ textarea {
     var hint = $('#exHint');
     /* SAM이 켜져 있으면 픽은 SAM이 담당하므로 무거운 u2net saliency는 굳이 돌리지 않는다.
        (SAM 미준비 시의 폴백은 색 기반 flood로 충분) */
-    if (bgEngine === 'classic' || bgEngine === 'sam' || samState.on) {
+    if (bgEngine === 'classic' || samState.on) {
       if (!samState.on) hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요 (색상 기반)';
       return;
     }
