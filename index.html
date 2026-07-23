@@ -3869,7 +3869,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   var bgState = {
     file: null, srcCanvas: null, W: 0, H: 0,
     workMask: null, workW: 0, workH: 0,
-    mask: null, strokes: [], previewStroke: null, tool: 'compare', divider: 0,
+    mask: null, fgProb: null, strokes: [], previewStroke: null, tool: 'compare', divider: 0,
     dispImg: null, dispW: 0, dispH: 0, seq: 0, revealed: false
   };
   var bgCanvas = $('#bgCanvas'), bgBox = $('#bgBox');
@@ -3907,6 +3907,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     bgState.strokes = [];
     bgState.divider = 0;
     bgState.mask = null;
+    bgState.fgProb = null;
     bgState.revealed = false;
     bgStopReveal();
   }
@@ -3927,6 +3928,34 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
       b.classList.toggle('on', b.dataset.engine === bgEngine);
     });
+    var hq = document.querySelector('#bgEngineChips .chip[data-engine="hq"]');
+    if (hq) {
+      hq.textContent = aiCached.hq ? '🏆 고품질 (머리카락 · 받아 둠 ✓)' : '🏆 고품질 (머리카락 · 약 42MB)';
+    }
+  }
+
+  /* ---------- 이미 받아 둔 모델 감지 ----------
+     새로고침해도 Cache Storage에 남아 있으면 다시 받지 않는다. 고품질 모델이 이미
+     있으면 추가 다운로드가 0이므로 자동으로 고품질을 고른다. */
+  var aiCached = { hq: false, sam: false };
+  var bgEnginePicked = false;   /* 사용자가 직접 고른 뒤에는 자동 선택하지 않는다 */
+  function bgProbeCachedModels() {
+    if (typeof caches === 'undefined') return Promise.resolve();
+    return caches.open(SAM_CACHE).then(function (c) {
+      return Promise.all([c.match(AI_MODELS.hq.file), c.match(SAM_ENC_URL), c.match(SAM_DEC_URL)]);
+    }).then(function (r) {
+      aiCached.hq = !!r[0];
+      aiCached.sam = !!(r[1] && r[2]);
+      syncBgEngineChips();
+      syncSamBtn();
+      if (aiCached.hq && !bgEnginePicked && bgEngine === 'fast') {
+        bgEngine = 'hq';
+        syncBgEngineChips();
+        if (bgState.srcCanvas) bgRecompute();
+        if (exState.srcCanvas) { exState.aiPred = null; exState.aiS = 0; exComputeAI(); }
+      }
+      return r;
+    }).catch(function () {});
   }
 
   var ortReady = null, aiSessions = {}, aiLoadPromises = {};
@@ -3982,7 +4011,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         return fetchWithProgress(m.file, onProgress);
       })
       .then(function (buf) { return ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }); })
-      .then(function (sess) { aiSessions[key] = sess; return sess; });
+      .then(function (sess) {
+        aiSessions[key] = sess;
+        if (m.remote && !aiCached[key]) { aiCached[key] = true; syncBgEngineChips(); }
+        return sess;
+      });
     aiLoadPromises[key] = p;
     p.catch(function () { aiLoadPromises[key] = null; });
     return p;
@@ -4112,6 +4145,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       /* 작은 반경·낮은 eps로 엣지에 바짝 붙여 후광(누출) 최소화 */
       var r = Math.max(2, Math.round(rw / 200));
       var refined = guidedFilter(guide, pMask, rw, rh, r, 4e-4);
+      /* 브러시가 '형체'를 알아보도록 전경 확률맵을 남겨 둔다 */
+      bgState.fgProb = { d: refined, w: rw, h: rh };
       /* 민감도 슬라이더 → 임계. 좁은 램프로 깔끔한 컷아웃(얇은 안티앨리어싱만) */
       var tol = parseInt($('#bgTol').value, 10);
       var t = 0.12 + (tol - 3) / 57 * 0.55;
@@ -4188,9 +4223,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (bgEngine !== 'classic') {
       var key = aiModelKey(), m = AI_MODELS[key];
       var ready = !!aiSessions[key];
+      var have = ready || !m.remote || aiCached[key];
       stats.textContent = ready
         ? '🤖 ' + m.label + '가 배경을 인식하는 중…'
-        : '🤖 ' + m.label + ' 모델 준비 중… (최초 1회 약 ' + m.mb + 'MB, 이후 오프라인)';
+        : (have
+            ? '🤖 저장해 둔 ' + m.label + ' 불러오는 중… (다운로드 없음)'
+            : '🤖 ' + m.label + ' 모델 준비 중… (최초 1회 약 ' + m.mb + 'MB, 이후 오프라인)');
       var onProg = function (frac) {
         if (bgState.seq === seq) stats.textContent = '🤖 ' + m.label + ' 모델 내려받는 중… ' + Math.round(frac * 100) + '%';
       };
@@ -4228,6 +4266,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
     b.addEventListener('click', function () {
       var eng = b.dataset.engine;
+      bgEnginePicked = true;   /* 이후 자동 선택이 사용자의 선택을 덮지 않게 */
       if (bgEngine === eng) return;
       bgApplyEngine(eng);
     });
@@ -4309,6 +4348,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     bgState.workMask = alphaToMaskCanvas(alpha, ww, wh);
     bgState.workW = ww;
     bgState.workH = wh;
+    bgState.fgProb = null;   /* 색상 엔진에는 형체 확률맵이 없다 — 브러시는 색 연속만 본다 */
   }
 
   /* 중심 우선 잡티 제거: 중앙 30% 박스에 걸치지 않는 작은 전경 조각은 노이즈로 보고 삭제 */
@@ -4441,9 +4481,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return dist;
   }
 
-  /* 브러시 중앙(반지름의 BG_CORE 이내)은 '반드시 내 의도대로' 처리되는 심지.
-     가장자리로 갈수록 피사체 보호가 다시 살아난다. */
-  var BG_CORE = 0.38;
+  /* 브러시 중앙에서 가장자리로 가며 보호가 살아나는 구간(반지름 대비).
+     BG_CORE_IN 안쪽은 확실히 처리되고, BG_CORE_OUT 바깥은 예전과 같은 세기로 보호된다.
+     그 사이는 부드러운 그라데이션이라 지워진 자리에 또렷한 띠가 생기지 않는다. */
+  var BG_CORE_IN = 0.10, BG_CORE_OUT = 0.64;
 
   /* 칠한 영역은 '사용자가 지시한 것'으로 보고 기본적으로 처리하되, 반대편으로 보이는
      부분만 보호한다.
@@ -4483,24 +4524,47 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var thrBg = 9 * Math.pow(tol * 2.55, 2);
     var isBgColor = function (idx) { return d2(idx, bgRef) <= thrBg; };
 
-    /* 중앙선까지의 거리로 위치 가중치를 만든다. sm: 1=가장자리(예전과 동일한 보호),
-       0=심지 경계. core=1인 픽셀은 보호를 아예 받지 않는다. */
+    /* 위치 가중치 pw: 1 = 가장자리(보호 그대로), 0 = 중앙선. 예전엔 심지 경계에서
+       보호가 뚝 끊겨 지워진 자리가 또렷한 띠로 보였다 → 넓은 구간에 부드럽게 준다. */
     var R = Math.max(1, (st.size || 2) / 2);
     var depth = bgRegionDepth(inReg, bw, bh);
-    var core = new Uint8Array(n);
-    var sm = new Float32Array(n);
+    var pw = new Float32Array(n);
     for (i = 0; i < n; i++) {
-      if (!inReg[i]) { sm[i] = 1; continue; }
+      if (!inReg[i]) { pw[i] = 1; continue; }
       var tc = 1 - Math.min(1, depth[i] / R);   /* 1=가장자리, 0=중앙선 */
-      if (tc <= BG_CORE) { core[i] = 1; sm[i] = 0; continue; }
-      var s2 = (tc - BG_CORE) / (1 - BG_CORE);
-      sm[i] = s2 * s2 * (3 - 2 * s2);
+      var s2 = (tc - BG_CORE_IN) / (BG_CORE_OUT - BG_CORE_IN);
+      s2 = s2 < 0 ? 0 : (s2 > 1 ? 1 : s2);
+      pw[i] = s2 * s2 * (3 - 2 * s2);
     }
-    /* 중앙에 가까울수록 지우개는 배경을 더 후하게 인정하고, 복원은 더 깐깐하게 본다 */
-    var isBgAt = function (idx) {
-      var f = restore ? (0.30 + 0.70 * sm[idx]) : (1 + 1.4 * (1 - sm[idx]));
-      return d2(idx, bgRef) <= thrBg * f;
-    };
+
+    /* 이 픽셀이 '보호할 쪽'에 얼마나 가까운지 0..1 — 예전의 배경색 O/X 판정을 연속값으로.
+       중앙에 가까울수록 지우개는 배경을 후하게, 복원은 깐깐하게 본다. */
+    var aff = new Float32Array(n);
+    for (i = 0; i < n; i++) {
+      if (!inReg[i]) continue;
+      var fb = restore ? (0.30 + 0.70 * pw[i]) : (1 + 1.4 * (1 - pw[i]));
+      var dd = d2(i, bgRef) / (thrBg * fb);
+      var bgLike = dd >= 1 ? 0 : (1 - dd);      /* 1 = 완전한 배경색 */
+      aff[i] = restore ? bgLike : 1 - bgLike;
+    }
+
+    /* 형체 인식: AI가 만든 전경 확률맵이 있으면 보호가 '그 형체를 따라' 번지게 한다.
+       피사체보다 전경 확률이 낮은 쪽(몸에 붙은 선·그림자 등)으로 넘어갈 때 보호가
+       감쇠하므로, 색이 비슷해도 형체 밖은 떨어져 나간다. */
+    var fgp = bgState.fgProb;
+    var fgv = null;
+    if (fgp && fgp.d) {
+      fgv = new Float32Array(n);
+      var fsx = fgp.w / W, fsy = fgp.h / H;
+      for (var fy2 = 0; fy2 < bh; fy2++) {
+        var sy = Math.min(fgp.h - 1, Math.max(0, Math.round((reg.y0 + fy2) * fsy)));
+        for (var fx2 = 0; fx2 < bw; fx2++) {
+          var sx3 = Math.min(fgp.w - 1, Math.max(0, Math.round((reg.x0 + fx2) * fsx)));
+          var pv2 = fgp.d[sy * fgp.w + sx3];
+          fgv[fy2 * bw + fx2] = restore ? 1 - pv2 : pv2;
+        }
+      }
+    }
 
     var outNb = function (x, y, wantOpaque) {
       if (x < 0 || x >= bw || y < 0 || y >= bh) return false;
@@ -4515,7 +4579,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     for (var y = 0; y < bh; y++) {
       for (var x = 0; x < bw; x++) {
         var idx = y * bw + x;
-        if (!inReg[idx] || core[idx]) continue;   /* 심지는 보호를 붙들어 매지 못한다 */
+        if (!inReg[idx] || pw[idx] < 0.05) continue;   /* 중앙선은 보호를 붙들어 매지 못한다 */
         var touch = restore
           ? (outNb(x - 1, y, false) || outNb(x + 1, y, false) || outNb(x, y - 1, false) || outNb(x, y + 1, false))
           : (outNb(x - 1, y, true) || outNb(x + 1, y, true) || outNb(x, y - 1, true) || outNb(x, y + 1, true));
@@ -4527,45 +4591,69 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       }
     }
 
-    var keep = new Uint8Array(n);
+    /* 보호를 0/1이 아니라 0..1 세기로 번지게 한다. 색이 이어질수록·형체를 벗어나지
+       않을수록 세기가 유지되고, 달라질수록 서서히 줄어 경계가 부드럽게 나온다.
+       시드 전체의 평균색 하나로 재면 머리(검정)+상의(흰색)처럼 색이 크게 다른 부위를
+       한 획이 걸칠 때 양쪽 다 평균에서 멀어져 피사체에 구멍이 뚫린다 — 그래서 이웃
+       기준(local)으로 번진다. */
+    var prot = new Float32Array(n);
     if (pn >= 6) {
-      /* 보호 영역은 '이웃과 색이 이어지는지'로 넓힌다. 시드 전체의 평균색 하나로 재면
-         머리(검정)+상의(흰색)처럼 색이 크게 다른 부위를 한 획이 걸칠 때 양쪽 다 평균에서
-         멀어져 아무것도 지키지 못하고 피사체에 구멍이 뚫린다. */
       var thrLocal = 9 * Math.pow(40 * 2.55, 2);
+      var kCol = thrLocal * 0.55;
       var dLocal = function (a2, b2) {
         var pa = a2 * 4, pb2 = b2 * 4;
         var dr = src[pa] - src[pb2], dg = src[pa + 1] - src[pb2 + 1], db = src[pa + 2] - src[pb2 + 2];
         return 2 * dr * dr + 4 * dg * dg + 3 * db * db;
       };
-      /* 중앙에 가까울수록 '색이 이어진다'고 인정하는 폭을 좁힌다 — 피사체에 붙어 있어도
-         색이 다른 선·띠는 중앙 쪽에서 연결이 끊겨 지워진다 */
-      var canKeep = restore
-        ? function (v) { return !core[v] && isBgAt(v); }
-        : function (v, from) {
-            return !core[v] && !isBgAt(v) && dLocal(v, from) <= thrLocal * (0.10 + 0.90 * sm[v]);
-          };
-      var stack = new Int32Array(n), sp = 0;
+      var step = function (v, from) {
+        var f = Math.exp(-dLocal(v, from) / kCol);
+        if (fgv) {
+          var a = fgv[from], b = fgv[v];
+          if (b < a) f *= Math.max(0.05, (b + 0.06) / (a + 0.06));
+        }
+        return f;
+      };
+      var EPS = 0.02;
+      var queue = new Int32Array(n * 2), qh = 0, qt = 0, inQ = new Uint8Array(n);
+      var pushQ = function (v) {
+        if (inQ[v]) return;
+        inQ[v] = 1;
+        if (qt >= queue.length) {            /* 링 버퍼로 감싼다 */
+          queue.copyWithin(0, qh, qt); qt -= qh; qh = 0;
+        }
+        queue[qt++] = v;
+      };
       for (i = 0; i < seeds.length; i++) {
         var sidx = seeds[i];
-        if (!keep[sidx]) { keep[sidx] = 1; stack[sp++] = sidx; }
+        if (aff[sidx] > prot[sidx]) { prot[sidx] = aff[sidx]; pushQ(sidx); }
       }
-      while (sp > 0) {
-        var u = stack[--sp], ux = u % bw;
-        if (ux > 0 && inReg[u - 1] && !keep[u - 1] && canKeep(u - 1, u)) { keep[u - 1] = 1; stack[sp++] = u - 1; }
-        if (ux < bw - 1 && inReg[u + 1] && !keep[u + 1] && canKeep(u + 1, u)) { keep[u + 1] = 1; stack[sp++] = u + 1; }
-        if (u >= bw && inReg[u - bw] && !keep[u - bw] && canKeep(u - bw, u)) { keep[u - bw] = 1; stack[sp++] = u - bw; }
-        if (u < n - bw && inReg[u + bw] && !keep[u + bw] && canKeep(u + bw, u)) { keep[u + bw] = 1; stack[sp++] = u + bw; }
+      var guard = n * 12;
+      var relax = function (v, u2) {
+        if (!inReg[v]) return;
+        var cand = prot[u2] * step(v, u2);
+        if (cand > aff[v]) cand = aff[v];
+        if (cand > prot[v] + EPS) { prot[v] = cand; pushQ(v); }
+      };
+      while (qh < qt && guard-- > 0) {
+        var u = queue[qh++]; inQ[u] = 0;
+        var ux = u % bw;
+        if (ux > 0) relax(u - 1, u);
+        if (ux < bw - 1) relax(u + 1, u);
+        if (u >= bw) relax(u - bw, u);
+        if (u < n - bw) relax(u + bw, u);
       }
     }
 
     var target = restore ? 255 : 0;
     var changed = 0;
     for (i = 0; i < n; i++) {
-      if (!inReg[i] || keep[i]) continue;
-      if (md[i * 4 + 3] === target) continue;
-      md[i * 4 + 3] = target;
-      changed++;
+      if (!inReg[i]) continue;
+      var keepF = prot[i] * pw[i];              /* 1 = 그대로 둠, 0 = 완전히 처리 */
+      var oldA = md[i * 4 + 3];
+      var na = Math.round(oldA * keepF + target * (1 - keepF));
+      if (na === oldA) continue;
+      md[i * 4 + 3] = na;
+      if (Math.abs(na - oldA) > 3) changed++;
     }
     if (changed) mx.putImageData(maskImg, reg.x0, reg.y0);
     return changed;
@@ -4685,14 +4773,16 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       ctx.strokeStyle = 'rgba(49,130,246,.95)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
-      /* 안쪽 원 = 무조건 처리되는 심지. 어디까지 확실히 먹는지 눈으로 알 수 있게 */
+      /* 안쪽은 확실히 처리되고 밖으로 갈수록 알아서 지켜 준다 — 그 세기를 그대로 그린다 */
+      var rgb = bgState.tool === 'restore' ? '34,197,94' : '240,68,82';
+      var grad = ctx.createRadialGradient(cursor.x, cursor.y, r * BG_CORE_IN,
+                                          cursor.x, cursor.y, r * BG_CORE_OUT);
+      grad.addColorStop(0, 'rgba(' + rgb + ',.38)');
+      grad.addColorStop(1, 'rgba(' + rgb + ',0)');
       ctx.beginPath();
-      ctx.arc(cursor.x, cursor.y, r * BG_CORE, 0, Math.PI * 2);
-      ctx.fillStyle = bgState.tool === 'restore' ? 'rgba(34,197,94,.30)' : 'rgba(240,68,82,.30)';
+      ctx.arc(cursor.x, cursor.y, r * BG_CORE_OUT, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
       ctx.fill();
-      ctx.strokeStyle = bgState.tool === 'restore' ? 'rgba(34,197,94,.9)' : 'rgba(240,68,82,.9)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
     }
   }
 
@@ -4990,7 +5080,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (rail && rail.srcCanvas === bgState.srcCanvas) {
         rail.bg = {
           workMask: bgState.workMask, workW: bgState.workW, workH: bgState.workH,
-          mask: bgState.mask, strokes: [], divider: 0, revealed: true
+          mask: bgState.mask, fgProb: bgState.fgProb, strokes: [], divider: 0, revealed: true
         };
       }
       return bgComposedBlob(bgComposeFull(), item.W, item.H, bgBatch.fmt,
@@ -5711,7 +5801,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (!it || !bgState.srcCanvas || bgState.srcCanvas !== it.srcCanvas) return;
     it.bg = {
       workMask: bgState.workMask, workW: bgState.workW, workH: bgState.workH,
-      mask: bgState.mask, strokes: bgState.strokes.slice(),
+      mask: bgState.mask, fgProb: bgState.fgProb, strokes: bgState.strokes.slice(),
       divider: bgState.divider, revealed: bgState.revealed
     };
     if (exState.srcCanvas === it.srcCanvas) {
@@ -5755,6 +5845,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (s && s.workMask && s.mask) {
       bgState.workMask = s.workMask; bgState.workW = s.workW; bgState.workH = s.workH;
       bgState.mask = s.mask; bgState.strokes = s.strokes.slice();
+      bgState.fgProb = s.fgProb || null;
       bgState.divider = s.divider; bgState.revealed = true;
     } else {
       bgState.workMask = null;
@@ -6561,7 +6652,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       return samFetchModel(SAM_DEC_URL, function (f) { onProgress(0.6 + f * 0.4); });
     }).then(function (decBuf) {
       return ort.InferenceSession.create(decBuf, { executionProviders: ['wasm'] });
-    }).then(function (dec) { samState.dec = dec; return true; });
+    }).then(function (dec) {
+      samState.dec = dec;
+      if (!aiCached.sam) { aiCached.sam = true; syncSamBtn(); }
+      return true;
+    });
   }
 
   /* 원본을 1024 프레임에 종횡비 유지로 좌상단 배치(나머지 0 패딩) + ImageNet 정규화(CHW).
@@ -6830,7 +6925,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   /* exSamBtn(요소 추출)과 bg 엔진 칩이 같은 samState.on을 공유 — 버튼 표시를 맞춘다 */
   function syncSamBtn() {
     var btn = $('#exSamBtn');
-    if (btn && samState.on) { btn.classList.add('on'); btn.textContent = '🎯 AI 정밀 분리 켜짐'; }
+    if (!btn) return;
+    if (samState.on) { btn.classList.add('on'); btn.textContent = '🎯 AI 정밀 분리 켜짐'; return; }
+    if (aiCached.sam && !samState.downloading) btn.textContent = '🎯 AI 정밀 분리 — 받아 둠 ✓ (바로 켜져요)';
   }
 
   /* 요소 추출은 정밀 분리를 기본으로 쓴다 — 추출 화면에 들어오면 모델을 자동으로 받아 켠다.
@@ -9473,8 +9570,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     samPreprocess: samPreprocess,
     samEnsureEmbedding: function () { return samEnsureEmbedding(); },
     exResolveComp: function (wx, wy) { return exResolveComp(wx, wy); },
-    loadOrt: function () { return loadOrt(); }
+    loadOrt: function () { return loadOrt(); },
+    get aiCached() { return aiCached; },
+    bgProbeCachedModels: function () { return bgProbeCachedModels(); },
+    get samUrls() { return { hq: AI_MODELS.hq.file, enc: SAM_ENC_URL, dec: SAM_DEC_URL, cache: SAM_CACHE }; }
   };
+
+  /* 이미 받아 둔 AI 모델이 있는지 먼저 확인한다 — 있으면 다시 받지 않고, 고품질을 자동 선택 */
+  bgProbeCachedModels();
 
   /* ================= service worker ================= */
   if ('serviceWorker' in navigator &&
