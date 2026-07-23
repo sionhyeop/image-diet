@@ -769,6 +769,7 @@ textarea {
           <div class="chips" id="bgEngineChips">
             <button type="button" class="chip on" data-engine="fast">⚡ 빠른 AI (권장)</button>
             <button type="button" class="chip" data-engine="classic">🎨 색상 기반 (단색 배경)</button>
+            <button type="button" class="chip" data-engine="sam">🎯 정밀 (SAM · 물체 하나 · 약 13MB)</button>
           </div>
         </div>
         <div class="field svg-opts">
@@ -3852,6 +3853,7 @@ textarea {
     bgState.divider = 50;
     bgState.mask = null;
     bgState.revealed = false;
+    bgSamPoint = null;   /* 새 이미지: SAM 클릭 교정 점 초기화(자동 점 사용) */
     bgStopReveal();
   }
 
@@ -4104,12 +4106,58 @@ textarea {
 
     for (i = 0; i < n; i++) if (bgv[i] && !fg[i]) alpha[i] = 0;
   }
+  /* SAM 배경 제거용 자동 점: 테두리 평균색과 가장 다른 영역의 무게중심(피사체 추정).
+     모델 없이 저해상에서 수 ms. bgSamPoint(클릭 교정)가 있으면 그걸 우선한다. */
+  var bgSamPoint = null;
+  function bgSamAutoPoint(srcCanvas, W, H) {
+    var s = Math.min(1, 72 / Math.max(W, H));
+    var w = Math.max(2, Math.round(W * s)), h = Math.max(2, Math.round(H * s));
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(srcCanvas, 0, 0, w, h);
+    var d = x.getImageData(0, 0, w, h).data;
+    var br = 0, bgc = 0, bb = 0, bc = 0;
+    var acc = function (p) { br += d[p]; bgc += d[p + 1]; bb += d[p + 2]; bc++; };
+    for (var i = 0; i < w; i++) { acc(i * 4); acc(((h - 1) * w + i) * 4); }
+    for (var jj = 0; jj < h; jj++) { acc(jj * w * 4); acc((jj * w + w - 1) * 4); }
+    br /= bc; bgc /= bc; bb /= bc;
+    var sx = 0, sy = 0, sw = 0;
+    for (var y = 0; y < h; y++) {
+      for (var xx = 0; xx < w; xx++) {
+        var p = (y * w + xx) * 4, dr = d[p] - br, dg = d[p + 1] - bgc, db = d[p + 2] - bb;
+        var wgt = dr * dr + dg * dg + db * db;
+        sx += xx * wgt; sy += y * wgt; sw += wgt;
+      }
+    }
+    if (sw <= 0) return { ox: W / 2, oy: H / 2 };
+    return { ox: (sx / sw) * (W / w), oy: (sy / sw) * (H / h) };
+  }
+  /* SAM으로 피사체 마스크 → bgState.workMask (원본 W×H). 기존 파이프라인이 이어받는다. */
+  function bgAutoMaskSAM() {
+    return samEnsureEmbedding(bgState.srcCanvas, bgState.W, bgState.H).then(function (ok) {
+      if (!ok || !samState.emb) throw new Error('SAM 임베딩 실패');
+      var pt = bgSamPoint || bgSamAutoPoint(bgState.srcCanvas, bgState.W, bgState.H);
+      return samMaskAt(pt.ox, pt.oy);
+    }).then(function (m) {
+      if (!m) throw new Error('SAM 마스크 없음');
+      bgState.workMask = m.canvas; bgState.workW = m.W; bgState.workH = m.H;
+    });
+  }
+
   function bgRecompute() {
     if (!bgState.srcCanvas) return Promise.resolve();
     var seq = bgState.seq;
     var stats = $('#bgStats');
     var run;
-    if (bgEngine !== 'classic') {
+    if (bgEngine === 'sam') {
+      stats.textContent = '🎯 SAM이 피사체를 분리하는 중…';
+      run = bgAutoMaskSAM().catch(function () {
+        if (bgState.seq !== seq) return;
+        bgEngine = 'fast'; syncBgEngineChips();
+        toast('SAM 분리에 실패해 기본 AI로 전환했어요.');
+        return bgAutoMaskAI(function () {});
+      });
+    } else if (bgEngine !== 'classic') {
       var key = aiModelKey(), m = AI_MODELS[key];
       var ready = !!aiSessions[key];
       stats.textContent = ready
@@ -4133,21 +4181,37 @@ textarea {
       bgReplayMask();
       if (!bgState.revealed) { bgState.revealed = true; bgRevealAnim(); }
       else bgRender();
-      var eng = bgEngine === 'classic' ? '색상' : AI_MODELS[aiModelKey()].label;
+      var eng = bgEngine === 'classic' ? '색상' : bgEngine === 'sam' ? 'SAM' : AI_MODELS[aiModelKey()].label;
+      var tip = bgEngine === 'sam' ? ' — 남길 피사체를 클릭하면 다시 잡고, 브러시로 다듬어요' : ' — 브러시로 다듬을 수 있어요';
       stats.textContent = (bgState.file.name || '이미지') + ' · ' + bgState.W + '×' + bgState.H +
-        ' · ' + eng + ' 인식 완료 — 브러시로 다듬을 수 있어요';
+        ' · ' + eng + ' 인식 완료' + tip;
     }).catch(function () {
       if (bgState.seq === seq) stats.textContent = '배경 인식에 실패했어요.';
     });
   }
+  function bgApplyEngine(eng) {
+    bgEngine = eng;
+    syncBgEngineChips();
+    /* 엔진은 두 도구 공통 설정 */
+    if (bgState.srcCanvas) bgRecompute();
+    if (exState.srcCanvas) { exState.aiPred = null; exState.aiS = 0; exComputeAI(); }
+  }
   document.querySelectorAll('#bgEngineChips .chip').forEach(function (b) {
     b.addEventListener('click', function () {
-      if (bgEngine === b.dataset.engine) return;
-      bgEngine = b.dataset.engine;
-      syncBgEngineChips();
-      /* 엔진도 두 도구 공통 설정 */
-      if (bgState.srcCanvas) bgRecompute();
-      if (exState.srcCanvas) { exState.aiPred = null; exState.aiS = 0; exComputeAI(); }
+      var eng = b.dataset.engine;
+      if (bgEngine === eng) return;
+      if (eng === 'sam') {
+        /* SAM은 모델(약 13MB)이 필요 — 없으면 받고 나서 적용. 요소 추출과 모델 공유. */
+        if (samState.enc && samState.dec) { samState.on = true; syncSamBtn(); bgApplyEngine('sam'); return; }
+        if (samState.downloading) return;
+        samState.downloading = true;
+        $('#bgStats').textContent = 'SAM 모델 받는 중… 0%';
+        samDownload(function (f) { $('#bgStats').textContent = 'SAM 모델 받는 중… ' + Math.round(f * 100) + '%'; })
+          .then(function () { samState.downloading = false; samState.on = true; syncSamBtn(); bgApplyEngine('sam'); toast('SAM 정밀 분리를 켰어요.'); })
+          .catch(function () { samState.downloading = false; $('#bgStats').textContent = 'SAM 모델을 받지 못했어요.'; toast('SAM 모델을 받지 못했어요.'); });
+        return;
+      }
+      bgApplyEngine(eng);
     });
   });
 
@@ -4391,13 +4455,14 @@ textarea {
     };
   }
 
-  var bgPainting = null;
+  var bgPainting = null, bgTapStart = null;
   bgCanvas.addEventListener('pointerdown', function (e) {
     if (!bgState.dispImg) return;
     e.preventDefault();
     bgStopReveal();
     try { bgCanvas.setPointerCapture(e.pointerId); } catch (err) {}
     var pos = bgPos(e);
+    bgTapStart = { x: e.clientX, y: e.clientY, fx: pos.fx, fy: pos.fy };
     if (bgState.tool === 'compare') {
       bgPainting = { mode: 'divider' };
       bgState.divider = Math.max(0, Math.min(100, pos.dx / bgState.dispW * 100));
@@ -4434,8 +4499,21 @@ textarea {
     bgPainting = null;
     bgRender();
   }
-  bgCanvas.addEventListener('pointerup', bgPtrEnd);
-  bgCanvas.addEventListener('pointercancel', bgPtrEnd);
+  bgCanvas.addEventListener('pointerup', function (e) {
+    /* SAM 엔진 + 비교 도구에서 '탭'(거의 안 움직임)하면 그 지점을 남길 피사체로 다시 분리 */
+    if (bgEngine === 'sam' && bgState.tool === 'compare' && bgTapStart && bgState.srcCanvas) {
+      var moved = Math.hypot(e.clientX - bgTapStart.x, e.clientY - bgTapStart.y);
+      if (moved < 8) {
+        bgSamPoint = { ox: bgTapStart.fx, oy: bgTapStart.fy };
+        bgTapStart = null; bgPainting = null;
+        bgRecompute();
+        return;
+      }
+    }
+    bgTapStart = null;
+    bgPtrEnd();
+  });
+  bgCanvas.addEventListener('pointercancel', function () { bgTapStart = null; bgPtrEnd(); });
   bgCanvas.addEventListener('pointerleave', function () { if (!bgPainting) bgRender(); });
 
   document.querySelectorAll('#bgTools .chip[data-bgtool]').forEach(function (b) {
@@ -4624,11 +4702,19 @@ textarea {
     bgState.srcCanvas = item.srcCanvas;
     bgState.W = item.W; bgState.H = item.H;
     bgState.strokes = []; bgState.workMask = null; bgState.mask = null;
-    var mk = (bgEngine !== 'classic')
-      ? bgAutoMaskAI(function () {}).catch(function () {
-          bgEngine = 'classic'; syncBgEngineChips(); return bgAutoMaskClassic();
-        })
-      : Promise.resolve().then(bgAutoMaskClassic);
+    bgSamPoint = null;   /* 일괄은 이미지마다 자동 점 */
+    var mk;
+    if (bgEngine === 'sam') {
+      mk = bgAutoMaskSAM().catch(function () {
+        bgEngine = 'fast'; syncBgEngineChips(); return bgAutoMaskAI(function () {});
+      });
+    } else if (bgEngine !== 'classic') {
+      mk = bgAutoMaskAI(function () {}).catch(function () {
+        bgEngine = 'classic'; syncBgEngineChips(); return bgAutoMaskClassic();
+      });
+    } else {
+      mk = Promise.resolve().then(bgAutoMaskClassic);
+    }
     return mk.then(function () {
       if (!bgState.workMask) throw new Error('마스크 실패');
       bgReplayMask();
@@ -4777,8 +4863,10 @@ textarea {
     if (samState.on) samEnsureEmbedding();  /* SAM 켜져 있으면 새 이미지 임베딩도 준비 */
     var seq = exState.seq;
     var hint = $('#exHint');
-    if (bgEngine === 'classic') {
-      hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요 (색상 기반)';
+    /* SAM이 켜져 있으면 픽은 SAM이 담당하므로 무거운 u2net saliency는 굳이 돌리지 않는다.
+       (SAM 미준비 시의 폴백은 색 기반 flood로 충분) */
+    if (bgEngine === 'classic' || bgEngine === 'sam' || samState.on) {
+      if (!samState.on) hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요 (색상 기반)';
       return;
     }
     var key = aiModelKey(), m = AI_MODELS[key];
@@ -5890,7 +5978,8 @@ textarea {
   var SAM_MEAN = [0.485, 0.456, 0.406], SAM_STD = [0.229, 0.224, 0.225], SAM_SIZE = 1024;
   var samState = {
     on: false, downloading: false, enc: null, dec: null,
-    emb: null, posEmb: null, pre: null, embSeq: -1, encoding: false
+    emb: null, posEmb: null, pre: null, embCanvas: null, embW: 0, embH: 0,
+    _encPromise: null, _encCanvas: null
   };
 
   /* 캐시 우선으로 모델 바이트를 받는다(진행률). 없으면 CDN에서 받아 Cache Storage에 저장. */
@@ -5956,26 +6045,31 @@ textarea {
     });
   }
 
-  /* 현재 이미지의 인코더 임베딩을 준비(이미지당 1회). seq로 낡은 결과 폐기. */
-  function samEnsureEmbedding() {
-    if (!samState.on || !samState.enc || !exState.srcCanvas) return;
-    if (samState.embSeq === exState.seq && samState.emb) return;
-    if (samState.encoding) return;
-    var seq = exState.seq;
-    samState.encoding = true;
-    $('#exHint').textContent = '🤖 AI가 이미지를 분석하는 중… (잠시만요)';
-    var pre = samPreprocess(exState.srcCanvas, exState.W, exState.H);
-    samEncode(pre).then(function (r) {
-      if (seq !== exState.seq) return;
-      samState.emb = r.emb; samState.posEmb = r.posEmb; samState.pre = pre; samState.embSeq = seq;
-      $('#exHint').textContent = '🎯 물체를 잠시 꾹 누르면 그 물체만 정확히 잡혀요 → 밖으로 드래그하면 대기열에 담겨요';
+  /* 주어진 캔버스의 인코더 임베딩을 준비(캔버스당 1회). bg·요소 추출이 같은 공유
+     캔버스를 쓰므로 한 번만 계산해 둘이 나눠 쓴다. 반환 Promise<bool>. */
+  function samEnsureEmbedding(canvas, W, H) {
+    canvas = canvas || exState.srcCanvas; W = W || exState.W; H = H || exState.H;
+    if (!samState.on || !samState.enc || !canvas) return Promise.resolve(false);
+    if (samState.embCanvas === canvas && samState.emb) return Promise.resolve(true);
+    if (samState._encPromise && samState._encCanvas === canvas) return samState._encPromise;
+    if (!$('#exBody').hidden) $('#exHint').textContent = '🤖 AI가 이미지를 분석하는 중… (잠시만요)';
+    var pre = samPreprocess(canvas, W, H);
+    var p = samEncode(pre).then(function (r) {
+      samState.emb = r.emb; samState.posEmb = r.posEmb; samState.pre = pre;
+      samState.embCanvas = canvas; samState.embW = W; samState.embH = H;
+      if (!$('#exBody').hidden) $('#exHint').textContent = '🎯 물체를 잠시 꾹 누르면 그 물체만 정확히 잡혀요 → 밖으로 드래그하면 대기열에 담겨요';
+      return true;
     }).catch(function () {
-      if (seq === exState.seq) $('#exHint').textContent = 'AI 분석에 실패했어요 — 색 기반으로 동작해요.';
-    }).then(function () { samState.encoding = false; });
+      if (!$('#exBody').hidden) $('#exHint').textContent = 'AI 분석에 실패했어요 — 색 기반으로 동작해요.';
+      return false;
+    }).then(function (ok) { samState._encPromise = null; samState._encCanvas = null; return ok; });
+    samState._encPromise = p; samState._encCanvas = canvas;
+    return p;
   }
 
-  /* 원본 좌표(ox,oy)의 물체 인스턴스 마스크 → exCropComponent가 받는 comp. */
-  function samDecodeAt(ox, oy) {
+  /* 원본 좌표(ox,oy)의 물체 인스턴스 마스크(원본 W×H 소프트 알파 캔버스)를 만든다.
+     bg 배경 제거와 요소 추출이 공유. area<25면 null. */
+  function samMaskAt(ox, oy) {
     var pre = samState.pre;
     var feeds = {
       input_points: new ort.Tensor('float32', new Float32Array([ox * pre.scale, oy * pre.scale]), [1, 1, 1, 2]),
@@ -5985,33 +6079,71 @@ textarea {
     };
     return samState.dec.run(feeds).then(function (o) {
       var pm = o.pred_masks, ious = o.iou_scores.data;
-      var MS = pm.dims[3], K = pm.dims[2], j;
-      /* SAM은 클릭당 3개(부위/부분/전체)를 준다. best-iou는 '부위'를 골라 사람이
-         파츠로 쪼개진다. iou가 최소 신뢰(0.3) 이상인 것 중 '가장 큰' 마스크를 골라
-         물체/사람 단위를 얻는다. 전부 저품질이면 best-iou로 폴백. */
-      var best = -1, bestArea = -1;
+      var MS = pm.dims[3], K = pm.dims[2], i, CN = MS * MS;
+      /* 클릭점을 256 프레임으로 */
+      var cx = Math.max(0, Math.min(MS - 1, Math.round(ox * pre.scale / 4)));
+      var cy = Math.max(0, Math.min(MS - 1, Math.round(oy * pre.scale / 4)));
+      var clickI = cy * MS + cx;
+      /* SAM은 3마스크(부위/부분/전체)를 준다. 선택 규칙(데이터로 확정):
+         1) 이미지 대부분을 덮는 '전체(scene)' 마스크는 제외 — 물체가 여럿일 때 이게 전부를
+            잡아버린다(예: 두 물체 씬에서 97% 커버).
+         2) 남은 것 중 '클릭점이 속한 연결 요소'(pm>0로 연결)가 가장 큰 마스크를 고른다 →
+            사람은 머리·몸통·다리가 연결돼 통째로, 떨어진 다른 물체는 제외.
+         소프트 경계는 아래에서 요소를 2px 팽창해 살린다. */
+      var validArea = Math.max(1, (pre.rw / 4) * (pre.rh / 4));
+      var stack = new Int32Array(CN);
+      var best = -1, bestArea = -1, bestComp = null, fbBest = 0;
       for (var k = 0; k < K; k++) {
+        if (ious[k] > ious[fbBest]) fbBest = k;
         if (ious[k] < 0.3) continue;
-        var ok = k * MS * MS, a = 0;
-        for (j = 0; j < MS * MS; j++) if (pm.data[ok + j] > 0) a++;
-        if (a > bestArea) { bestArea = a; best = k; }
+        var off0 = k * CN;
+        var pos = 0, t; for (t = 0; t < CN; t++) if (pm.data[off0 + t] > 0) pos++;
+        if (pos / validArea > 0.85) continue;              /* 전체(scene) 마스크 제외 */
+        if (pm.data[off0 + clickI] <= 0) continue;
+        var comp = new Uint8Array(CN), sp = 0, area0 = 1;
+        comp[clickI] = 1; stack[sp++] = clickI;
+        while (sp > 0) {
+          var u = stack[--sp], ux = u % MS;
+          if (ux > 0 && !comp[u - 1] && pm.data[off0 + u - 1] > 0) { comp[u - 1] = 1; stack[sp++] = u - 1; area0++; }
+          if (ux < MS - 1 && !comp[u + 1] && pm.data[off0 + u + 1] > 0) { comp[u + 1] = 1; stack[sp++] = u + 1; area0++; }
+          if (u >= MS && !comp[u - MS] && pm.data[off0 + u - MS] > 0) { comp[u - MS] = 1; stack[sp++] = u - MS; area0++; }
+          if (u < CN - MS && !comp[u + MS] && pm.data[off0 + u + MS] > 0) { comp[u + MS] = 1; stack[sp++] = u + MS; area0++; }
+        }
+        if (area0 > bestArea) { bestArea = area0; best = k; bestComp = comp; }
       }
-      if (best < 0) { best = 0; for (var kb = 1; kb < K; kb++) if (ious[kb] > ious[best]) best = kb; }
-      var off = best * MS * MS;
-      /* 딱딱한 임계 대신 sigmoid(logit) 소프트 알파 → 경계가 계단이 아니라 부드러운 램프.
-         256은 패딩된 1024에 대응하고, 아래에서 원본 W×H로 보간 확대되어 매끈해진다. */
+      if (best < 0) { best = fbBest; bestComp = null; }     /* 모두 scene거나 클릭 밖이면 best-iou */
+      /* 클릭 요소를 2px 팽창 → 소프트 경계(막 바깥 반투명 램프)를 되살린다 */
+      if (bestComp) {
+        var dil = new Uint8Array(CN);
+        for (var pI = 0; pI < CN; pI++) {
+          if (!bestComp[pI]) continue;
+          var pxD = pI % MS, pyD = (pI / MS) | 0;
+          for (var dy = -2; dy <= 2; dy++) {
+            var ny = pyD + dy; if (ny < 0 || ny >= MS) continue;
+            for (var dx = -2; dx <= 2; dx++) {
+              var nx = pxD + dx; if (nx < 0 || nx >= MS) continue;
+              dil[ny * MS + nx] = 1;
+            }
+          }
+        }
+        bestComp = dil;
+      }
+      var off = best * CN;
+      /* sigmoid 소프트 알파 — 단, 클릭 연결 요소 밖(떨어진 다른 물체)은 0으로 제거. */
       var mc = document.createElement('canvas'); mc.width = MS; mc.height = MS;
       var mx = mc.getContext('2d');
       var id = mx.createImageData(MS, MS);
-      for (var i = 0; i < MS * MS; i++) {
-        var s = 1 / (1 + Math.exp(-pm.data[off + i]));
+      for (i = 0; i < CN; i++) {
+        var a8 = 0;
+        if (!bestComp || bestComp[i]) {
+          var s = 1 / (1 + Math.exp(-pm.data[off + i]));
+          a8 = s <= 0 ? 0 : (s >= 1 ? 255 : Math.round(s * 255));
+        }
         var q = i * 4;
-        id.data[q] = 255; id.data[q + 1] = 255; id.data[q + 2] = 255;
-        id.data[q + 3] = s <= 0 ? 0 : (s >= 1 ? 255 : Math.round(s * 255));
+        id.data[q] = 255; id.data[q + 1] = 255; id.data[q + 2] = 255; id.data[q + 3] = a8;
       }
       mx.putImageData(id, 0, 0);
-      /* 유효 영역 (rw,rh)=(1024*scale의 원본부분)은 256에서 (rw/4, rh/4). 원본 W×H로 확대. */
-      var W = exState.W, H = exState.H;
+      var W = samState.embW, H = samState.embH;
       var full = document.createElement('canvas'); full.width = W; full.height = H;
       var fx = full.getContext('2d', { willReadFrequently: true });
       fx.imageSmoothingEnabled = true; fx.imageSmoothingQuality = 'high';
@@ -6028,13 +6160,21 @@ textarea {
         }
       }
       if (area < 25) return null;
-      return { mask: full, minX: minX, minY: minY, maxX: maxX, maxY: maxY, area: area, gw: W, gh: H };
+      return { canvas: full, W: W, H: H, minX: minX, minY: minY, maxX: maxX, maxY: maxY, area: area };
+    });
+  }
+
+  /* 원본 좌표의 인스턴스 → exCropComponent가 받는 comp */
+  function samDecodeAt(ox, oy) {
+    return samMaskAt(ox, oy).then(function (m) {
+      if (!m) return null;
+      return { mask: m.canvas, minX: m.minX, minY: m.minY, maxX: m.maxX, maxY: m.maxY, area: m.area, gw: m.W, gh: m.H };
     });
   }
 
   /* 픽 해결: SAM 준비됐으면 그걸로, 아니면 기존 색 기반 폴백 (모두 Promise<comp|null>) */
   function exResolveComp(wx, wy) {
-    if (samState.on && samState.emb && samState.pre && samState.embSeq === exState.seq && exState.workW) {
+    if (samState.on && samState.emb && samState.pre && samState.embCanvas === exState.srcCanvas && exState.workW) {
       var ox = wx * exState.W / exState.workW, oy = wy * exState.H / exState.workH;
       return samDecodeAt(ox, oy).then(function (comp) {
         return comp || exPickComponent(wx, wy);
@@ -6043,6 +6183,11 @@ textarea {
     return Promise.resolve(exPickComponent(wx, wy));
   }
 
+  /* exSamBtn(요소 추출)과 bg 엔진 칩이 같은 samState.on을 공유 — 버튼 표시를 맞춘다 */
+  function syncSamBtn() {
+    var btn = $('#exSamBtn');
+    if (btn && samState.on) { btn.classList.add('on'); btn.textContent = '🎯 AI 정밀 분리 켜짐'; }
+  }
   $('#exSamBtn').addEventListener('click', function () {
     if (samState.downloading) return;
     if (samState.on) return;
