@@ -861,7 +861,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <input type="range" id="bgFeather" min="0" max="5" step="1" value="0">
         </div>
         <div class="field svg-opts">
-          <span class="field-label">도구 <span class="sub">— 비교: 드래그로 경계선 이동 · 브러시: 영역을 칠하면 그 안에서 배경(지우개)·피사체(복원)만 알아서 골라 처리해요</span></span>
+          <span class="field-label">도구 <span class="sub">— 비교: 드래그로 경계선 이동 · 브러시: 칠한 영역 <b>가운데(진한 원)는 무조건 처리</b>되고, 가장자리로 갈수록 배경(지우개)·피사체(복원)를 알아서 가려줘요</span></span>
           <div class="chips" id="bgTools">
             <button type="button" class="chip on" data-bgtool="compare">↔ 비교</button>
             <button type="button" class="chip" data-bgtool="erase">🧽 배경 지우기</button>
@@ -4407,6 +4407,44 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return { x0: x0, y0: y0, bw: bw, bh: bh, data: rx.getImageData(0, 0, bw, bh).data };
   }
 
+  /* 영역 밖에서부터의 거리(4-8 chamfer). 획은 굵기 size의 캡슐 모양이라
+     이 값이 곧 '중앙선에 얼마나 가까운지'가 된다(중앙선에서 최대 = 반지름). */
+  function bgRegionDepth(inReg, bw, bh) {
+    var n = bw * bh, i, x, y, d;
+    var D1 = 1, D2 = 1.414213562;
+    var dist = new Float32Array(n);
+    for (i = 0; i < n; i++) dist[i] = inReg[i] ? 1e9 : 0;
+    for (y = 0; y < bh; y++) {
+      for (x = 0; x < bw; x++) {
+        i = y * bw + x;
+        if (!dist[i]) continue;
+        d = dist[i];
+        if (x > 0) d = Math.min(d, dist[i - 1] + D1);
+        if (y > 0) d = Math.min(d, dist[i - bw] + D1);
+        if (x > 0 && y > 0) d = Math.min(d, dist[i - bw - 1] + D2);
+        if (x < bw - 1 && y > 0) d = Math.min(d, dist[i - bw + 1] + D2);
+        dist[i] = d;
+      }
+    }
+    for (y = bh - 1; y >= 0; y--) {
+      for (x = bw - 1; x >= 0; x--) {
+        i = y * bw + x;
+        if (!dist[i]) continue;
+        d = dist[i];
+        if (x < bw - 1) d = Math.min(d, dist[i + 1] + D1);
+        if (y < bh - 1) d = Math.min(d, dist[i + bw] + D1);
+        if (x < bw - 1 && y < bh - 1) d = Math.min(d, dist[i + bw + 1] + D2);
+        if (x > 0 && y < bh - 1) d = Math.min(d, dist[i + bw - 1] + D2);
+        dist[i] = d;
+      }
+    }
+    return dist;
+  }
+
+  /* 브러시 중앙(반지름의 BG_CORE 이내)은 '반드시 내 의도대로' 처리되는 심지.
+     가장자리로 갈수록 피사체 보호가 다시 살아난다. */
+  var BG_CORE = 0.38;
+
   /* 칠한 영역은 '사용자가 지시한 것'으로 보고 기본적으로 처리하되, 반대편으로 보이는
      부분만 보호한다.
      - 배경 지우개: 영역을 지우되, 영역 밖 피사체(불투명)에서 이어지면서 색도 비슷한
@@ -4414,6 +4452,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
      - 복원하기:   영역을 되살리되, 영역 밖 배경(투명)에서 이어지면서 색도 비슷한
        픽셀은 그대로 둔다.
      보호할 근거(영역 밖의 반대편)가 없으면 영역 전체를 그대로 처리한다.
+
+     보호는 획 중앙선까지의 거리에 따라 세기가 달라진다. 피사체에 딱 붙은 진한 선처럼
+     '피사체와 이어져 있고 배경색도 아닌' 것은 예전엔 아무리 칠해도 보호에 걸려
+     영원히 지워지지 않았다. 이제 중앙 심지는 무조건 처리되고, 그 바깥은 중앙에
+     가까울수록 색 연속성 기준이 좁아져 피사체와 색이 다른 것부터 떨어져 나간다.
      바뀐 픽셀 수를 돌려준다. */
   function bgSmartPaint(mx, st, restore) {
     var W = bgState.W, H = bgState.H;
@@ -4440,6 +4483,25 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var thrBg = 9 * Math.pow(tol * 2.55, 2);
     var isBgColor = function (idx) { return d2(idx, bgRef) <= thrBg; };
 
+    /* 중앙선까지의 거리로 위치 가중치를 만든다. sm: 1=가장자리(예전과 동일한 보호),
+       0=심지 경계. core=1인 픽셀은 보호를 아예 받지 않는다. */
+    var R = Math.max(1, (st.size || 2) / 2);
+    var depth = bgRegionDepth(inReg, bw, bh);
+    var core = new Uint8Array(n);
+    var sm = new Float32Array(n);
+    for (i = 0; i < n; i++) {
+      if (!inReg[i]) { sm[i] = 1; continue; }
+      var tc = 1 - Math.min(1, depth[i] / R);   /* 1=가장자리, 0=중앙선 */
+      if (tc <= BG_CORE) { core[i] = 1; sm[i] = 0; continue; }
+      var s2 = (tc - BG_CORE) / (1 - BG_CORE);
+      sm[i] = s2 * s2 * (3 - 2 * s2);
+    }
+    /* 중앙에 가까울수록 지우개는 배경을 더 후하게 인정하고, 복원은 더 깐깐하게 본다 */
+    var isBgAt = function (idx) {
+      var f = restore ? (0.30 + 0.70 * sm[idx]) : (1 + 1.4 * (1 - sm[idx]));
+      return d2(idx, bgRef) <= thrBg * f;
+    };
+
     var outNb = function (x, y, wantOpaque) {
       if (x < 0 || x >= bw || y < 0 || y >= bh) return false;
       var j = y * bw + x;
@@ -4453,7 +4515,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     for (var y = 0; y < bh; y++) {
       for (var x = 0; x < bw; x++) {
         var idx = y * bw + x;
-        if (!inReg[idx]) continue;
+        if (!inReg[idx] || core[idx]) continue;   /* 심지는 보호를 붙들어 매지 못한다 */
         var touch = restore
           ? (outNb(x - 1, y, false) || outNb(x + 1, y, false) || outNb(x, y - 1, false) || outNb(x, y + 1, false))
           : (outNb(x - 1, y, true) || outNb(x + 1, y, true) || outNb(x, y - 1, true) || outNb(x, y + 1, true));
@@ -4476,9 +4538,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         var dr = src[pa] - src[pb2], dg = src[pa + 1] - src[pb2 + 1], db = src[pa + 2] - src[pb2 + 2];
         return 2 * dr * dr + 4 * dg * dg + 3 * db * db;
       };
+      /* 중앙에 가까울수록 '색이 이어진다'고 인정하는 폭을 좁힌다 — 피사체에 붙어 있어도
+         색이 다른 선·띠는 중앙 쪽에서 연결이 끊겨 지워진다 */
       var canKeep = restore
-        ? function (v) { return isBgColor(v); }
-        : function (v, from) { return !isBgColor(v) && dLocal(v, from) <= thrLocal; };
+        ? function (v) { return !core[v] && isBgAt(v); }
+        : function (v, from) {
+            return !core[v] && !isBgAt(v) && dLocal(v, from) <= thrLocal * (0.10 + 0.90 * sm[v]);
+          };
       var stack = new Int32Array(n), sp = 0;
       for (i = 0; i < seeds.length; i++) {
         var sidx = seeds[i];
@@ -4618,6 +4684,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       ctx.arc(cursor.x, cursor.y, r, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(49,130,246,.95)';
       ctx.lineWidth = 1.5;
+      ctx.stroke();
+      /* 안쪽 원 = 무조건 처리되는 심지. 어디까지 확실히 먹는지 눈으로 알 수 있게 */
+      ctx.beginPath();
+      ctx.arc(cursor.x, cursor.y, r * BG_CORE, 0, Math.PI * 2);
+      ctx.fillStyle = bgState.tool === 'restore' ? 'rgba(34,197,94,.30)' : 'rgba(240,68,82,.30)';
+      ctx.fill();
+      ctx.strokeStyle = bgState.tool === 'restore' ? 'rgba(34,197,94,.9)' : 'rgba(240,68,82,.9)';
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
   }
