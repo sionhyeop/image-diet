@@ -159,6 +159,15 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .field-wide { grid-column: 1 / -1; }
 /* 자주 쓰는 배치 + 출력 형식을 한 행에 나란히 (좁은 화면에선 세로로 쌓임) */
 /* 배경 일괄 제거 — 이미지 목록과 상태 배지 */
+.cut-rail { list-style: none; padding: 8px; margin: 8px 0 0; display: flex; gap: 8px; overflow-x: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; scrollbar-width: thin; }
+.cut-rail-item { flex: none; width: 76px; text-align: center; cursor: pointer; }
+.cut-rail-item img {
+  width: 76px; height: 58px; object-fit: cover; border-radius: 8px; display: block;
+  border: 2px solid transparent; background: var(--panel);
+}
+.cut-rail-item.on img { border-color: var(--accent); }
+.cut-rail-item p { margin: 3px 0 0; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cut-rail-item.on p { color: var(--accent-strong); font-weight: 700; }
 .bg-batch-list { list-style: none; padding: 10px; margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; }
 .bg-batch-item { width: 108px; text-align: center; }
 .bg-batch-item .bg-batch-thumb {
@@ -785,6 +794,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         <p class="dz-hint">여러 장을 한 번에 고르면 일괄 배경 제거예요 · Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
         <input type="file" id="bgFile" accept="image/*" multiple hidden>
       </div>
+      <div id="cutRailWrap" hidden>
+        <p class="field-label" style="margin-top:14px">불러온 이미지 <output id="cutRailCount"></output> <span class="sub">— 눌러서 그 이미지로 돌아가 편집해요</span></p>
+        <ul id="cutRail" class="cut-rail"></ul>
+      </div>
       <div id="cutShared" hidden>
         <div class="field svg-opts">
           <span class="field-label">인식 엔진 <span class="sub">— 배경 제거·요소 추출이 함께 쓰는 공통 설정</span></span>
@@ -883,8 +896,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             <button type="button" class="chip" id="exSamBtn">🎯 AI 정밀 분리 — 준비 중…</button>
           </div>
           <p class="sub" id="exSamNote" style="margin:6px 0 0">물체 단위로 하나씩 떼어내요 — 기본으로 켜집니다. 처음 한 번만 외부(HuggingFace)에서 모델(약 13MB)을 받고, 이후엔 오프라인으로 동작해요.</p>
-          <label class="field-label" for="exScope" style="margin-top:12px">추출 범위 <output id="exScopeOut" for="exScope">보통</output><span class="sub"> — 작게: 부위 하나 · 크게: 물체 전체</span></label>
-          <input type="range" id="exScope" min="1" max="5" step="1" value="3">
+          <label class="field-label" for="exScope" style="margin-top:12px">추출 범위 <output id="exScopeOut" for="exScope">크게 (물체 전체)</output><span class="sub"> — 왼쪽으로 갈수록 작은 부위만</span></label>
+          <input type="range" id="exScope" min="1" max="3" step="1" value="3">
         </div>
         <div class="bg-wrap svg-opts">
           <div class="cmp-box" id="exBox"><canvas id="exCanvas"></canvas></div>
@@ -4397,8 +4410,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
     /* 판정 기준은 '배경색'으로 통일한다. 마스크 상태만 믿으면, 잘못 지워진 피사체 구멍이
        (투명하지만 색은 피사체) 배경으로 오인돼 복원이 통째로 막힌다. */
-    var tol = parseInt($('#bgTol').value, 10);
-    var bgRef = bgBorderColor();
+    var tol = (st && st.tol != null) ? st.tol : parseInt($('#bgTol').value, 10);
+    var bgRef = (st && st.bgRef) ? st.bgRef : bgBorderColor();
     var d2 = function (idx, ref) {
       var p = idx * 4, dr = src[p] - ref[0], dg = src[p + 1] - ref[1], db = src[p + 2] - ref[2];
       return 2 * dr * dr + 4 * dg * dg + 3 * db * db;
@@ -4415,7 +4428,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     };
     /* 지우개: 영역 밖 '피사체(불투명 + 배경색 아님)'에서 이어지는 부분만 보호.
        복원:   영역 밖 '배경(투명 + 배경색)'에서 이어지는 부분만 보호. */
-    var seeds = [], pr = 0, pg = 0, pb = 0, pn = 0;
+    var seeds = [], pn = 0;
     for (var y = 0; y < bh; y++) {
       for (var x = 0; x < bw; x++) {
         var idx = y * bw + x;
@@ -4427,19 +4440,24 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         var okSeed = restore ? isBgColor(idx) : !isBgColor(idx);
         if (!okSeed) continue;
         seeds.push(idx);
-        var p4 = idx * 4;
-        pr += src[p4]; pg += src[p4 + 1]; pb += src[p4 + 2]; pn++;
+        pn++;
       }
     }
 
     var keep = new Uint8Array(n);
     if (pn >= 6) {
-      var subjRef = [pr / pn, pg / pn, pb / pn];
-      /* 보호는 보수적으로 — 민감도가 높을수록(과감히 처리) 보호 범위가 좁아진다 */
-      var thrKeep = 9 * Math.pow(Math.max(10, 45 - tol * 0.5) * 2.55, 2);
+      /* 보호 영역은 '이웃과 색이 이어지는지'로 넓힌다. 시드 전체의 평균색 하나로 재면
+         머리(검정)+상의(흰색)처럼 색이 크게 다른 부위를 한 획이 걸칠 때 양쪽 다 평균에서
+         멀어져 아무것도 지키지 못하고 피사체에 구멍이 뚫린다. */
+      var thrLocal = 9 * Math.pow(40 * 2.55, 2);
+      var dLocal = function (a2, b2) {
+        var pa = a2 * 4, pb2 = b2 * 4;
+        var dr = src[pa] - src[pb2], dg = src[pa + 1] - src[pb2 + 1], db = src[pa + 2] - src[pb2 + 2];
+        return 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+      };
       var canKeep = restore
-        ? function (idx) { return isBgColor(idx); }
-        : function (idx) { return !isBgColor(idx) && d2(idx, subjRef) <= thrKeep; };
+        ? function (v) { return isBgColor(v); }
+        : function (v, from) { return !isBgColor(v) && dLocal(v, from) <= thrLocal; };
       var stack = new Int32Array(n), sp = 0;
       for (i = 0; i < seeds.length; i++) {
         var sidx = seeds[i];
@@ -4447,10 +4465,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       }
       while (sp > 0) {
         var u = stack[--sp], ux = u % bw;
-        if (ux > 0 && inReg[u - 1] && !keep[u - 1] && canKeep(u - 1)) { keep[u - 1] = 1; stack[sp++] = u - 1; }
-        if (ux < bw - 1 && inReg[u + 1] && !keep[u + 1] && canKeep(u + 1)) { keep[u + 1] = 1; stack[sp++] = u + 1; }
-        if (u >= bw && inReg[u - bw] && !keep[u - bw] && canKeep(u - bw)) { keep[u - bw] = 1; stack[sp++] = u - bw; }
-        if (u < n - bw && inReg[u + bw] && !keep[u + bw] && canKeep(u + bw)) { keep[u + bw] = 1; stack[sp++] = u + bw; }
+        if (ux > 0 && inReg[u - 1] && !keep[u - 1] && canKeep(u - 1, u)) { keep[u - 1] = 1; stack[sp++] = u - 1; }
+        if (ux < bw - 1 && inReg[u + 1] && !keep[u + 1] && canKeep(u + 1, u)) { keep[u + 1] = 1; stack[sp++] = u + 1; }
+        if (u >= bw && inReg[u - bw] && !keep[u - bw] && canKeep(u - bw, u)) { keep[u - bw] = 1; stack[sp++] = u - bw; }
+        if (u < n - bw && inReg[u + bw] && !keep[u + bw] && canKeep(u + bw, u)) { keep[u + bw] = 1; stack[sp++] = u + bw; }
       }
     }
 
@@ -4466,26 +4484,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return changed;
   }
 
-  /* 현재 피사체(불투명 영역) 평균색 — 복원의 기준색 후보 */
-  function bgForegroundColor() {
-    var s = Math.min(1, 96 / Math.max(bgState.W, bgState.H));
-    var w = Math.max(2, Math.round(bgState.W * s)), h = Math.max(2, Math.round(bgState.H * s));
-    var c = document.createElement('canvas'); c.width = w; c.height = h;
-    var x = c.getContext('2d', { willReadFrequently: true });
-    x.drawImage(bgState.srcCanvas, 0, 0, w, h);
-    var sd = x.getImageData(0, 0, w, h).data;
-    x.clearRect(0, 0, w, h);
-    if (bgState.mask) x.drawImage(bgState.mask, 0, 0, w, h);
-    var mdd = x.getImageData(0, 0, w, h).data;
-    var r = 0, g = 0, b = 0, cnt = 0;
-    for (var i = 0; i < w * h; i++) {
-      if (mdd[i * 4 + 3] < 128) continue;
-      r += sd[i * 4]; g += sd[i * 4 + 1]; b += sd[i * 4 + 2]; cnt++;
-    }
-    return cnt ? [r / cnt, g / cnt, b / cnt] : [128, 128, 128];
-  }
-
-  /* 이미지 테두리 평균색 — 스마트 지우개의 기준색 후보 */
+  /* 이미지 테두리 평균색 — 스마트 브러시가 '배경으로 보이는지' 판정하는 기준색 */
   function bgBorderColor() {
     var s = Math.min(1, 64 / Math.max(bgState.W, bgState.H));
     var w = Math.max(2, Math.round(bgState.W * s)), h = Math.max(2, Math.round(bgState.H * s));
@@ -4632,7 +4631,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var st = {
         mode: bgState.tool === 'erase' ? 'smart' : 'smartRestore',
         size: Math.max(2, parseInt($('#bgBrush').value, 10) * (bgState.W / pos.rw)),
-        points: [[pos.fx, pos.fy]]
+        points: [[pos.fx, pos.fy]],
+        /* 그릴 때의 판정 기준을 획에 새겨 둔다 — 나중에 민감도를 바꿔도 이미 그린 획이
+           다시 계산되어 피사체가 지워지는 일이 없도록. */
+        tol: parseInt($('#bgTol').value, 10),
+        bgRef: bgBorderColor()
       };
       bgPainting = { mode: 'paint', stroke: st };
       bgState.previewStroke = st;
@@ -5012,10 +5015,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (samState.on) samEnsureEmbedding();  /* SAM 켜져 있으면 새 이미지 임베딩도 준비 */
     var seq = exState.seq;
     var hint = $('#exHint');
-    /* SAM이 켜져 있으면 픽은 SAM이 담당하므로 무거운 u2net saliency는 굳이 돌리지 않는다.
-       (SAM 미준비 시의 폴백은 색 기반 flood로 충분) */
-    if (bgEngine === 'classic' || samState.on) {
-      if (!samState.on) hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요 (색상 기반)';
+    /* SAM이 켜져 있어도 전경맵은 계속 준비한다 — SAM이 못 잡을 때 '덩어리' 폴백이
+       동작하려면 이 맵이 필요하다(예전엔 SAM이 켜지면 영영 계산되지 않았다). */
+    if (bgEngine === 'classic') {
+      hint.textContent = '🖐️ 물체 위를 잠시 꾹 누르면 잡혀요 → 그대로 이미지 밖으로 드래그하면 대기열에 담겨요 (색상 기반)';
       return;
     }
     var key = aiModelKey(), m = AI_MODELS[key];
@@ -6307,7 +6310,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (!cands.length) return null;
       /* 추출 범위 슬라이더로 부위(작게) ~ 물체 전체(크게) 중에서 고른다 */
       cands.sort(function (a, b) { return a.area - b.area; });
-      var pick = Math.round((exScope - 1) / 4 * (cands.length - 1));
+      /* 1=작게(부위) 2=보통 3=크게(전체). 후보가 3개 미만이면 큰 쪽에 붙인다. */
+      var pick = exScope - 1 + (3 - cands.length);
       if (pick < 0) pick = 0;
       if (pick > cands.length - 1) pick = cands.length - 1;
       var best = cands[pick].k, bestComp = cands[pick].comp;
@@ -6421,6 +6425,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var ay = Math.min(S - 1, Math.max(0, Math.round(y * S / wh)));
       return pred[ay * S + ax];
     };
+    wx = Math.max(0, Math.min(ww - 1, wx | 0));
+    wy = Math.max(0, Math.min(wh - 1, wy | 0));
     if (predAt(wx, wy) < 0.45) return null;   /* 클릭 지점이 확실한 전경이 아니면 색 방식에 맡긴다 */
     var TIN = 0.30, n = ww * wh;
     var seen = new Uint8Array(n), stack = new Int32Array(n), sp = 0;
@@ -6471,14 +6477,18 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   var exSamAutoTried = false;
   /* 추출 범위 1(작게)~5(크게) — SAM이 주는 부위/부분/전체 후보 중 어느 크기를 고를지 */
   var exScope = 3;
-  var EX_SCOPE_LABEL = { 1: '아주 작게', 2: '작게', 3: '보통', 4: '크게', 5: '아주 크게' };
+  var EX_SCOPE_LABEL = { 1: '작게 (부위)', 2: '보통 (부분)', 3: '크게 (물체 전체)' };
   (function () {
     var sl = $('#exScope');
     if (!sl) return;
-    sl.addEventListener('input', function () {
-      exScope = parseInt(this.value, 10) || 3;
-      $('#exScopeOut').textContent = EX_SCOPE_LABEL[exScope] || '보통';
-    });
+    var apply = function () {
+      exScope = parseInt(sl.value, 10) || 3;
+      if (exScope < 1) exScope = 1;
+      if (exScope > 3) exScope = 3;
+      $('#exScopeOut').textContent = EX_SCOPE_LABEL[exScope];
+    };
+    sl.addEventListener('input', apply);
+    apply();   /* 새로고침 시 브라우저가 복원한 슬라이더 값과 상태를 맞춘다 */
   })();
   function exAutoEnableSam() {
     if (samState.on || samState.downloading) return;
