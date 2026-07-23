@@ -5075,6 +5075,16 @@ textarea {
     return out;
   }
 
+  /* 조각의 행렬 위치 코드: 길이 cols의 문자열에서 그 조각의 열(c) 자리에 행번호(r)를
+     놓고 나머지는 0. 예) 3열에서 (1,1)→"100", (2,2)→"020", (1,3)→"001".
+     행이 두 자리(10)면 한 자리씩 맞추는 표기가 어긋나므로 기존 r-c 표기로 물러난다. */
+  function splitPosCode(r, c, cols) {
+    if (r > 9) return r + '-' + c;
+    var s = '';
+    for (var i = 1; i <= cols; i++) s += (i === c ? String(r) : '0');
+    return s;
+  }
+
   function splitReleaseTiles() {
     splitState.tiles.forEach(function (t) { URL.revokeObjectURL(t.url); });
     splitState.tiles = [];
@@ -5390,7 +5400,7 @@ textarea {
         openLightbox(t.url, t.name + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size));
       });
       var p = document.createElement('p');
-      p.textContent = t.r + '-' + t.c + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size);
+      p.textContent = t.code + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size);
       var dl = document.createElement('button');
       dl.className = 'btn';
       dl.type = 'button';
@@ -5474,11 +5484,12 @@ textarea {
       return splitEncodeTile(j.source, j.x, j.y, j.w, j.h, j.mime, splitState.quality).then(function (blob) {
         if (seq !== splitState.runSeq) { splitReleaseTiles(); return; }
         if (!blob) { failed++; return; }
+        var code = splitPosCode(j.r + 1, j.c + 1, cols);
         splitState.tiles.push({
           blob: blob, url: URL.createObjectURL(blob),
-          w: j.w, h: j.h, r: j.r + 1, c: j.c + 1,
+          w: j.w, h: j.h, r: j.r + 1, c: j.c + 1, code: code,
           srcId: j.srcId, srcName: j.base,
-          name: j.base + '_' + (j.r + 1) + '-' + (j.c + 1) + '.' + j.ext
+          name: j.base + '_' + code + '.' + j.ext
         });
       }).then(next);
     }
