@@ -157,6 +157,9 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
 .chip:disabled { opacity: .45; cursor: not-allowed; }
 .field-wide { grid-column: 1 / -1; }
+/* 자주 쓰는 배치 + 출력 형식을 한 행에 나란히 (좁은 화면에선 세로로 쌓임) */
+.split-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 22px; }
+@media (max-width: 520px) { .split-pair { grid-template-columns: 1fr; } }
 .pair-row { display: flex; gap: 8px; }
 .pair-row input { flex: 1; min-width: 0; }
 .warn-text { color: var(--danger); font-size: 12.5px; margin: 6px 0 0; }
@@ -842,22 +845,24 @@ textarea {
             <label class="field-label" for="splitRows">세로 조각 수 <output id="splitRowsOut" for="splitRows">3</output><span class="sub"> — 가로선으로 나눠요</span></label>
             <input type="range" id="splitRows" min="1" max="10" step="1" value="3">
           </div>
-          <div class="field field-wide">
-            <span class="field-label">자주 쓰는 배치</span>
-            <div class="chips" id="splitPresets">
-              <button type="button" class="chip" data-split-preset="2x2">2 × 2</button>
-              <button type="button" class="chip" data-split-preset="3x3">3 × 3</button>
-              <button type="button" class="chip" data-split-preset="3x1">가로 3줄</button>
-              <button type="button" class="chip" data-split-preset="1x3">세로 3줄</button>
+          <div class="field-wide split-pair">
+            <div class="field">
+              <span class="field-label">자주 쓰는 배치</span>
+              <div class="chips" id="splitPresets">
+                <button type="button" class="chip" data-split-preset="2x2">2 × 2</button>
+                <button type="button" class="chip" data-split-preset="3x3">3 × 3</button>
+                <button type="button" class="chip" data-split-preset="3x1">가로 3줄</button>
+                <button type="button" class="chip" data-split-preset="1x3">세로 3줄</button>
+              </div>
             </div>
-          </div>
-          <div class="field field-wide">
-            <span class="field-label">출력 형식 <span class="sub">— 자동은 투명도가 있으면 알아서 맞춰요</span></span>
-            <div class="chips" id="splitFormats">
-              <button type="button" class="chip on" data-split-fmt="auto">자동</button>
-              <button type="button" class="chip" data-split-fmt="webp">WebP</button>
-              <button type="button" class="chip" data-split-fmt="jpeg">JPEG</button>
-              <button type="button" class="chip" data-split-fmt="png">PNG</button>
+            <div class="field">
+              <span class="field-label">출력 형식 <span class="sub">— 자동은 투명도가 있으면 알아서 맞춰요</span></span>
+              <div class="chips" id="splitFormats">
+                <button type="button" class="chip on" data-split-fmt="auto">자동</button>
+                <button type="button" class="chip" data-split-fmt="webp">WebP</button>
+                <button type="button" class="chip" data-split-fmt="jpeg">JPEG</button>
+                <button type="button" class="chip" data-split-fmt="png">PNG</button>
+              </div>
             </div>
           </div>
           <div class="field field-wide">
