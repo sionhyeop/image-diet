@@ -168,6 +168,19 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .cut-rail-item.on img { border-color: var(--accent); }
 .cut-rail-item p { margin: 3px 0 0; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cut-rail-item.on p { color: var(--accent-strong); font-weight: 700; }
+/* 레일 항목 = 고르는 버튼 + 목록에서 빼는 × */
+.cut-rail-item { position: relative; }
+.cut-rail-pick { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.cut-rail-pick .cut-rail-size { font-size: 10px; opacity: .85; }
+.cut-rail-item.edited img { box-shadow: 0 0 0 2px var(--accent) inset; }
+.cut-rail-del {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; line-height: 16px;
+  border-radius: 50%; border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+  font-size: 12px; padding: 0; cursor: pointer; opacity: 0; transition: opacity .12s;
+}
+.cut-rail-item:hover .cut-rail-del, .cut-rail-del:focus-visible { opacity: 1; }
+.cut-rail-clear { margin-left: 8px; padding: 2px 8px; font-size: 11px; vertical-align: middle; }
+.bg-size-info { margin-top: -4px; font-weight: 600; }
 .bg-batch-list { list-style: none; padding: 10px; margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; }
 .bg-batch-item { width: 108px; text-align: center; }
 .bg-batch-item .bg-batch-thumb {
@@ -791,11 +804,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       </div>
       <div class="dropzone dropzone-sm" id="bgDropzone" role="button" tabindex="0" aria-label="배경을 제거할 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-        <p class="dz-hint">여러 장을 한 번에 고르면 일괄 배경 제거예요 · Ctrl+V 붙여넣기 지원 · JPG / PNG / WebP</p>
+        <p class="dz-hint">올린 이미지는 아래 목록에 쌓여요 — 이전 이미지도 편집한 그대로 남아요 · 여러 장을 한 번에 고르면 일괄 배경 제거 · Ctrl+V 붙여넣기 지원</p>
         <input type="file" id="bgFile" accept="image/*" multiple hidden>
       </div>
       <div id="cutRailWrap" hidden>
-        <p class="field-label" style="margin-top:14px">불러온 이미지 <output id="cutRailCount"></output> <span class="sub">— 눌러서 그 이미지로 돌아가 편집해요</span></p>
+        <p class="field-label" style="margin-top:14px">불러온 이미지 <output id="cutRailCount"></output> <span class="sub">— 눌러서 그 이미지로 돌아가면 지웠던 편집 그대로예요</span>
+          <button type="button" class="chip cut-rail-clear" id="cutRailClear">전부 비우기</button>
+        </p>
         <ul id="cutRail" class="cut-rail"></ul>
       </div>
       <div id="cutShared" hidden>
@@ -866,6 +881,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           </div>
         </div>
         <p id="bgStats" class="muted" role="status"></p>
+        <p id="bgSizeInfo" class="muted bg-size-info" role="status"></p>
         <div class="settings-grid svg-opts">
           <div class="field">
             <label class="field-label" for="bgOutFmt">압축 형식</label>
@@ -4058,7 +4074,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
   function bgAutoMaskAI(onProgress) {
     var key = aiModelKey();
+    /* 추론이 끝났을 때 이미지가 바뀌었으면(레일 전환·일괄 처리 시작) 결과를 버린다 —
+       안 그러면 낡은 추론이 지금 이미지의 workMask를 덮어쓴다 */
+    var mySeq = bgState.seq, mySrc = bgState.srcCanvas;
     return runSaliency(key, bgState.srcCanvas, onProgress).then(function (res) {
+      if (bgState.seq !== mySeq || bgState.srcCanvas !== mySrc) return;
       var S = res.S, pred = res.pred;
       /* 정밀화 캔버스: 원본 종횡비로 되돌리고 긴 변 최대 768px */
       var W = bgState.W, H = bgState.H, RS = 768;
@@ -4193,6 +4213,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var tip = ' — 브러시로 다듬을 수 있어요';
       stats.textContent = (bgState.file.name || '이미지') + ' · ' + bgState.W + '×' + bgState.H +
         ' · ' + eng + ' 인식 완료' + tip;
+      bgQueueSize();
     }).catch(function () {
       if (bgState.seq === seq) stats.textContent = '배경 인식에 실패했어요.';
     });
@@ -4662,7 +4683,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (p && p.mode === 'paint' && bgState.mask) {
       var st = p.stroke;
       var changed = bgSmartPaint(bgState.mask.getContext('2d'), st, st.mode === 'smartRestore');
-      if (changed) bgState.strokes.push(st);
+      if (changed) { bgState.strokes.push(st); bgQueueSize(); cutRailRender(); }
       else toast(st.mode === 'smartRestore'
         ? '되살릴 피사체를 찾지 못했어요 — 인식 민감도를 높여보세요.'
         : '지울 배경을 찾지 못했어요 — 인식 민감도를 높여보세요.');
@@ -4688,6 +4709,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     bgState.strokes.pop();
     bgReplayMask();
     bgRender();
+    bgQueueSize();
+    cutRailRender();
   });
   $('#bgReset').addEventListener('click', function () {
     if (!bgState.srcCanvas) return;
@@ -4712,6 +4735,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (!bgState.srcCanvas) return;
       bgReplayMask();
       bgRender();
+      bgQueueSize();
     }, 200);
   });
   $('#bgBrush').addEventListener('input', function () {
@@ -4719,10 +4743,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
   $('#bgQ').addEventListener('input', function () {
     $('#bgQOut').textContent = Math.round(parseFloat(this.value) * 100);
+    bgQueueSize(600);
   });
   $('#bgOutFmt').addEventListener('change', function () {
     $('#bgJpegBgField').hidden = this.value !== 'jpeg';
+    bgQueueSize(0);
   });
+  $('#bgJpegBg').addEventListener('input', function () { bgQueueSize(600); });
 
   function bgComposeFull() {
     var c = document.createElement('canvas');
@@ -4822,7 +4849,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#bgBatchCount').textContent = bgBatch.items.length ? bgBatch.items.length + '장' : '';
   }
 
-  function bgBatchClear() {
+  /* 목록만 비운다(편집기는 건드리지 않음) — 새 배치를 시작할 때 쓴다 */
+  function bgBatchDrop() {
     bgBatch.seq++;
     bgBatch.busy = false;
     bgBatch.items.forEach(function (it) {
@@ -4830,19 +4858,31 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (it.resultUrl) URL.revokeObjectURL(it.resultUrl);
     });
     bgBatch.items = [];
-    /* 배치가 스크래치로 쓴 단일 상태를 비워, 패널을 닫아도 낡은 편집기가 뜨지 않게 */
-    bgState.srcCanvas = null; bgState.mask = null; bgState.dispImg = null;
-    exState.srcCanvas = null;
     $('#bgBatchList').textContent = '';
     $('#bgBatchCount').textContent = '';
     $('#bgBatchStat').textContent = '';
     $('#bgBatchZip').disabled = true;
     $('#bgBatchRun').disabled = false;
+  }
+
+  function bgBatchClear() {
+    bgBatchDrop();
+    /* 배치는 bgState를 스크래치로 쓴다. 레일에 이미지가 있으면 활성 항목을 스냅샷에서
+       그대로 되살리고, 없으면 편집기를 비워 낡은 화면이 뜨지 않게 한다. */
+    if (cutRail.activeId != null && cutRailFind(cutRail.activeId)) {
+      cutRailActivate(cutRail.activeId);
+    } else {
+      bgState.srcCanvas = null; bgState.mask = null; bgState.dispImg = null;
+      exState.srcCanvas = null;
+    }
     bgBatchViewSync();
   }
 
   function bgEnterBatch(files) {
-    bgBatchClear();
+    bgBatchDrop();
+    /* 편집기 상태를 항목에 보관해 두고, 배치가 bgState를 스크래치로 써도 잃지 않게 한다 */
+    cutRailSnapshot();
+    bgState.seq++;   /* 진행 중이던 자동 인식 결과를 낡은 것으로 만든다 */
     files.forEach(function (f) {
       bgBatch.items.push({
         file: f, name: f.name || '이미지', status: 'wait',
@@ -4870,6 +4910,15 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return mk.then(function () {
       if (!bgState.workMask) throw new Error('마스크 실패');
       bgReplayMask();
+      /* 같은 파일이 레일에도 있으면 결과를 그 항목에 남겨, 나중에 레일에서 골랐을 때
+         다시 인식하지 않고 바로 편집을 이어갈 수 있게 한다 */
+      var rail = cutRailByFile(item.file);
+      if (rail && rail.srcCanvas === bgState.srcCanvas) {
+        rail.bg = {
+          workMask: bgState.workMask, workW: bgState.workW, workH: bgState.workH,
+          mask: bgState.mask, strokes: [], divider: 0, revealed: true
+        };
+      }
       return bgComposedBlob(bgComposeFull(), item.W, item.H, bgBatch.fmt,
         parseFloat($('#bgBatchQ').value), $('#bgBatchJpegBg').value);
     });
@@ -4891,6 +4940,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (it.status === 'done') return next();            /* 이미 끝난 건 건너뛴다 */
       $('#bgBatchStat').textContent = '처리 중… ' + idx + ' / ' + bgBatch.items.length;
       it.status = 'busy'; bgBatchRenderList();
+      /* 레일이 이미 디코드해 둔 캔버스를 그대로 쓴다 — 같은 이미지를 두 번 디코드하지 않는다 */
+      var rail = cutRailByFile(it.file);
+      if (!it.srcCanvas && rail) { it.srcCanvas = rail.srcCanvas; it.W = rail.W; it.H = rail.H; }
       var prep = it.srcCanvas
         ? Promise.resolve(it)
         : bgPrepCanvas(it.file).then(function (p) { it.srcCanvas = p.srcCanvas; it.W = p.W; it.H = p.H; return it; });
@@ -4901,6 +4953,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           it.blob = res.b; it.ext = res.ext; it.status = 'done';
           if (it.resultUrl) URL.revokeObjectURL(it.resultUrl);
           it.resultUrl = URL.createObjectURL(res.b);
+          if (rail) { rail.sizeText = fmtBytes(res.b.size); cutRailRender(); }
         }
         bgBatchRenderList();
       }).catch(function () {
@@ -4953,8 +5006,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (f && ((f.type && f.type.indexOf('image/') === 0) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name || ''))) files.push(f);
     });
     if (!files.length) return;
-    if (files.length === 1) { bgBatchClear(); loadCutFile(files[0]); }
-    else bgEnterBatch(files);
+    /* 몇 장이든 레일에 쌓아 편집 기록을 남긴다. 2장 이상이면 여기에 더해
+       일괄 처리 패널까지 띄운다(레일에서 한 장을 고르면 패널이 닫히고 편집기로 돌아간다). */
+    cutRailAdd(files).then(function () {
+      if (files.length > 1) bgEnterBatch(files);
+    });
   }
   bindShare('#bgShare', function () {
     if (!bgState.mask) return [];
@@ -5541,21 +5597,252 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     });
   }
 
-  function loadCutFile(f) {
-    cutFile = f;
-    var seq = ++cutSeq;
-    bgPrepCanvas(f).then(function (p) {
-      if (seq !== cutSeq) return; /* 낡은 로드: 준비된 캔버스는 그냥 버린다(원본 리소스는 이미 해제됨) */
-      bgInitFromCanvas(f, p.srcCanvas, p.W, p.H);
-      exInitFromCanvas(f, p.srcCanvas, p.W, p.H);
-      syncCutMode();
-      if (cutMode === 'bg') { bgSetupDisplay(); bgRender(); }
-      else { exSetupDisplay(); exRender(null); }
-      /* 양쪽 다 미리 준비 — AI 추론은 공유 캐시로 1회만 돈다 */
+  /* ---------- 불러온 이미지 레일 ----------
+     이미지를 새로 올려도 이전 이미지를 버리지 않는다. 편집 상태(마스크·브러시 획·
+     AI 전경맵)를 항목마다 통째로 보관해 두었다가, 레일에서 다시 고르면 재계산 없이
+     그대로 되살린다. 캔버스는 항목이 소유하고 bgState/exState는 그것을 가리키기만 한다. */
+  var cutRail = { items: [], activeId: null, uid: 0 };
+
+  function cutRailFind(id) {
+    for (var i = 0; i < cutRail.items.length; i++) {
+      if (cutRail.items[i].id === id) return cutRail.items[i];
+    }
+    return null;
+  }
+  function cutRailByFile(f) {
+    for (var i = 0; i < cutRail.items.length; i++) {
+      if (cutRail.items[i].file === f) return cutRail.items[i];
+    }
+    return null;
+  }
+
+  /* 썸네일은 dataURL로 굽는다 — objectURL과 달리 반납을 신경 쓸 필요가 없다 */
+  function cutRailThumb(canvas) {
+    var s = Math.min(1, 152 / Math.max(canvas.width, canvas.height));
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(canvas.width * s));
+    c.height = Math.max(1, Math.round(canvas.height * s));
+    var x = c.getContext('2d');
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(canvas, 0, 0, c.width, c.height);
+    try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return ''; }
+  }
+
+  /* 지금 편집 중인 상태를 활성 항목에 담아 둔다(전환·새 업로드 직전에 호출).
+     bgState가 그 항목의 캔버스를 보고 있을 때만 담는다 — 일괄 처리가 bgState를
+     스크래치로 쓴 뒤라면 낡은 값으로 멀쩡한 스냅샷을 덮어쓰면 안 되기 때문이다. */
+  function cutRailSnapshot() {
+    var it = cutRailFind(cutRail.activeId);
+    if (!it || !bgState.srcCanvas || bgState.srcCanvas !== it.srcCanvas) return;
+    it.bg = {
+      workMask: bgState.workMask, workW: bgState.workW, workH: bgState.workH,
+      mask: bgState.mask, strokes: bgState.strokes.slice(),
+      divider: bgState.divider, revealed: bgState.revealed
+    };
+    if (exState.srcCanvas === it.srcCanvas) {
+      it.ex = {
+        aiPred: exState.aiPred, aiS: exState.aiS,
+        workData: exState.workData, workBg: exState.workBg,
+        workW: exState.workW, workH: exState.workH
+      };
+    }
+    if (!it.sizeText) cutRailMeasure(it);   /* 아직 못 잰 항목은 떠나기 직전에 한 번 잰다 */
+  }
+
+  /* 레일 항목의 배경 제거 결과 용량(PNG 기준) — 편집기 상태와 무관하게 항목만 보고 잰다 */
+  function cutRailMeasure(it) {
+    if (!it || !it.bg || !it.bg.mask) return;
+    var c = document.createElement('canvas');
+    c.width = it.W; c.height = it.H;
+    var x = c.getContext('2d');
+    x.drawImage(it.srcCanvas, 0, 0);
+    x.globalCompositeOperation = 'destination-in';
+    x.drawImage(it.bg.mask, 0, 0);
+    encodeCanvas(c, 'image/png').then(function (b) {
+      if (!b || !cutRailFind(it.id)) return;
+      it.sizeText = fmtBytes(b.size);
+      cutRailRender();
+    }).catch(function () {});
+  }
+
+  /* 레일 항목을 편집기에 올린다. 저장된 마스크가 있으면 그대로 복원하고 재계산하지 않는다. */
+  function cutRailActivate(id) {
+    var it = cutRailFind(id);
+    if (!it) return;
+    if (cutRail.activeId !== id) cutRailSnapshot();
+    cutRail.activeId = id;
+    cutFile = it.file;
+    cutSeq++;      /* 진행 중이던 파일 로드가 이 상태를 덮지 않게 */
+    bgSizeSeq++;   /* 낡은 용량 계산 결과 폐기 */
+    bgInitFromCanvas(it.file, it.srcCanvas, it.W, it.H);
+    exInitFromCanvas(it.file, it.srcCanvas, it.W, it.H);
+    var s = it.bg;
+    if (s && s.workMask && s.mask) {
+      bgState.workMask = s.workMask; bgState.workW = s.workW; bgState.workH = s.workH;
+      bgState.mask = s.mask; bgState.strokes = s.strokes.slice();
+      bgState.divider = s.divider; bgState.revealed = true;
+    } else {
+      bgState.workMask = null;
+    }
+    if (it.ex) {
+      exState.aiPred = it.ex.aiPred; exState.aiS = it.ex.aiS;
+      exState.workData = it.ex.workData; exState.workBg = it.ex.workBg;
+      exState.workW = it.ex.workW; exState.workH = it.ex.workH;
+    } else {
+      exState.workData = null;
+    }
+    syncCutMode();
+    if (cutMode === 'bg') { bgSetupDisplay(); bgRender(); }
+    else { exSetupDisplay(); exRender(null); }
+    if (bgState.mask) {
+      $('#bgStats').textContent = it.name + ' · ' + it.W + '×' + it.H +
+        ' · 이전 편집 그대로 불러왔어요 — 브러시로 더 다듬을 수 있어요';
+      bgQueueSize(0);
+    } else {
       bgRecompute();
-      exComputeWork();
-      exComputeAI();
-    }).catch(function () { toast('이미지를 열지 못했어요.'); });
+    }
+    if (!exState.workData) exComputeWork();
+    if (!exState.aiPred) exComputeAI();
+    cutRailRender();
+  }
+
+  /* 파일들을 레일에 이어 붙이고 마지막 장을 편집기에 올린다 */
+  function cutRailAdd(files) {
+    var list = Array.prototype.slice.call(files);
+    if (!list.length) return Promise.resolve();
+    cutRailSnapshot();   /* 새 항목을 밀어 넣기 전에 지금 편집 상태부터 보관 */
+    var lastId = null;
+    return list.reduce(function (chain, f) {
+      return chain.then(function () {
+        return bgPrepCanvas(f).then(function (p) {
+          var item = {
+            id: ++cutRail.uid, file: f, name: p.name,
+            srcCanvas: p.srcCanvas, W: p.W, H: p.H,
+            thumb: cutRailThumb(p.srcCanvas), bg: null, ex: null, sizeText: ''
+          };
+          cutRail.items.push(item);
+          lastId = item.id;
+          cutRailRender();
+        }).catch(function () { toast((f.name || '이미지') + '을(를) 열지 못했어요.'); });
+      });
+    }, Promise.resolve()).then(function () {
+      if (lastId != null) cutRailActivate(lastId);
+    });
+  }
+
+  function cutRailRemove(id) {
+    var idx = -1;
+    for (var i = 0; i < cutRail.items.length; i++) {
+      if (cutRail.items[i].id === id) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    var wasActive = cutRail.items[idx].id === cutRail.activeId;
+    cutRail.items.splice(idx, 1);
+    if (!wasActive) { cutRailRender(); return; }
+    cutRail.activeId = null;
+    if (cutRail.items.length) cutRailActivate(cutRail.items[Math.min(idx, cutRail.items.length - 1)].id);
+    else cutRailClearAll();
+  }
+
+  function cutRailClearAll() {
+    cutRail.items = [];
+    cutRail.activeId = null;
+    cutFile = null;
+    cutSeq++;
+    bgSizeSeq++;
+    bgStopReveal();
+    bgState.srcCanvas = null; bgState.mask = null; bgState.workMask = null;
+    bgState.dispImg = null; bgState.strokes = [];
+    exState.srcCanvas = null; exState.dispImg = null;
+    exState.workData = null; exState.aiPred = null;
+    $('#bgStats').textContent = '';
+    $('#bgSizeInfo').textContent = '';
+    syncCutMode();
+    cutRailRender();
+  }
+
+  function cutRailRender() {
+    var ul = $('#cutRail');
+    ul.textContent = '';
+    cutRail.items.forEach(function (it) {
+      var li = document.createElement('li');
+      li.className = 'cut-rail-item' + (it.id === cutRail.activeId ? ' on' : '') +
+        (it.bg && it.bg.strokes && it.bg.strokes.length ? ' edited' : '');
+      var pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'cut-rail-pick';
+      pick.title = it.name;
+      pick.setAttribute('aria-pressed', it.id === cutRail.activeId ? 'true' : 'false');
+      var img = document.createElement('img');
+      img.src = it.thumb;
+      img.alt = it.name;
+      var nm = document.createElement('p');
+      nm.textContent = it.name;
+      var sz = document.createElement('p');
+      sz.className = 'cut-rail-size';
+      sz.textContent = it.sizeText || (it.bg && it.bg.mask ? '배경 지움' : '대기');
+      pick.appendChild(img);
+      pick.appendChild(nm);
+      pick.appendChild(sz);
+      pick.addEventListener('click', function () {
+        if (bgBatch.items.length) bgBatchClear();   /* 일괄 패널이 떠 있으면 닫고 편집기로 */
+        cutRailActivate(it.id);
+      });
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'cut-rail-del';
+      del.textContent = '×';
+      del.setAttribute('aria-label', it.name + ' 목록에서 빼기');
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        cutRailRemove(it.id);
+      });
+      li.appendChild(pick);
+      li.appendChild(del);
+      ul.appendChild(li);
+    });
+    $('#cutRailCount').textContent = cutRail.items.length ? cutRail.items.length + '장' : '';
+    $('#cutRailWrap').hidden = cutRail.items.length === 0;
+  }
+  $('#cutRailClear').addEventListener('click', function () {
+    if (!cutRail.items.length) return;
+    cutRailClearAll();
+    toast('불러온 이미지를 모두 비웠어요.');
+  });
+
+  /* ---------- 결과 최종 용량 ----------
+     실제로 인코딩해 봐야 알 수 있어 비싸다 — 편집이 멎은 뒤에 한 번만 잰다. */
+  var bgSizeTimer = null, bgSizeSeq = 0;
+  function bgQueueSize(delay) {
+    if (bgSizeTimer) { clearTimeout(bgSizeTimer); bgSizeTimer = null; }
+    var info = $('#bgSizeInfo');
+    if (!bgState.mask || !bgState.srcCanvas) { info.textContent = ''; return; }
+    info.textContent = '💾 최종 용량 재는 중…';
+    var id = cutRail.activeId;
+    bgSizeTimer = setTimeout(function () {
+      bgSizeTimer = null;
+      if (!bgState.mask || !bgState.srcCanvas) { info.textContent = ''; return; }
+      var seq = ++bgSizeSeq;
+      var composed = bgComposeFull();
+      var W = bgState.W, H = bgState.H, fmt = $('#bgOutFmt').value;
+      Promise.all([
+        bgComposedBlob(composed, W, H, 'png'),
+        bgComposedBlob(composed, W, H, fmt, parseFloat($('#bgQ').value), $('#bgJpegBg').value)
+      ]).then(function (r) {
+        if (seq !== bgSizeSeq) return;
+        if (!r[0].b) { info.textContent = ''; return; }
+        info.textContent = '💾 최종 용량 — PNG ' + fmtBytes(r[0].b.size) +
+          (r[1].b ? ' · ' + r[1].ext.toUpperCase() + ' ' + fmtBytes(r[1].b.size) : '');
+        var it = cutRailFind(id);
+        if (it) { it.sizeText = fmtBytes(r[0].b.size); cutRailRender(); }
+      }).catch(function () { if (seq === bgSizeSeq) info.textContent = ''; });
+    }, delay == null ? 450 : delay);
+  }
+
+  /* 기존 진입점 — 이제 레일에 이어 붙인다(이전 이미지를 밀어내지 않는다) */
+  function loadCutFile(f) {
+    return cutRailAdd([f]);
   }
   function syncCutMode() {
     var seg = $('#cutModeSeg');
@@ -9090,6 +9377,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     setBgEngine: function (e) { bgEngine = e; syncBgEngineChips(); },
     get bgEngine() { return bgEngine; },
     loadCutFile: loadCutFile,
+    get cutRail() { return cutRail; },
+    cutRailActivate: function (id) { return cutRailActivate(id); },
+    cutRailRemove: function (id) { return cutRailRemove(id); },
+    cutRailClearAll: function () { return cutRailClearAll(); },
+    bgAcceptFiles: function (fs) { return bgAcceptFiles(fs); },
     bgComposeFull: bgComposeFull,
     get exState() { return exState; },
     splitEdges: splitEdges,
