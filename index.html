@@ -504,11 +504,11 @@ textarea {
 }
 .split-preview { max-width: 100%; height: auto; border-radius: 8px; display: inline-block; }
 .split-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
-.split-group-label {
-  grid-column: 1 / -1; font-size: 12.5px; font-weight: 700; color: var(--muted);
-  padding-top: 10px; margin-top: 2px; border-top: 1px dashed var(--border); text-align: left;
-}
-.split-group-label:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+/* 분할 결과 페이저 — 원본 이미지 사이를 넘긴다 */
+.split-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 12px 0 0; }
+.split-pager-btn { padding: 6px 15px; min-height: 0; font-size: 15px; line-height: 1; }
+.split-pager-btn:disabled { opacity: .35; cursor: default; }
+.split-pager-label { font-weight: 700; font-size: 13.5px; color: var(--text); min-width: 150px; text-align: center; }
 .split-tile {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 12px; padding: 8px; text-align: center; min-width: 0;
@@ -520,7 +520,7 @@ textarea {
 .split-qitem p { margin: 5px 0 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split-qitem .btn { padding: 3px 6px; font-size: 11px; min-height: 0; width: 100%; }
 .split-tile img {
-  width: 100%; height: 84px; object-fit: contain; border-radius: 8px;
+  width: 100%; height: 84px; object-fit: contain; border-radius: 8px; cursor: pointer;
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
 }
 .split-tile p { margin: 6px 0; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -872,9 +872,15 @@ textarea {
         <p class="muted" id="splitStat" role="status"></p>
       </div>
       <div id="splitResultWrap" hidden>
-        <p class="field-label">분할 결과 <output id="splitCount"></output></p>
+        <p class="field-label">분할 결과 <output id="splitCount"></output> <span class="sub">— 조각을 클릭하면 크게 볼 수 있어요</span></p>
+        <div class="split-pager" id="splitPager" hidden>
+          <button class="btn split-pager-btn" id="splitPrev" type="button" aria-label="이전 원본 이미지">◀</button>
+          <span class="split-pager-label" id="splitPagerLabel" role="status"></span>
+          <button class="btn split-pager-btn" id="splitNext" type="button" aria-label="다음 원본 이미지">▶</button>
+        </div>
         <ul id="splitGrid" class="split-grid"></ul>
         <div class="btn-row">
+          <button class="btn" id="splitZipOne" type="button">이 원본 전체 ZIP</button>
           <button class="btn primary" id="splitZip" type="button">전체 ZIP으로 저장</button>
         </div>
       </div>
@@ -5053,7 +5059,7 @@ textarea {
   var splitState = {
     items: [],
     cols: 3, rows: 3, format: 'auto', quality: 0.85,
-    tiles: [], busy: false, runSeq: 0
+    tiles: [], busy: false, runSeq: 0, page: 0
   };
 
   function splitEdges(total, n) {
@@ -5065,9 +5071,26 @@ textarea {
   function splitReleaseTiles() {
     splitState.tiles.forEach(function (t) { URL.revokeObjectURL(t.url); });
     splitState.tiles = [];
+    splitState.page = 0;
     $('#splitGrid').textContent = '';
     $('#splitCount').textContent = '';
     $('#splitResultWrap').hidden = true;
+  }
+
+  /* 조각을 원본(srcId)별로 묶는다. 묶음 순서는 대기열(items) 순서를 따르고,
+     조각이 하나도 없는(전부 인코딩 실패한) 원본은 건너뛴다. */
+  function splitGroups() {
+    var byId = {};
+    splitState.tiles.forEach(function (t) {
+      (byId[t.srcId] || (byId[t.srcId] = [])).push(t);
+    });
+    var groups = [];
+    splitState.items.forEach(function (it) {
+      if (byId[it.id] && byId[it.id].length) {
+        groups.push({ id: it.id, name: byId[it.id][0].srcName, tiles: byId[it.id] });
+      }
+    });
+    return groups;
   }
 
   function splitReleaseItem(item) {
@@ -5315,25 +5338,50 @@ textarea {
     return encodeCanvas(canvas, mime, mime === 'image/png' ? undefined : quality);
   }
 
+  /* 현재 페이지(= 원본 한 장)의 조각만 격자로 렌더한다. 원본이 여러 장이면
+     페이저(◀ 이름 (i/N) ▶)로 원본 사이를 넘긴다. */
   function splitRenderTiles() {
+    var groups = splitGroups();
+    if (!groups.length) {
+      $('#splitGrid').textContent = '';
+      $('#splitPager').hidden = true;
+      $('#splitResultWrap').hidden = true;
+      return;
+    }
+    if (splitState.page < 0) splitState.page = 0;
+    if (splitState.page > groups.length - 1) splitState.page = groups.length - 1;
+    var group = groups[splitState.page];
+
+    /* 페이저 */
+    var pager = $('#splitPager');
+    if (groups.length > 1) {
+      pager.hidden = false;
+      $('#splitPagerLabel').textContent = group.name + ' (' + (splitState.page + 1) + ' / ' + groups.length + ')';
+      $('#splitPrev').disabled = splitState.page === 0;
+      $('#splitNext').disabled = splitState.page === groups.length - 1;
+    } else {
+      /* 원본 1장: 이름만 보이고 화살표는 비활성 */
+      pager.hidden = false;
+      $('#splitPagerLabel').textContent = group.name + ' (1 / 1)';
+      $('#splitPrev').disabled = true;
+      $('#splitNext').disabled = true;
+    }
+
+    /* 현재 원본의 조각 격자 */
     var ul = $('#splitGrid');
     ul.textContent = '';
     ul.style.gridTemplateColumns = 'repeat(' + splitState.cols + ', minmax(0, 1fr))';
-    var multi = splitState.items.length > 1;
-    var lastSrc;
-    splitState.tiles.forEach(function (t) {
-      if (multi && t.srcId !== lastSrc) {
-        lastSrc = t.srcId;
-        var label = document.createElement('li');
-        label.className = 'split-group-label';
-        label.textContent = t.srcName;
-        ul.appendChild(label);
-      }
+    group.tiles.forEach(function (t) {
       var li = document.createElement('li');
       li.className = 'split-tile';
       var img = document.createElement('img');
       img.src = t.url;
       img.alt = t.name;
+      img.title = '클릭하면 크게 봐요';
+      /* 개별 조회: 조각 클릭 → 기존 라이트박스로 원본 조각 blob을 크게 */
+      img.addEventListener('click', function () {
+        openLightbox(t.url, t.name + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size));
+      });
       var p = document.createElement('p');
       p.textContent = t.r + '-' + t.c + ' · ' + t.w + '×' + t.h + ' · ' + fmtBytes(t.blob.size);
       var dl = document.createElement('button');
@@ -5346,14 +5394,26 @@ textarea {
       li.appendChild(dl);
       ul.appendChild(li);
     });
+
     var total = splitState.tiles.reduce(function (s, t) { return s + t.blob.size; }, 0);
     var orig = splitState.items.reduce(function (s, it) { return s + (it.file ? it.file.size : 0); }, 0);
-    var countLabel = multi
-      ? splitState.tiles.length + '조각 (이미지 ' + splitState.items.length + '장)'
+    var countLabel = groups.length > 1
+      ? splitState.tiles.length + '조각 (이미지 ' + groups.length + '장)'
       : splitState.tiles.length + '조각';
     $('#splitCount').textContent = countLabel + ' · 원본 ' +
       fmtBytes(orig) + ' → 합계 ' + fmtBytes(total);
-    $('#splitResultWrap').hidden = splitState.tiles.length === 0;
+    $('#splitResultWrap').hidden = false;
+  }
+
+  function splitGotoPage(delta) {
+    var groups = splitGroups();
+    if (!groups.length) return;
+    var next = splitState.page + delta;
+    if (next < 0) next = 0;
+    if (next > groups.length - 1) next = groups.length - 1;
+    if (next === splitState.page) return;
+    splitState.page = next;
+    splitRenderTiles();
   }
 
   function splitRun() {
@@ -5438,6 +5498,22 @@ textarea {
   }
 
   $('#splitRun').addEventListener('click', function () { splitRun(); });
+  $('#splitPrev').addEventListener('click', function () { splitGotoPage(-1); });
+  $('#splitNext').addEventListener('click', function () { splitGotoPage(1); });
+
+  /* 이 원본 전체 ZIP — 현재 페이지 원본의 조각만 묶는다 */
+  $('#splitZipOne').addEventListener('click', function () {
+    var groups = splitGroups();
+    if (!groups.length) return;
+    var group = groups[Math.min(splitState.page, groups.length - 1)];
+    var entries = group.tiles.map(function (t) {
+      return { name: t.name, blob: t.blob };
+    });
+    makeZip(entries).then(function (zip) {
+      saveBlob(zip, group.name + '-분할.zip');
+      toast('ZIP으로 ' + entries.length + '조각을 저장했어요.');
+    }).catch(function () { toast('ZIP 생성에 실패했어요.'); });
+  });
 
   $('#splitZip').addEventListener('click', function () {
     if (!splitState.tiles.length) return;
