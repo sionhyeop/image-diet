@@ -4320,7 +4320,7 @@ textarea {
 
   /* 스트로크 경로를 흰색으로 칠한 영역 비트맵과 bbox를 만든다 (스마트 지우개용) */
   function bgStrokeRegion(st, W, H) {
-    var pts = st.points, pad = st.size / 2 + 2;
+    var pts = st.points, pad = st.size / 2 + 10;
     var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9, i;
     for (i = 0; i < pts.length; i++) {
       if (pts[i][0] < minX) minX = pts[i][0];
@@ -4346,12 +4346,14 @@ textarea {
     return { x0: x0, y0: y0, bw: bw, bh: bh, data: rx.getImageData(0, 0, bw, bh).data };
   }
 
-  /* 칠한 영역을 통째로 처리하지 않고, 그 안에서 '추정되는 부분'만 바꾼다.
-     - 배경 지우개(restore=false): 배경으로 추정되는 픽셀만 지움 → 영역에 든 피사체는 남음
-     - 복원하기(restore=true):    피사체로 추정되는 픽셀만 되살림 → 배경은 그대로 둠
-     기준색은 (1) 칠한 영역 안·주변에서 이미 배경(투명)/피사체(불투명)로 판정된 픽셀의
-     평균색, 없으면 (2) 지우개는 테두리색·복원은 현재 피사체 평균색. 기준색과 가까우면서
-     시드에서 연결된 픽셀만 바꿔 반대편이 뚫리지 않게 한다. 바뀐 픽셀 수를 돌려준다. */
+  /* 칠한 영역은 '사용자가 지시한 것'으로 보고 기본적으로 처리하되, 반대편으로 보이는
+     부분만 보호한다.
+     - 배경 지우개: 영역을 지우되, 영역 밖 피사체(불투명)에서 이어지면서 색도 비슷한
+       픽셀은 남긴다 → 획이 피사체를 가로질러도 피사체는 살아남는다.
+     - 복원하기:   영역을 되살리되, 영역 밖 배경(투명)에서 이어지면서 색도 비슷한
+       픽셀은 그대로 둔다.
+     보호할 근거(영역 밖의 반대편)가 없으면 영역 전체를 그대로 처리한다.
+     바뀐 픽셀 수를 돌려준다. */
   function bgSmartPaint(mx, st, restore) {
     var W = bgState.W, H = bgState.H;
     var reg = bgStrokeRegion(st, W, H);
@@ -4366,62 +4368,75 @@ textarea {
     var maskImg = mx.getImageData(reg.x0, reg.y0, bw, bh);
     var md = maskImg.data;
 
-    /* 시드: 지우개는 이미 배경(투명)인 곳, 복원은 이미 피사체(불투명)인 곳 — 자신 또는 이웃 */
-    var wantOpaque = !!restore;
-    var isSide = function (idx) { var a = md[idx * 4 + 3]; return wantOpaque ? a >= 128 : a < 128; };
-    var seeds = [], sr = 0, sg = 0, sb = 0, sn = 0;
+    /* 판정 기준은 '배경색'으로 통일한다. 마스크 상태만 믿으면, 잘못 지워진 피사체 구멍이
+       (투명하지만 색은 피사체) 배경으로 오인돼 복원이 통째로 막힌다. */
+    var tol = parseInt($('#bgTol').value, 10);
+    var bgRef = bgBorderColor();
+    var d2 = function (idx, ref) {
+      var p = idx * 4, dr = src[p] - ref[0], dg = src[p + 1] - ref[1], db = src[p + 2] - ref[2];
+      return 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+    };
+    var thrBg = 9 * Math.pow(tol * 2.55, 2);
+    var isBgColor = function (idx) { return d2(idx, bgRef) <= thrBg; };
+
+    var outNb = function (x, y, wantOpaque) {
+      if (x < 0 || x >= bw || y < 0 || y >= bh) return false;
+      var j = y * bw + x;
+      if (inReg[j]) return false;
+      var a = md[j * 4 + 3];
+      return wantOpaque ? a >= 128 : a < 128;
+    };
+    /* 지우개: 영역 밖 '피사체(불투명 + 배경색 아님)'에서 이어지는 부분만 보호.
+       복원:   영역 밖 '배경(투명 + 배경색)'에서 이어지는 부분만 보호. */
+    var seeds = [], pr = 0, pg = 0, pb = 0, pn = 0;
     for (var y = 0; y < bh; y++) {
       for (var x = 0; x < bw; x++) {
         var idx = y * bw + x;
         if (!inReg[idx]) continue;
-        var hit = isSide(idx);
-        if (!hit) {
-          if (x > 0 && isSide(idx - 1)) hit = true;
-          else if (x < bw - 1 && isSide(idx + 1)) hit = true;
-          else if (y > 0 && isSide(idx - bw)) hit = true;
-          else if (y < bh - 1 && isSide(idx + bw)) hit = true;
-        }
-        if (hit) {
-          seeds.push(idx);
-          var p4 = idx * 4;
-          sr += src[p4]; sg += src[p4 + 1]; sb += src[p4 + 2]; sn++;
-        }
+        var touch = restore
+          ? (outNb(x - 1, y, false) || outNb(x + 1, y, false) || outNb(x, y - 1, false) || outNb(x, y + 1, false))
+          : (outNb(x - 1, y, true) || outNb(x + 1, y, true) || outNb(x, y - 1, true) || outNb(x, y + 1, true));
+        if (!touch) continue;
+        var okSeed = restore ? isBgColor(idx) : !isBgColor(idx);
+        if (!okSeed) continue;
+        seeds.push(idx);
+        var p4 = idx * 4;
+        pr += src[p4]; pg += src[p4 + 1]; pb += src[p4 + 2]; pn++;
       }
     }
-    var ref;
-    if (sn >= 10) ref = [sr / sn, sg / sn, sb / sn];
-    else ref = restore ? bgForegroundColor() : bgBorderColor();
 
-    var tol = parseInt($('#bgTol').value, 10);
-    var thr = 9 * Math.pow(tol * 2.55, 2);
-    var near = function (idx) {
-      var p = idx * 4, dr = src[p] - ref[0], dg = src[p + 1] - ref[1], db = src[p + 2] - ref[2];
-      return (2 * dr * dr + 4 * dg * dg + 3 * db * db) <= thr;
-    };
-
-    var kill = new Uint8Array(n), stack = new Int32Array(n), sp = 0, erased = 0;
-    if (sn >= 10) {
-      /* 시드에서 색이 비슷한 곳으로만 번져 나간다 — 피사체 안쪽이 뚫리지 않는다 */
-      for (i = 0; i < seeds.length; i++) { var sidx = seeds[i]; if (!kill[sidx] && near(sidx)) { kill[sidx] = 1; stack[sp++] = sidx; } }
+    var keep = new Uint8Array(n);
+    if (pn >= 6) {
+      var subjRef = [pr / pn, pg / pn, pb / pn];
+      /* 보호는 보수적으로 — 민감도가 높을수록(과감히 처리) 보호 범위가 좁아진다 */
+      var thrKeep = 9 * Math.pow(Math.max(10, 45 - tol * 0.5) * 2.55, 2);
+      var canKeep = restore
+        ? function (idx) { return isBgColor(idx); }
+        : function (idx) { return !isBgColor(idx) && d2(idx, subjRef) <= thrKeep; };
+      var stack = new Int32Array(n), sp = 0;
+      for (i = 0; i < seeds.length; i++) {
+        var sidx = seeds[i];
+        if (!keep[sidx]) { keep[sidx] = 1; stack[sp++] = sidx; }
+      }
       while (sp > 0) {
         var u = stack[--sp], ux = u % bw;
-        if (ux > 0 && inReg[u - 1] && !kill[u - 1] && near(u - 1)) { kill[u - 1] = 1; stack[sp++] = u - 1; }
-        if (ux < bw - 1 && inReg[u + 1] && !kill[u + 1] && near(u + 1)) { kill[u + 1] = 1; stack[sp++] = u + 1; }
-        if (u >= bw && inReg[u - bw] && !kill[u - bw] && near(u - bw)) { kill[u - bw] = 1; stack[sp++] = u - bw; }
-        if (u < n - bw && inReg[u + bw] && !kill[u + bw] && near(u + bw)) { kill[u + bw] = 1; stack[sp++] = u + bw; }
+        if (ux > 0 && inReg[u - 1] && !keep[u - 1] && canKeep(u - 1)) { keep[u - 1] = 1; stack[sp++] = u - 1; }
+        if (ux < bw - 1 && inReg[u + 1] && !keep[u + 1] && canKeep(u + 1)) { keep[u + 1] = 1; stack[sp++] = u + 1; }
+        if (u >= bw && inReg[u - bw] && !keep[u - bw] && canKeep(u - bw)) { keep[u - bw] = 1; stack[sp++] = u - bw; }
+        if (u < n - bw && inReg[u + bw] && !keep[u + bw] && canKeep(u + bw)) { keep[u + bw] = 1; stack[sp++] = u + bw; }
       }
-    } else {
-      for (i = 0; i < n; i++) if (inReg[i] && near(i)) kill[i] = 1;
     }
+
     var target = restore ? 255 : 0;
+    var changed = 0;
     for (i = 0; i < n; i++) {
-      if (!kill[i]) continue;
+      if (!inReg[i] || keep[i]) continue;
       if (md[i * 4 + 3] === target) continue;
       md[i * 4 + 3] = target;
-      erased++;
+      changed++;
     }
-    if (erased) mx.putImageData(maskImg, reg.x0, reg.y0);
-    return erased;
+    if (changed) mx.putImageData(maskImg, reg.x0, reg.y0);
+    return changed;
   }
 
   /* 현재 피사체(불투명 영역) 평균색 — 복원의 기준색 후보 */
