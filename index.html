@@ -165,6 +165,7 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
   width: 108px; height: 84px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border); display: block;
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 12px 12px;
 }
+.bg-batch-item .bg-batch-thumb.is-done { cursor: pointer; }
 .bg-batch-item p { margin: 5px 0 0; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bg-batch-badge { display: inline-block; margin-top: 3px; font-size: 10.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
 .bg-batch-badge.wait { color: var(--muted); background: var(--panel); border: 1px solid var(--border); }
@@ -4534,8 +4535,17 @@ textarea {
       li.className = 'bg-batch-item';
       var img = document.createElement('img');
       img.className = 'bg-batch-thumb';
-      img.src = (it.status === 'done' && it.resultUrl) ? it.resultUrl : it.thumbUrl;
+      var done = it.status === 'done' && it.resultUrl;
+      img.src = done ? it.resultUrl : it.thumbUrl;
       img.alt = it.name;
+      if (done) {
+        img.classList.add('is-done');
+        img.title = '클릭하면 크게 봐요';
+        /* 완료된 결과를 기존 라이트박스로 크게 미리보기 */
+        img.addEventListener('click', function () {
+          openLightbox(it.resultUrl, baseName(it.name) + '-nobg · ' + fmtBytes(it.blob.size));
+        });
+      }
       var p = document.createElement('p');
       p.textContent = it.name;
       var badge = document.createElement('span');
@@ -4639,7 +4649,8 @@ textarea {
       var done = 0, fail = 0;
       bgBatch.items.forEach(function (it) { if (it.status === 'done') done++; else if (it.status === 'fail') fail++; });
       $('#bgBatchZip').disabled = done === 0;
-      $('#bgBatchStat').textContent = '완료 ' + done + '장' + (fail ? ' · 실패 ' + fail + '장' : '');
+      $('#bgBatchStat').textContent = '완료 ' + done + '장' + (fail ? ' · 실패 ' + fail + '장' : '') +
+        (done ? ' · 이미지를 클릭하면 크게 볼 수 있어요' : '');
       if (done) toast(done + '장의 배경을 제거했어요.');
     });
   }
