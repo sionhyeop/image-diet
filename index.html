@@ -5985,17 +5985,29 @@ textarea {
     };
     return samState.dec.run(feeds).then(function (o) {
       var pm = o.pred_masks, ious = o.iou_scores.data;
-      var MS = pm.dims[3], K = pm.dims[2];
-      var best = 0; for (var k = 1; k < K; k++) if (ious[k] > ious[best]) best = k;
+      var MS = pm.dims[3], K = pm.dims[2], j;
+      /* SAM은 클릭당 3개(부위/부분/전체)를 준다. best-iou는 '부위'를 골라 사람이
+         파츠로 쪼개진다. iou가 최소 신뢰(0.3) 이상인 것 중 '가장 큰' 마스크를 골라
+         물체/사람 단위를 얻는다. 전부 저품질이면 best-iou로 폴백. */
+      var best = -1, bestArea = -1;
+      for (var k = 0; k < K; k++) {
+        if (ious[k] < 0.3) continue;
+        var ok = k * MS * MS, a = 0;
+        for (j = 0; j < MS * MS; j++) if (pm.data[ok + j] > 0) a++;
+        if (a > bestArea) { bestArea = a; best = k; }
+      }
+      if (best < 0) { best = 0; for (var kb = 1; kb < K; kb++) if (ious[kb] > ious[best]) best = kb; }
       var off = best * MS * MS;
-      /* 256 저해상 logits를 threshold 0으로 → 알파. 256은 패딩된 1024에 대응. */
+      /* 딱딱한 임계 대신 sigmoid(logit) 소프트 알파 → 경계가 계단이 아니라 부드러운 램프.
+         256은 패딩된 1024에 대응하고, 아래에서 원본 W×H로 보간 확대되어 매끈해진다. */
       var mc = document.createElement('canvas'); mc.width = MS; mc.height = MS;
       var mx = mc.getContext('2d');
       var id = mx.createImageData(MS, MS);
       for (var i = 0; i < MS * MS; i++) {
+        var s = 1 / (1 + Math.exp(-pm.data[off + i]));
         var q = i * 4;
         id.data[q] = 255; id.data[q + 1] = 255; id.data[q + 2] = 255;
-        id.data[q + 3] = pm.data[off + i] > 0 ? 255 : 0;
+        id.data[q + 3] = s <= 0 ? 0 : (s >= 1 ? 255 : Math.round(s * 255));
       }
       mx.putImageData(id, 0, 0);
       /* 유효 영역 (rw,rh)=(1024*scale의 원본부분)은 256에서 (rw/4, rh/4). 원본 W×H로 확대. */
