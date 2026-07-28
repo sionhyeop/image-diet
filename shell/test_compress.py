@@ -4,12 +4,12 @@ import compress
 
 
 def test_resolve_format_auto_is_webp():
-    assert compress.resolve_format("x.png", "auto") == "webp"
+    assert compress.resolve_format("auto") == "webp"
 
 
 def test_resolve_format_passthrough():
-    assert compress.resolve_format("x.png", "JPEG") == "jpeg"
-    assert compress.resolve_format("x.png", "png") == "png"
+    assert compress.resolve_format("JPEG") == "jpeg"
+    assert compress.resolve_format("png") == "png"
 
 
 def test_numbered_output_path_first(tmp_path):

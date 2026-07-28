@@ -41,14 +41,14 @@ def coalesce(argv_files, port=51737, window=0.8):
                 break
             try:
                 conn.settimeout(0.5)
+                # 클라이언트는 sendall 후 곧바로 닫는다 — EOF까지 전부 읽어야
+                # 4096바이트를 넘는 긴 파일 목록도 유실되지 않는다
                 data = b""
-                while b"\n" not in data[len(_MAGIC):] or not data.startswith(_MAGIC):
+                while len(data) <= 65536:
                     chunk = conn.recv(4096)
                     if not chunk:
                         break
                     data += chunk
-                    if len(data) > 65536:
-                        break
                 if data.startswith(_MAGIC):
                     payload = data[len(_MAGIC):].decode("utf-8", "replace")
                     with lock:

@@ -2,17 +2,13 @@
 import os
 from PIL import Image
 
+import compress
+
 A4 = (595, 842)  # 72dpi 포인트
 
 
 def _load_rgb(path):
-    im = Image.open(path)
-    if im.mode in ("RGBA", "LA", "P"):
-        bg = Image.new("RGB", im.size, (255, 255, 255))
-        rgba = im.convert("RGBA")
-        bg.paste(rgba, mask=rgba.split()[-1])
-        return bg
-    return im.convert("RGB")
+    return compress.flatten_to_white(Image.open(path))
 
 
 def _fit_a4(im):

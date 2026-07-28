@@ -1,5 +1,4 @@
 import base64
-import os
 from PIL import Image
 import b64tool
 

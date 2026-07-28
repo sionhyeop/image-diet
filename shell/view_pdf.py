@@ -5,7 +5,7 @@ from tkinter import messagebox, filedialog
 import pdftool
 import widgets as W
 
-INNER = 360
+INNER = W.INNER
 
 
 class PdfView(tk.Frame):

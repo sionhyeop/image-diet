@@ -26,10 +26,6 @@ PRESETS = {
 }
 
 
-def default_opts():
-    return {"colors": 6, "detail": 3, "simplify": 2, "noise": 2, "gap": 1.0, "smooth": True}
-
-
 def opts_from_controls(colors, detail, simplify, noise, gap, smooth):
     return {
         "colors": int(colors),

@@ -8,7 +8,7 @@ import compress
 import svgtool
 import widgets as W
 
-INNER = 360
+INNER = W.INNER
 SLIDERS = [
     ("색상 수", "colors", 2, 16, 6),
     ("추적 정밀도", "detail", 1, 5, 3),
@@ -90,12 +90,8 @@ class SvgView(tk.Frame):
             self.preview.set(img)
             self.recenter()
 
-    def _post(self, fn):
-        try:
-            if self.winfo_exists():
-                self.after(0, fn)
-        except (tk.TclError, RuntimeError):
-            pass
+    def _post(self, fn, *args):
+        W.post(self, fn, *args)
 
     def _preset(self, key):
         pr = svgtool.PRESETS[key]

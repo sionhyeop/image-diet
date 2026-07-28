@@ -2,6 +2,18 @@
 import tkinter as tk
 from PIL import Image
 
+INNER = 360  # 뷰 공통 내부 폭
+
+
+def post(widget, fn, *args):
+    """워커 스레드에서 UI 스레드로 안전하게 넘긴다 — 파괴된 위젯이면 무시."""
+    try:
+        if widget.winfo_exists():
+            widget.after(0, fn, *args)
+    except (tk.TclError, RuntimeError):
+        pass
+
+
 
 # ───────────────────────── 팔레트 ─────────────────────────
 def is_dark():

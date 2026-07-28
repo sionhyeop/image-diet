@@ -8,7 +8,7 @@ import compress
 import widgets as W
 
 FORMATS = [("자동", "auto"), ("WebP", "webp"), ("JPEG", "jpeg"), ("PNG", "png")]
-INNER = 360
+INNER = W.INNER
 
 _CFG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "image-diet-shell")
 _CFG_PATH = os.path.join(_CFG_DIR, "settings.json")
@@ -51,11 +51,7 @@ class CompressView(tk.Frame):
             w.destroy()
 
     def _post(self, fn, *args):
-        try:
-            if self.winfo_exists():
-                self.after(0, fn, *args)
-        except (tk.TclError, RuntimeError):
-            pass
+        W.post(self, fn, *args)
 
     def _show_settings(self):
         p = self.pal

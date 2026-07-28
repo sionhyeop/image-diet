@@ -6,7 +6,7 @@ from tkinter import messagebox, filedialog
 import b64tool
 import widgets as W
 
-INNER = 360
+INNER = W.INNER
 
 
 def _chars(n):
@@ -169,9 +169,5 @@ class Base64View(tk.Frame):
             return
         self.stats.configure(text=msg)
 
-    def _post(self, fn):
-        try:
-            if self.winfo_exists():
-                self.after(0, fn)
-        except (tk.TclError, RuntimeError):
-            pass
+    def _post(self, fn, *args):
+        W.post(self, fn, *args)

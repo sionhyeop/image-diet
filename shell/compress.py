@@ -6,7 +6,7 @@ from PIL import Image, ImageOps
 EXT_FOR_FORMAT = {"webp": ".webp", "jpeg": ".jpg", "png": ".png"}
 
 
-def resolve_format(src_path: str, out_format: str) -> str:
+def resolve_format(out_format: str) -> str:
     fmt = (out_format or "auto").lower()
     if fmt == "auto":
         return "webp"
@@ -29,19 +29,22 @@ _RES_STEP = 0.78          # 목표 미달 시 해상도 축소 비율
 _MAX_RES_RETRIES = 6
 
 
+def flatten_to_white(img):
+    """투명(RGBA/LA/P) 이미지를 흰 배경에 합성해 RGB로 — JPEG/PDF 공용."""
+    if img.mode in ("RGBA", "LA", "P"):
+        rgba = img.convert("RGBA")
+        bg = Image.new("RGB", rgba.size, (255, 255, 255))
+        bg.paste(rgba, mask=rgba.split()[-1])
+        return bg
+    return img.convert("RGB")
+
+
 def encode_to_bytes(img, fmt: str, quality: int) -> bytes:
     buf = io.BytesIO()
     if fmt == "png":
         img.save(buf, "PNG", optimize=True)
     elif fmt == "jpeg":
-        if img.mode in ("RGBA", "LA", "P"):
-            rgba = img.convert("RGBA")
-            bg = Image.new("RGB", rgba.size, (255, 255, 255))
-            bg.paste(rgba, mask=rgba.split()[-1])
-            rgb = bg
-        else:
-            rgb = img.convert("RGB")
-        rgb.save(buf, "JPEG", quality=quality, optimize=True)
+        flatten_to_white(img).save(buf, "JPEG", quality=quality, optimize=True)
     else:  # webp
         img.save(buf, "WEBP", quality=quality, method=6)
     return buf.getvalue()
@@ -88,7 +91,7 @@ def compress_image(src_path: str, target_kb, out_format: str) -> dict:
     try:
         with Image.open(src_path) as opened:
             img = ImageOps.exif_transpose(opened)
-            fmt = resolve_format(src_path, out_format)
+            fmt = resolve_format(out_format)
 
             if target_kb is None:
                 data = encode_to_bytes(img, fmt, 82)
