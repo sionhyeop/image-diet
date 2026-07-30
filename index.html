@@ -157,6 +157,16 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .chip:disabled { opacity: .45; cursor: not-allowed; }
 .field-wide { grid-column: 1 / -1; }
 /* 자주 쓰는 배치 + 출력 형식을 한 행에 나란히 (좁은 화면에선 세로로 쌓임) */
+/* 압축 결과 공통 이름 — 결과 목록 위에 떠 있는 중앙 정렬 바 */
+.bulkname-bar { position: sticky; top: 64px; z-index: 30; display: flex; justify-content: center; margin: 4px 0 12px; }
+.bulkname-bar .inner {
+  display: flex; align-items: center; gap: 10px; width: min(560px, 94%);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, .14); padding: 8px 12px 8px 18px;
+}
+.bulkname-bar label { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.bulkname-bar input { flex: 1 1 auto; min-width: 0; border-radius: 999px; }
+
 /* 배경 일괄 제거 — 이미지 목록과 상태 배지 */
 .cut-rail { list-style: none; padding: 8px; margin: 8px 0 0; display: flex; gap: 8px; overflow-x: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; scrollbar-width: thin; }
 .cut-rail-item { flex: none; width: 76px; text-align: center; cursor: pointer; }
@@ -762,10 +772,6 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
     <section id="summary" class="card summary" hidden>
       <p id="summaryText" aria-live="polite"></p>
-      <div class="field" style="margin:10px 0 12px">
-        <label class="field-label" for="bulkName">파일 이름 <span class="sub">— 입력하면 순서대로 <b>이름-1, 이름-2…</b>로 저장돼요 (비우면 원래 이름 그대로)</span></label>
-        <input type="text" id="bulkName" maxlength="60" placeholder="예: 여행사진">
-      </div>
       <div class="summary-actions">
         <div class="seg-slide seg-sm right" id="saveModeSeg" role="tablist" aria-label="저장 방식 선택">
           <div class="seg-thumb" aria-hidden="true"></div>
@@ -778,6 +784,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       </div>
     </section>
 
+    <div class="bulkname-bar" id="bulkNameBar" hidden>
+      <div class="inner">
+        <label for="bulkName">파일 이름</label>
+        <input type="text" id="bulkName" maxlength="60" placeholder="입력하면 아래 전체가 이름-1, 이름-2…로 바뀌어요">
+      </div>
+    </div>
     <ul id="results" class="results"></ul>
   </section>
 
@@ -2309,13 +2321,22 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return name.replace(/\.[^.]+$/, '') || 'image';
   }
   function outName(item) {
-    if (item.result.usedOriginal) return item.name;
-    return baseName(item.name) + '-slim.' + extFor(item.result.format);
+    var orig = item.result.usedOriginal ? item.name : baseName(item.name) + '-slim.' + extFor(item.result.format);
+    /* 공통 이름이 입력돼 있으면 목록 순서 번호로 통일 — 카드 표시·개별 저장·ZIP이 같은 이름을 쓴다 */
+    var bulk = splitSafeName(($('#bulkName').value || '').trim());
+    if (!bulk) return orig;
+    var m = orig.match(/\.[^.]+$/);
+    return bulk + '-' + (items.indexOf(item) + 1) + (m ? m[0] : '.jpg');
+  }
+  /* 카드에 보여줄 이름 — 공통 이름이 있으면 완료된 항목은 실시간으로 새 이름을 보여준다 */
+  function displayName(item) {
+    return (item.status === 'done' && ($('#bulkName').value || '').trim()) ? outName(item) : item.name;
   }
 
   function renderCard(item) {
     var li = item.el;
     if (!li) return;
+    li.querySelector('.fname').textContent = displayName(item);
     li.classList.toggle('is-processing', item.status === 'processing' || item.status === 'pending');
     li.classList.toggle('is-error', item.status === 'error');
     li.classList.toggle('is-done', item.status === 'done');
@@ -2391,9 +2412,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function renderSummary() {
     if (!items.length) {
       el.summary.hidden = true;
+      $('#bulkNameBar').hidden = true;
       return;
     }
     el.summary.hidden = false;
+    $('#bulkNameBar').hidden = false;
     var done = items.filter(function (i) { return i.status === 'done'; });
     var errs = items.filter(function (i) { return i.status === 'error'; }).length;
     var busy = items.length - done.length - errs;
@@ -2416,14 +2439,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function doneEntries() {
     var done = items.filter(function (i) { return i.status === 'done'; });
     var used = Object.create(null);
-    /* 공통 이름이 입력돼 있으면 목록 순서대로 이름-1, 이름-2…로 바꿔 단다 */
-    var bulk = splitSafeName(($('#bulkName').value || '').trim());
-    return done.map(function (i, idx) {
+    return done.map(function (i) {
       var name = outName(i);
-      if (bulk) {
-        var em = name.match(/\.[^.]+$/);
-        name = bulk + '-' + (idx + 1) + (em ? em[0] : '.jpg');
-      }
       if (used[name]) {
         var m = name.match(/^(.*)(\.[^.]+)$/);
         var stem = m ? m[1] : name, ext = m ? m[2] : '';
@@ -2491,6 +2508,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var on = o.dataset.savemode === saveMode;
       o.classList.toggle('on', on);
       o.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  });
+
+  /* 이름을 타이핑하는 즉시 완료된 카드들의 표시 이름이 바뀐다 */
+  $('#bulkName').addEventListener('input', function () {
+    items.forEach(function (it) {
+      if (it.el) it.el.querySelector('.fname').textContent = displayName(it);
     });
   });
 
