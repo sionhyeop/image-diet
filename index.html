@@ -762,11 +762,15 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
     <section id="summary" class="card summary" hidden>
       <p id="summaryText" aria-live="polite"></p>
+      <div class="field" style="margin:10px 0 12px">
+        <label class="field-label" for="bulkName">파일 이름 <span class="sub">— 입력하면 순서대로 <b>이름-1, 이름-2…</b>로 저장돼요 (비우면 원래 이름 그대로)</span></label>
+        <input type="text" id="bulkName" maxlength="60" placeholder="예: 여행사진">
+      </div>
       <div class="summary-actions">
-        <div class="seg-slide seg-sm" id="saveModeSeg" role="tablist" aria-label="저장 방식 선택">
+        <div class="seg-slide seg-sm right" id="saveModeSeg" role="tablist" aria-label="저장 방식 선택">
           <div class="seg-thumb" aria-hidden="true"></div>
-          <button type="button" class="seg-opt on" data-savemode="zip" role="tab" aria-selected="true">🗜️ ZIP 한 개로</button>
-          <button type="button" class="seg-opt" data-savemode="each" role="tab" aria-selected="false">🖼️ 개별 파일로</button>
+          <button type="button" class="seg-opt" data-savemode="zip" role="tab" aria-selected="false">🗜️ ZIP 한 개로</button>
+          <button type="button" class="seg-opt on" data-savemode="each" role="tab" aria-selected="true">🖼️ 개별 파일로</button>
         </div>
         <button id="saveAllBtn" class="btn primary" type="button">모두 저장</button>
         <button id="shareCompress" class="btn btn-share" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
@@ -2412,8 +2416,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function doneEntries() {
     var done = items.filter(function (i) { return i.status === 'done'; });
     var used = Object.create(null);
-    return done.map(function (i) {
+    /* 공통 이름이 입력돼 있으면 목록 순서대로 이름-1, 이름-2…로 바꿔 단다 */
+    var bulk = splitSafeName(($('#bulkName').value || '').trim());
+    return done.map(function (i, idx) {
       var name = outName(i);
+      if (bulk) {
+        var em = name.match(/\.[^.]+$/);
+        name = bulk + '-' + (idx + 1) + (em ? em[0] : '.jpg');
+      }
       if (used[name]) {
         var m = name.match(/^(.*)(\.[^.]+)$/);
         var stem = m ? m[1] : name, ext = m ? m[2] : '';
@@ -2458,17 +2468,20 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
   function saveAsZip(entries) {
     return makeZip(entries).then(function (zip) {
+      var bulk = splitSafeName(($('#bulkName').value || '').trim());
       var d = new Date();
       var pad = function (n) { return String(n).padStart(2, '0'); };
-      saveBlob(zip, 'image-diet-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.zip');
+      saveBlob(zip, bulk ? bulk + '.zip'
+        : 'image-diet-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.zip');
       toast('ZIP 파일로 ' + entries.length + '장을 저장했어요.');
     }).catch(function () {
       toast('ZIP 생성에 실패했어요.');
     });
   }
 
-  /* 저장 방식은 ZIP / 개별 파일 두 가지 — 슬라이딩 토글로 고르고 '모두 저장'이 실행한다 */
-  var saveMode = 'zip';
+  /* 저장 방식은 ZIP / 개별 파일 두 가지 — 슬라이딩 토글로 고르고 '모두 저장'이 실행한다.
+     기본은 개별 파일 저장. */
+  var saveMode = 'each';
   el.saveModeSeg.addEventListener('click', function (e) {
     var b = e.target.closest('.seg-opt');
     if (!b || b.dataset.savemode === saveMode) return;
@@ -9863,7 +9876,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     pdfAcceptFiles: function (fs) { return pdfAcceptFiles(fs); },
     p2iLoad: function (f) { return p2iLoad(f); },
     get p2iState() { return p2iState; },
-    get pdfMode() { return pdfMode; }
+    get pdfMode() { return pdfMode; },
+    doneEntries: function () { return doneEntries(); },
+    get saveMode() { return saveMode; }
   };
 
   /* 이미 받아 둔 AI 모델이 있는지 먼저 확인한다 — 있으면 다시 받지 않고, 고품질을 자동 선택 */
