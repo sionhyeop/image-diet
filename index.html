@@ -1305,6 +1305,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
                 <button type="button" class="chip on" data-v2gspeed="1">1×</button>
                 <button type="button" class="chip" data-v2gspeed="1.5">1.5×</button>
                 <button type="button" class="chip" data-v2gspeed="2">2×</button>
+                <button type="button" class="chip" data-v2gspeed="3">3×</button>
+                <button type="button" class="chip" data-v2gspeed="4">4×</button>
               </div>
             </div>
             <div class="field">
@@ -3503,6 +3505,18 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function v2gMarkStale() {
     if (v2gState.result) $('#v2gStat').textContent = '설정이 바뀌었어요 — [GIF 만들기]를 다시 눌러 주세요.';
   }
+  /* GIF는 프레임 지연 하한이 20ms(2cs) — 고배속에서 그 아래로 내려가면 재생기가
+     느리게 틀어 배속이 깨진다. 캡처 fps를 절반씩 줄여(프레임 솎기) 지연을 20ms
+     이상으로 유지하면 속도는 정확하고 파일도 가벼워진다. */
+  function v2gEffTiming() {
+    var f = v2gState.fps;
+    var d = 1000 / f / v2gState.speed;
+    while (d < 20 && f > 1) {
+      f = f / 2;
+      d = 1000 / f / v2gState.speed;
+    }
+    return { fps: f, delay: d };
+  }
   var v2gEstTimer = 0, v2gEstSeq = 0;
   function v2gScheduleEst() {
     clearTimeout(v2gEstTimer);
@@ -3522,7 +3536,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var W = Math.max(2, Math.round(cr.w * k));
       var H = Math.max(2, Math.round(cr.h * k));
       var t0s = v2gState.t0, t1s = v2gState.t1, colorsS = v2gState.colors;
-      var total = Math.min(V2G_MAX_FRAMES, Math.max(1, Math.floor((t1s - t0s) * v2gState.fps) + 1));
+      var total = Math.min(V2G_MAX_FRAMES, Math.max(1, Math.floor((t1s - t0s) * v2gEffTiming().fps) + 1));
       var times = [t0s, (t0s + t1s) / 2, t1s];
       var c = document.createElement('canvas');
       c.width = W; c.height = H;
@@ -3623,7 +3637,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#v2gT0').textContent = v2gFmtT(v2gState.t0);
     $('#v2gT1').textContent = v2gFmtT(v2gState.t1);
     var len = v2gState.t1 - v2gState.t0;
-    var nf = Math.min(V2G_MAX_FRAMES, Math.max(1, Math.floor(len * v2gState.fps) + 1));
+    var nf = Math.min(V2G_MAX_FRAMES, Math.max(1, Math.floor(len * v2gEffTiming().fps) + 1));
     $('#v2gRange').textContent = '선택 ' + len.toFixed(2) + '초 · 약 ' + nf + '프레임' +
       (v2gState.zoomed ? ' · 🔍 확대 보기' : '');
   }
@@ -3966,7 +3980,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     btn.disabled = true;
     /* 시작 시점 설정을 전부 스냅샷 — 만드는 도중 조작이 결과를 오염시키지 않게 */
     var cr = v2gState.crop || { x: 0, y: 0, w: v2gState.W, h: v2gState.H };
-    var t0s = v2gState.t0, fpsS = v2gState.fps, colorsS = v2gState.colors, speedS = v2gState.speed;
+    var timing = v2gEffTiming();
+    var t0s = v2gState.t0, fpsS = timing.fps, colorsS = v2gState.colors;
     var k = Math.min(1, v2gState.size / Math.max(cr.w, cr.h));
     var W = Math.max(2, Math.round(cr.w * k));
     var H = Math.max(2, Math.round(cr.h * k));
@@ -3976,7 +3991,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       total = V2G_MAX_FRAMES;
       toast('프레임이 많아 앞 ' + Math.round(V2G_MAX_FRAMES / fpsS) + '초까지만 담아요.');
     }
-    var delay = 1000 / fpsS / speedS;   /* 배속 — 프레임은 그대로, 도는 속도만 변한다 */
+    var delay = timing.delay;   /* 배속 반영 지연 (하한 20ms — 필요 시 프레임 솎기로 유지) */
     var c = document.createElement('canvas');
     c.width = W; c.height = H;
     var x = c.getContext('2d', { willReadFrequently: true });
@@ -4052,7 +4067,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
   var v2gBusy = function () { return v2gState.busy; };
   gifBindChips('#v2gFpsChips', function (b) { v2gState.fps = parseInt(b.dataset.v2gfps, 10); v2gSyncTrim(); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
-  gifBindChips('#v2gSpeedChips', function (b) { v2gState.speed = parseFloat(b.dataset.v2gspeed); v2gMarkStale(); }, v2gBusy);
+  gifBindChips('#v2gSpeedChips', function (b) { v2gState.speed = parseFloat(b.dataset.v2gspeed); v2gSyncTrim(); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
   gifBindChips('#v2gSizeChips', function (b) { v2gState.size = parseInt(b.dataset.gifsize, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
   gifBindChips('#v2gColorChips', function (b) { v2gState.colors = parseInt(b.dataset.gifcolors, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
   $('#v2gMake').addEventListener('click', v2gMakeGif);
