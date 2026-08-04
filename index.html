@@ -1211,7 +1211,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <ul id="gifTray" class="gif-tray"></ul>
           <div class="settings-grid svg-opts">
             <div class="field">
-              <label class="field-label" for="gifInterval">전환 간격 <output id="gifIntervalOut">0.5</output>초 <span class="sub">— 한 장이 보이는 시간</span></label>
+              <label class="field-label" for="gifInterval">전환 간격 <output id="gifIntervalOut">0.5초 (초당 2장)</output> <span class="sub">— 한 장이 보이는 시간</span></label>
               <input type="range" id="gifInterval" min="0.1" max="2" step="0.1" value="0.5">
             </div>
             <div class="field">
@@ -1233,6 +1233,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
                 <button type="button" class="chip" data-gifcolors="64">64색</button>
                 <button type="button" class="chip" data-gifcolors="128">128색</button>
                 <button type="button" class="chip on" data-gifcolors="256">256색</button>
+              </div>
+            </div>
+            <div class="field">
+              <span class="field-label">반복</span>
+              <div class="chips" id="gifLoopChips">
+                <button type="button" class="chip on" data-gifloop="0">🔁 무한</button>
+                <button type="button" class="chip" data-gifloop="1">1회만</button>
               </div>
             </div>
           </div>
@@ -1296,6 +1303,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
                 <button type="button" class="chip" data-v2gfps="5">5</button>
                 <button type="button" class="chip on" data-v2gfps="10">10</button>
                 <button type="button" class="chip" data-v2gfps="15">15</button>
+                <button type="button" class="chip" data-v2gfps="20">20</button>
               </div>
             </div>
             <div class="field">
@@ -1328,6 +1336,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
                 <button type="button" class="chip" data-gifcolors="64">64색</button>
                 <button type="button" class="chip" data-gifcolors="128">128색</button>
                 <button type="button" class="chip on" data-gifcolors="256">256색</button>
+              </div>
+            </div>
+            <div class="field">
+              <span class="field-label">반복</span>
+              <div class="chips" id="v2gLoopChips">
+                <button type="button" class="chip on" data-gifloop="0">🔁 무한</button>
+                <button type="button" class="chip" data-gifloop="1">1회만</button>
               </div>
             </div>
           </div>
@@ -3036,10 +3051,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             samples.push([fd[p], fd[p + 1], fd[p + 2]]);
           }
         }
-        var pal = gifMedianCut(samples, maxColors);
+        /* 투명 인덱스 슬롯 1개를 예약 — 이전 프레임과 같은 픽셀을 투명으로 치환하면
+           LZW가 긴 런을 만나 보통 30~60% 작아진다 (ezgif 'Optimize Transparency' 기법) */
+        var pal = gifMedianCut(samples, Math.max(2, maxColors - 1));
+        var palCount = pal.length;          /* 양자화가 고를 수 있는 실제 색 수 */
         var bits = 1;
-        while ((1 << bits) < pal.length) bits++;
+        while ((1 << bits) < palCount + 1) bits++;
         var gctSize = 1 << bits;
+        var transIdx = palCount;            /* 팔레트 바로 뒤 슬롯 = 투명 */
         while (pal.length < gctSize) pal.push([0, 0, 0]);
         var minCode = Math.max(2, bits);
         var cache = new Int16Array(32768);
@@ -3061,7 +3080,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           var v = cache[key];
           if (v >= 0) return v;
           var bi = 0, bd = Infinity;
-          for (var k = 0; k < pal.length; k++) {
+          for (var k = 0; k < palCount; k++) {
             var dr = r - pal[k][0], dg = g - pal[k][1], db = b - pal[k][2];
             var d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
             if (d < bd) { bd = d; bi = k; }
@@ -3076,12 +3095,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         out.push(w & 255, (w >> 8) & 255, h & 255, (h >> 8) & 255);
         out.push(0xF0 | (bits - 1), 0, 0);   /* GCT 있음 · 색해상도 7 · 크기 2^bits */
         for (i = 0; i < gctSize; i++) out.push(pal[i][0], pal[i][1], pal[i][2]);
-        /* NETSCAPE2.0 — 무한 반복 */
-        out.push(0x21, 0xFF, 0x0B);
-        var ns = 'NETSCAPE2.0';
-        for (i = 0; i < ns.length; i++) out.push(ns.charCodeAt(i));
-        out.push(3, 1, 0, 0, 0);
-        var fi = 0, accMs = 0, accCs = 0;
+        /* NETSCAPE2.0 — 반복 확장. loop 1(1회 재생)이면 블록 자체를 생략한다 */
+        if (!(opts && opts.loop === 1)) {
+          out.push(0x21, 0xFF, 0x0B);
+          var ns = 'NETSCAPE2.0';
+          for (i = 0; i < ns.length; i++) out.push(ns.charCodeAt(i));
+          out.push(3, 1, 0, 0, 0);
+        }
+        var fi = 0, accMs = 0, accCs = 0, prevIdx = null;
         (function doFrame() {
           try {
             if (fi >= frames.length) {
@@ -3094,12 +3115,24 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             accMs += fr.delay;
             var delay = Math.max(2, Math.round(accMs / 10) - accCs);
             accCs += delay;
-            out.push(0x21, 0xF9, 4, 0x04, delay & 255, (delay >> 8) & 255, 0, 0);
-            out.push(0x2C, 0, 0, 0, 0, w & 255, (w >> 8) & 255, h & 255, (h >> 8) & 255, 0);
             var d = fr.data, n = w * h;
             var idx = new Uint8Array(n);
             for (var j = 0, q = 0; j < n; j++, q += 4) idx[j] = nearest(d[q], d[q + 1], d[q + 2]);
-            gifLzw(idx, minCode, out);
+            var lzwIn = idx;
+            var gcePacked = 0x04;   /* disposal 1 (do not dispose) */
+            var gceTrans = 0;
+            if (prevIdx) {
+              /* 이전 프레임과 같은 픽셀은 투명 인덱스로 — 화질 손실 없는 차분 인코딩 */
+              var delta = new Uint8Array(n);
+              for (j = 0; j < n; j++) delta[j] = idx[j] === prevIdx[j] ? transIdx : idx[j];
+              lzwIn = delta;
+              gcePacked = 0x05;    /* disposal 1 + 투명 플래그 */
+              gceTrans = transIdx;
+            }
+            prevIdx = idx;
+            out.push(0x21, 0xF9, 4, gcePacked, delay & 255, (delay >> 8) & 255, gceTrans, 0);
+            out.push(0x2C, 0, 0, 0, 0, w & 255, (w >> 8) & 255, h & 255, (h >> 8) & 255, 0);
+            gifLzw(lzwIn, minCode, out);
             frames[fi] = null;   /* 처리한 프레임의 RGBA를 즉시 GC 대상으로 */
             fi++;
             if (onProgress) onProgress(fi / frames.length);
@@ -3162,7 +3195,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
 
   /* ---------- 이미지 → GIF ---------- */
-  var gifState = { items: [], interval: 0.5, size: 480, colors: 256, busy: false, seq: 0, result: null };
+  var gifState = { items: [], interval: 0.5, size: 480, colors: 256, loop: 0, busy: false, seq: 0, result: null };
 
   function gifMarkStale() {
     if (gifState.result) $('#gifStat').textContent = '설정이 바뀌었어요 — [GIF 만들기]를 다시 눌러 주세요.';
@@ -3339,7 +3372,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     btn.disabled = true;
     var items = gifState.items.slice();
     /* 설정 스냅샷 — 만드는 도중 슬라이더·칩 변경이 결과에 섞이지 않게 */
-    var intervalS = gifState.interval, sizeS = gifState.size, colorsS = gifState.colors;
+    var intervalS = gifState.interval, sizeS = gifState.size, colorsS = gifState.colors, loopS = gifState.loop;
     var fitScale = 1;
     /* 한 번의 시도: 지금 배율로 프레임을 만들고 인코딩. 3MB 초과면 해상도를
        √비율로 줄여 재시도(최대 2회) — 압축 탭의 목표 용량과 같은 자동 맞춤. */
@@ -3376,7 +3409,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       });
       return chain.then(function () {
         if (seq !== gifState.seq) return;
-        return gifEncode(frames, W, H, { colors: colorsS }, function (p) {
+        return gifEncode(frames, W, H, { colors: colorsS, loop: loopS }, function (p) {
           if (seq === gifState.seq) stat.textContent = 'GIF 인코딩 중… ' + Math.round(p * 100) + '%';
         }).then(function (blob) {
           if (seq !== gifState.seq) return;
@@ -3409,13 +3442,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
   $('#gifInterval').addEventListener('input', function () {
     gifState.interval = parseFloat(this.value);
-    $('#gifIntervalOut').textContent = this.value;
+    $('#gifIntervalOut').textContent = this.value + '초 (초당 ' + (Math.round(10 / gifState.interval) / 10) + '장)';
     gifMarkStale();
     gifEstLine();   /* 총 길이는 즉시 반영 (용량은 간격과 무관) */
   });
   var gifBusy = function () { return gifState.busy; };
   gifBindChips('#gifSizeChips', function (b) { gifState.size = parseInt(b.dataset.gifsize, 10); gifMarkStale(); gifScheduleEst(); }, gifBusy);
   gifBindChips('#gifColorChips', function (b) { gifState.colors = parseInt(b.dataset.gifcolors, 10); gifMarkStale(); gifScheduleEst(); }, gifBusy);
+  gifBindChips('#gifLoopChips', function (b) { gifState.loop = parseInt(b.dataset.gifloop, 10); gifMarkStale(); }, gifBusy);
   $('#gifMake').addEventListener('click', gifMakeFromImages);
   $('#gifClear').addEventListener('click', function () {
     gifEstSeq++;
@@ -3516,7 +3550,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
   var v2gState = {
     file: null, url: null, W: 0, H: 0, dur: 0,
-    crop: null, t0: 0, t1: 0, fps: 10, speed: 1, size: 480, colors: 256,
+    crop: null, t0: 0, t1: 0, fps: 10, speed: 1, size: 480, colors: 256, loop: 0,
     busy: false, seq: 0, makeSeq: 0, result: null, dispW: 0, dispH: 0,
     view: { a: 0, b: 0 }, zoomed: false, stripSeq: 0
   };
@@ -3538,19 +3572,29 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
      이상으로 유지하면 속도는 정확하고 파일도 가벼워진다. */
   function v2gEffTiming() {
     var f = v2gState.fps;
+    var len = Math.max(0.01, v2gState.t1 - v2gState.t0);
+    var lowered = false;
+    /* 구간이 길면 앞부분을 자르는 대신 fps를 낮춰 전체 구간을 담는다 —
+       표시되는 '결과 N초'가 항상 실제 재생 길이가 되도록 */
+    if (f * len > V2G_MAX_FRAMES) {
+      f = V2G_MAX_FRAMES / len;
+      lowered = true;
+    }
     var d = 1000 / f / v2gState.speed;
     while (d < 20 && f > 1) {
       f = f / 2;
       d = 1000 / f / v2gState.speed;
     }
-    return { fps: f, delay: d };
+    return { fps: f, delay: d, lowered: lowered };
   }
   var v2gEstTimer = 0, v2gEstSeq = 0, v2gLastEstBytes = 0;   /* -1 = 계산 중 */
   /* 결과 길이 = 선택 구간 ÷ 재생 속도 — 설정으로 이미 결정되는 값이라 즉시 표시 */
   function v2gEstLine() {
     if (!v2gState.dur) { $('#v2gEst').textContent = ''; return; }
     var out = (v2gState.t1 - v2gState.t0) / v2gState.speed;
-    var t = '결과 ' + out.toFixed(1) + '초짜리 GIF' + (v2gState.speed !== 1 ? ' (' + v2gState.speed + '×)' : '');
+    var tm = v2gEffTiming();
+    var t = '결과 ' + out.toFixed(1) + '초짜리 GIF' + (v2gState.speed !== 1 ? ' (' + v2gState.speed + '×)' : '') +
+      (tm.lowered ? ' · 초당 ' + (Math.round(tm.fps * 10) / 10) + '프레임으로 전체를 담아요' : '');
     if (v2gLastEstBytes === -1) t += ' · 예상 용량 계산 중…';
     else if (v2gLastEstBytes > GIF_MAX_BYTES) t += ' · 예상 약 ' + fmtBytes(v2gLastEstBytes) + ' → 3MB 제한에 맞춰 자동 축소돼요';
     else if (v2gLastEstBytes > 0) t += ' · 예상 용량 약 ' + fmtBytes(v2gLastEstBytes) + ' (±30%)';
@@ -3689,11 +3733,35 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var pid = e.pointerId;
       var strip = $('#v2gStrip');
       var seeking = false;
+      var lastGrow = 0;
       var move = function (ev) {
         if (ev.pointerId !== pid) return;
         var r = strip.getBoundingClientRect();
         var a = v2gState.view.a, b = v2gState.view.b || v2gState.dur;
-        var t = a + Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1) * (b - a);
+        var pctRaw = (ev.clientX - r.left) / r.width;
+        /* 확대 상태에서 핸들을 뷰 끝까지 당기면 그쪽으로 뷰를 넓혀 여유를 만든다(자동 줌아웃).
+           스트립 재생성은 비싸므로 놓을 때 한 번만 다시 그린다. */
+        var nowMs = Date.now();
+        if (nowMs - lastGrow > 180) {
+          var span0 = b - a;
+          var grew = false;
+          if (isStart && pctRaw <= 0.03 && a > 0.001) {
+            v2gState.view.a = Math.max(0, a - span0 * 0.35);
+            grew = true;
+          } else if (!isStart && pctRaw >= 0.97 && b < v2gState.dur - 0.001) {
+            v2gState.view.b = Math.min(v2gState.dur, b + span0 * 0.35);
+            grew = true;
+          }
+          if (grew) {
+            lastGrow = nowMs;
+            v2gState.stripDone = false;
+            v2gState.zoomed = !(v2gState.view.a === 0 && v2gState.view.b >= v2gState.dur - 0.001);
+            v2gSyncZoomBtn();
+            a = v2gState.view.a;
+            b = v2gState.view.b;
+          }
+        }
+        var t = a + Math.min(Math.max(pctRaw, 0), 1) * (b - a);
         /* 확대 보기에선 최소 간격도 촘촘하게(뷰 폭의 2%, 최소 0.05초) */
         var gap = Math.max(0.05, Math.min(0.2, (b - a) * 0.02));
         if (isStart) v2gState.t0 = Math.min(t, v2gState.t1 - gap);
@@ -3713,7 +3781,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         document.removeEventListener('pointerup', up);
         document.removeEventListener('pointercancel', up);
         v2gSeek(isStart ? v2gState.t0 : v2gState.t1);
-        v2gAutoFrame();   /* 놓는 순간 구간에 맞춰 자동 확대/복귀 */
+        var reframed = v2gAutoFrame();   /* 놓는 순간 구간에 맞춰 자동 확대/복귀 */
+        if (!reframed && !v2gState.stripDone) v2gBuildStrip();   /* 드래그 중 줌아웃만 있었던 경우 */
         v2gScheduleEst();
       };
       document.addEventListener('pointermove', move);
@@ -3872,23 +3941,24 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
      구간이 뷰의 35% 미만이면 확 펼치고(±30%, 최소 0.3s), 85%를 넘치면 넓힌다.
      계산된 뷰가 전체의 85% 이상이면 그냥 전체 보기로. */
   function v2gAutoFrame() {
-    if (!v2gState.dur || v2gState.busy) return;
+    if (!v2gState.dur || v2gState.busy) return false;
     var sel = v2gState.t1 - v2gState.t0;
     var a = v2gState.view.a, b = v2gState.view.b || v2gState.dur;
     var span = Math.max(0.001, b - a);
     var frac = sel / span;
-    if (frac >= 0.35 && frac <= 0.85) return;   /* 뷰에 보기 좋게 차 있으면 그대로 */
+    if (frac >= 0.35 && frac <= 0.85) return false;   /* 뷰에 보기 좋게 차 있으면 그대로 */
     /* pad를 구간에 비례시켜(하한 0.05s) 좁힐 때마다 연속해서 더 깊이 확대된다 */
     var pad = Math.max(0.05, sel * 0.3);
     var na = Math.max(0, v2gState.t0 - pad);
     var nb = Math.min(v2gState.dur, v2gState.t1 + pad);
     if (nb - na >= v2gState.dur * 0.85) { na = 0; nb = v2gState.dur; }
-    if (Math.abs(na - a) < span * 0.02 && Math.abs(nb - b) < span * 0.02) return;
+    if (Math.abs(na - a) < span * 0.02 && Math.abs(nb - b) < span * 0.02) return false;
     v2gState.view = { a: na, b: nb };
     v2gState.zoomed = !(na === 0 && nb === v2gState.dur);
     v2gSyncZoomBtn();
     v2gSyncTrim();
     v2gBuildStrip();
+    return true;
   }
   $('#v2gZoomBtn').addEventListener('click', function () {
     if (!v2gState.dur || v2gState.busy) return;
@@ -4021,13 +4091,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     /* 시작 시점 설정을 전부 스냅샷 — 만드는 도중 조작이 결과를 오염시키지 않게 */
     var cr = v2gState.crop || { x: 0, y: 0, w: v2gState.W, h: v2gState.H };
     var timing = v2gEffTiming();
-    var t0s = v2gState.t0, fpsS = timing.fps, colorsS = v2gState.colors;
+    var t0s = v2gState.t0, fpsS = timing.fps, colorsS = v2gState.colors, loopS = v2gState.loop;
     var kBase = Math.min(1, v2gState.size / Math.max(cr.w, cr.h));
     var len = v2gState.t1 - t0s;
-    var total = Math.max(1, Math.floor(len * fpsS) + 1);
-    if (total > V2G_MAX_FRAMES) {
-      total = V2G_MAX_FRAMES;
-      toast('프레임이 많아 앞 ' + Math.round(V2G_MAX_FRAMES / fpsS) + '초까지만 담아요.');
+    var total = Math.min(V2G_MAX_FRAMES, Math.max(1, Math.floor(len * fpsS) + 1));
+    if (timing.lowered) {
+      toast('구간이 길어 초당 ' + (Math.round(fpsS * 10) / 10) + '프레임으로 낮춰 전체 구간을 담아요.');
     }
     var delay = timing.delay;   /* 배속 반영 지연 (하한 20ms — 필요 시 프레임 솎기로 유지) */
     var fitScale = 1;
@@ -4060,7 +4129,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         })();
       }).then(function () {
         if (stale() || !frames.length) return;
-        return gifEncode(frames, W, H, { colors: colorsS }, function (p) {
+        return gifEncode(frames, W, H, { colors: colorsS, loop: loopS }, function (p) {
           if (!stale()) stat.textContent = 'GIF 인코딩 중… ' + Math.round(p * 100) + '%';
         }).then(function (blob) {
           if (stale()) return;
@@ -4153,6 +4222,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   gifBindChips('#v2gSpeedChips', function (b) { v2gState.speed = parseFloat(b.dataset.v2gspeed); v2gSyncTrim(); v2gMarkStale(); v2gEstLine(); v2gScheduleEst(); }, v2gBusy);
   gifBindChips('#v2gSizeChips', function (b) { v2gState.size = parseInt(b.dataset.gifsize, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
   gifBindChips('#v2gColorChips', function (b) { v2gState.colors = parseInt(b.dataset.gifcolors, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
+  gifBindChips('#v2gLoopChips', function (b) { v2gState.loop = parseInt(b.dataset.gifloop, 10); v2gMarkStale(); }, v2gBusy);
   $('#v2gMake').addEventListener('click', v2gMakeGif);
   $('#v2gClear').addEventListener('click', function () { v2gClearAll(); });
   $('#v2gSave').addEventListener('click', function () {
@@ -11377,6 +11447,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     gifPrevStart: function () { return gifPrevStart(); },
     gifPrevStop: function () { return gifPrevStop(); },
     get v2gVideoEl() { return v2gVideo; },
+    v2gEffTiming: function () { return v2gEffTiming(); },
     v2gMakeGif: function () { return v2gMakeGif(); },
     get v2gState() { return v2gState; },
     doneEntries: function () { return doneEntries(); },
