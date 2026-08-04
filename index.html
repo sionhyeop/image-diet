@@ -3167,12 +3167,22 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function gifMarkStale() {
     if (gifState.result) $('#gifStat').textContent = '설정이 바뀌었어요 — [GIF 만들기]를 다시 눌러 주세요.';
   }
-  var gifEstTimer = 0, gifEstSeq = 0;
+  var gifEstTimer = 0, gifEstSeq = 0, gifLastEstBytes = 0;   /* -1 = 계산 중 */
+  /* 총 길이(장수×간격)는 즉시 결정되는 값 — 용량 예측과 한 줄에 보여준다 */
+  function gifEstLine() {
+    if (!gifState.items.length) { $('#gifEst').textContent = ''; return; }
+    var t = '총 ' + (gifState.items.length * gifState.interval).toFixed(1) + '초';
+    if (gifLastEstBytes === -1) t += ' · 예상 용량 계산 중…';
+    else if (gifLastEstBytes > GIF_MAX_BYTES) t += ' · 예상 약 ' + fmtBytes(gifLastEstBytes) + ' → 3MB 제한에 맞춰 자동 축소돼요';
+    else if (gifLastEstBytes > 0) t += ' · 예상 용량 약 ' + fmtBytes(gifLastEstBytes) + ' (±30%)';
+    $('#gifEst').textContent = t;
+  }
   function gifScheduleEst() {
     clearTimeout(gifEstTimer);
-    if (!gifState.items.length) { $('#gifEst').textContent = ''; return; }
+    if (!gifState.items.length) { gifLastEstBytes = 0; $('#gifEst').textContent = ''; return; }
     if (gifState.busy) return;
-    $('#gifEst').textContent = '예상 용량 계산 중…';
+    gifLastEstBytes = -1;
+    gifEstLine();
     gifEstTimer = setTimeout(function () {
       var seq = ++gifEstSeq;
       var items = gifState.items.slice();
@@ -3211,10 +3221,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         if (seq !== gifEstSeq || !frames.length) return;
         return gifEstimateFrom(frames, W, H, colorsS, total).then(function (est) {
           if (seq !== gifEstSeq) return;
-          $('#gifEst').textContent = '예상 용량 약 ' + fmtBytes(est) + ' (±30%)';
+          gifLastEstBytes = est;
+          gifEstLine();
         });
       }).catch(function () {
-        if (seq === gifEstSeq) $('#gifEst').textContent = '';
+        if (seq === gifEstSeq) { gifLastEstBytes = 0; gifEstLine(); }
       });
     }, 400);
   }
@@ -3329,46 +3340,58 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var items = gifState.items.slice();
     /* 설정 스냅샷 — 만드는 도중 슬라이더·칩 변경이 결과에 섞이지 않게 */
     var intervalS = gifState.interval, sizeS = gifState.size, colorsS = gifState.colors;
-    var frames = [];
-    var W = 0, H = 0;
-    var chain = Promise.resolve();
-    items.forEach(function (item, i) {
-      chain = chain.then(function () {
-        if (seq !== gifState.seq) return;
-        stat.textContent = (i + 1) + ' / ' + items.length + ' 이미지 준비 중…';
-        return decodeToSource(item.file).then(function (dec) {
-          var sw = srcW(dec.source) || 512, sh = srcH(dec.source) || 512;
-          if (!W) {
-            var k = Math.min(1, sizeS / Math.max(sw, sh));
-            W = Math.max(2, Math.round(sw * k));
-            H = Math.max(2, Math.round(sh * k));
-          }
-          var c = document.createElement('canvas');
-          c.width = W; c.height = H;
-          var x = c.getContext('2d', { willReadFrequently: true });
-          x.imageSmoothingEnabled = true;
-          x.imageSmoothingQuality = 'high';
-          x.fillStyle = '#ffffff';
-          x.fillRect(0, 0, W, H);
-          var k2 = Math.min(W / sw, H / sh);
-          var dw = Math.max(1, Math.round(sw * k2)), dh = Math.max(1, Math.round(sh * k2));
-          x.drawImage(dec.source, Math.round((W - dw) / 2), Math.round((H - dh) / 2), dw, dh);
-          if (dec.url) URL.revokeObjectURL(dec.url);
-          if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
-          frames.push({ data: x.getImageData(0, 0, W, H).data, delay: intervalS * 1000 });
+    var fitScale = 1;
+    /* 한 번의 시도: 지금 배율로 프레임을 만들고 인코딩. 3MB 초과면 해상도를
+       √비율로 줄여 재시도(최대 2회) — 압축 탭의 목표 용량과 같은 자동 맞춤. */
+    function gifAttempt(attemptNo) {
+      var frames = [];
+      var W = 0, H = 0;
+      var chain = Promise.resolve();
+      items.forEach(function (item, i) {
+        chain = chain.then(function () {
+          if (seq !== gifState.seq) return;
+          stat.textContent = (attemptNo > 0 ? '3MB에 맞추는 중 — ' : '') + (i + 1) + ' / ' + items.length + ' 이미지 준비 중…';
+          return decodeToSource(item.file).then(function (dec) {
+            var sw = srcW(dec.source) || 512, sh = srcH(dec.source) || 512;
+            if (!W) {
+              var k = Math.min(1, sizeS / Math.max(sw, sh)) * fitScale;
+              W = Math.max(2, Math.round(sw * k));
+              H = Math.max(2, Math.round(sh * k));
+            }
+            var c = document.createElement('canvas');
+            c.width = W; c.height = H;
+            var x = c.getContext('2d', { willReadFrequently: true });
+            x.imageSmoothingEnabled = true;
+            x.imageSmoothingQuality = 'high';
+            x.fillStyle = '#ffffff';
+            x.fillRect(0, 0, W, H);
+            var k2 = Math.min(W / sw, H / sh);
+            var dw = Math.max(1, Math.round(sw * k2)), dh = Math.max(1, Math.round(sh * k2));
+            x.drawImage(dec.source, Math.round((W - dw) / 2), Math.round((H - dh) / 2), dw, dh);
+            if (dec.url) URL.revokeObjectURL(dec.url);
+            if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+            frames.push({ data: x.getImageData(0, 0, W, H).data, delay: intervalS * 1000 });
+          });
         });
       });
-    });
-    return chain.then(function () {
-      if (seq !== gifState.seq) return;
-      return gifEncode(frames, W, H, { colors: colorsS }, function (p) {
-        if (seq === gifState.seq) stat.textContent = 'GIF 인코딩 중… ' + Math.round(p * 100) + '%';
-      }).then(function (blob) {
+      return chain.then(function () {
         if (seq !== gifState.seq) return;
-        gifSetResult(gifState, $('#gifResultImg'), $('#gifResultInfo'), $('#gifResultWrap'), blob, W, H, frames.length);
-        stat.textContent = '✅ 완성 — ' + frames.length + '프레임 · ' + fmtBytes(blob.size);
+        return gifEncode(frames, W, H, { colors: colorsS }, function (p) {
+          if (seq === gifState.seq) stat.textContent = 'GIF 인코딩 중… ' + Math.round(p * 100) + '%';
+        }).then(function (blob) {
+          if (seq !== gifState.seq) return;
+          if (blob.size > GIF_MAX_BYTES && attemptNo < 2 && fitScale > 0.2) {
+            fitScale *= Math.sqrt(GIF_FIT_TARGET / blob.size) * 0.97;
+            fitScale = Math.max(0.2, fitScale);
+            return gifAttempt(attemptNo + 1);
+          }
+          gifSetResult(gifState, $('#gifResultImg'), $('#gifResultInfo'), $('#gifResultWrap'), blob, W, H, frames.length);
+          stat.textContent = '✅ 완성 — ' + frames.length + '프레임 · ' + fmtBytes(blob.size) +
+            (fitScale < 1 ? ' · 3MB 제한에 맞춰 크기를 ' + Math.round(fitScale * 100) + '%로 줄였어요' : '');
+        });
       });
-    }).catch(function () {
+    }
+    return gifAttempt(0).catch(function () {
       if (seq === gifState.seq) { stat.textContent = ''; toast('GIF 만들기에 실패했어요.'); }
     }).then(function () {
       if (seq === gifState.seq) gifState.busy = false;
@@ -3388,6 +3411,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     gifState.interval = parseFloat(this.value);
     $('#gifIntervalOut').textContent = this.value;
     gifMarkStale();
+    gifEstLine();   /* 총 길이는 즉시 반영 (용량은 간격과 무관) */
   });
   var gifBusy = function () { return gifState.busy; };
   gifBindChips('#gifSizeChips', function (b) { gifState.size = parseInt(b.dataset.gifsize, 10); gifMarkStale(); gifScheduleEst(); }, gifBusy);
@@ -3396,6 +3420,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   $('#gifClear').addEventListener('click', function () {
     gifEstSeq++;
     clearTimeout(gifEstTimer);
+    gifLastEstBytes = 0;
     $('#gifEst').textContent = '';
     gifPrevStop(true);
     gifState.seq++;
@@ -3486,6 +3511,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }, '움직이는 GIF');
 
   /* ---------- 영상 → GIF ---------- */
+  var GIF_MAX_BYTES = 3 * 1024 * 1024;              /* 출력 상한 3MB */
+  var GIF_FIT_TARGET = Math.round(GIF_MAX_BYTES * 0.9);  /* 자동 맞춤 목표(안전 여유) */
+
   var v2gState = {
     file: null, url: null, W: 0, H: 0, dur: 0,
     crop: null, t0: 0, t1: 0, fps: 10, speed: 1, size: 480, colors: 256,
@@ -3517,12 +3545,23 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     }
     return { fps: f, delay: d };
   }
-  var v2gEstTimer = 0, v2gEstSeq = 0;
+  var v2gEstTimer = 0, v2gEstSeq = 0, v2gLastEstBytes = 0;   /* -1 = 계산 중 */
+  /* 결과 길이 = 선택 구간 ÷ 재생 속도 — 설정으로 이미 결정되는 값이라 즉시 표시 */
+  function v2gEstLine() {
+    if (!v2gState.dur) { $('#v2gEst').textContent = ''; return; }
+    var out = (v2gState.t1 - v2gState.t0) / v2gState.speed;
+    var t = '결과 ' + out.toFixed(1) + '초짜리 GIF' + (v2gState.speed !== 1 ? ' (' + v2gState.speed + '×)' : '');
+    if (v2gLastEstBytes === -1) t += ' · 예상 용량 계산 중…';
+    else if (v2gLastEstBytes > GIF_MAX_BYTES) t += ' · 예상 약 ' + fmtBytes(v2gLastEstBytes) + ' → 3MB 제한에 맞춰 자동 축소돼요';
+    else if (v2gLastEstBytes > 0) t += ' · 예상 용량 약 ' + fmtBytes(v2gLastEstBytes) + ' (±30%)';
+    $('#v2gEst').textContent = t;
+  }
   function v2gScheduleEst() {
     clearTimeout(v2gEstTimer);
-    if (!v2gState.dur) { $('#v2gEst').textContent = ''; return; }
+    if (!v2gState.dur) { v2gLastEstBytes = 0; $('#v2gEst').textContent = ''; return; }
     if (v2gState.busy || v2gPrev.on) return;   /* 만들기·미리보기와 seek 경쟁 금지 */
-    $('#v2gEst').textContent = '예상 용량 계산 중…';
+    v2gLastEstBytes = -1;
+    v2gEstLine();
     v2gEstTimer = setTimeout(function () {
       if (v2gState.busy || v2gPrev.on) { $('#v2gEst').textContent = ''; return; }
       if (!v2gState.stripDone) { v2gScheduleEst(); return; }   /* 스트립 생성 끝난 뒤에 */
@@ -3559,11 +3598,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         if (stale() || !frames.length) return;
         return gifEstimateFrom(frames, W, H, colorsS, total).then(function (est) {
           if (stale()) return;
-          $('#v2gEst').textContent = '예상 용량 약 ' + fmtBytes(est) + ' (±30%)';
+          v2gLastEstBytes = est;
+          v2gEstLine();
           v2gSeek(t0s);   /* 재생 헤드를 시작점으로 되돌린다 */
         });
       }).catch(function () {
-        if (seq === v2gEstSeq) $('#v2gEst').textContent = '';
+        if (seq === v2gEstSeq) { v2gLastEstBytes = 0; v2gEstLine(); }
       });
     }, 500);
   }
@@ -3982,9 +4022,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var cr = v2gState.crop || { x: 0, y: 0, w: v2gState.W, h: v2gState.H };
     var timing = v2gEffTiming();
     var t0s = v2gState.t0, fpsS = timing.fps, colorsS = v2gState.colors;
-    var k = Math.min(1, v2gState.size / Math.max(cr.w, cr.h));
-    var W = Math.max(2, Math.round(cr.w * k));
-    var H = Math.max(2, Math.round(cr.h * k));
+    var kBase = Math.min(1, v2gState.size / Math.max(cr.w, cr.h));
     var len = v2gState.t1 - t0s;
     var total = Math.max(1, Math.floor(len * fpsS) + 1);
     if (total > V2G_MAX_FRAMES) {
@@ -3992,37 +4030,81 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       toast('프레임이 많아 앞 ' + Math.round(V2G_MAX_FRAMES / fpsS) + '초까지만 담아요.');
     }
     var delay = timing.delay;   /* 배속 반영 지연 (하한 20ms — 필요 시 프레임 솎기로 유지) */
-    var c = document.createElement('canvas');
-    c.width = W; c.height = H;
-    var x = c.getContext('2d', { willReadFrequently: true });
-    x.imageSmoothingEnabled = true;
-    x.imageSmoothingQuality = 'high';
-    var frames = [];
-    var i = 0;
-    return new Promise(function (resolve) {
-      (function nextFrame() {
-        if (stale()) return resolve();
-        if (i >= total) return resolve();
-        stat.textContent = '프레임 추출 중… ' + (i + 1) + ' / ' + total;
-        v2gSeek(t0s + i / fpsS).then(function () {
+    var fitScale = 1;
+    /* 시도 하나: 지금 배율로 전 프레임 추출 + 인코딩 */
+    function v2gAttempt(attemptNo) {
+      var k = kBase * fitScale;
+      var W = Math.max(2, Math.round(cr.w * k));
+      var H = Math.max(2, Math.round(cr.h * k));
+      var c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      var x = c.getContext('2d', { willReadFrequently: true });
+      x.imageSmoothingEnabled = true;
+      x.imageSmoothingQuality = 'high';
+      var frames = [];
+      var i = 0;
+      return new Promise(function (resolve) {
+        (function nextFrame() {
           if (stale()) return resolve();
-          x.fillStyle = '#ffffff';
-          x.fillRect(0, 0, W, H);
-          x.drawImage(v2gVideo, cr.x, cr.y, cr.w, cr.h, 0, 0, W, H);
-          frames.push({ data: x.getImageData(0, 0, W, H).data, delay: delay });
-          i++;
-          nextFrame();
+          if (i >= total) return resolve();
+          stat.textContent = (attemptNo > 0 ? '3MB에 맞추는 중 — ' : '') + '프레임 추출 중… ' + (i + 1) + ' / ' + total;
+          v2gSeek(t0s + i / fpsS).then(function () {
+            if (stale()) return resolve();
+            x.fillStyle = '#ffffff';
+            x.fillRect(0, 0, W, H);
+            x.drawImage(v2gVideo, cr.x, cr.y, cr.w, cr.h, 0, 0, W, H);
+            frames.push({ data: x.getImageData(0, 0, W, H).data, delay: delay });
+            i++;
+            nextFrame();
+          });
+        })();
+      }).then(function () {
+        if (stale() || !frames.length) return;
+        return gifEncode(frames, W, H, { colors: colorsS }, function (p) {
+          if (!stale()) stat.textContent = 'GIF 인코딩 중… ' + Math.round(p * 100) + '%';
+        }).then(function (blob) {
+          if (stale()) return;
+          if (blob.size > GIF_MAX_BYTES && attemptNo < 2 && fitScale > 0.2) {
+            fitScale *= Math.sqrt(GIF_FIT_TARGET / blob.size) * 0.97;
+            fitScale = Math.max(0.2, fitScale);
+            return v2gAttempt(attemptNo + 1);
+          }
+          gifSetResult(v2gState, $('#v2gResultImg'), $('#v2gResultInfo'), $('#v2gResultWrap'), blob, W, H, frames.length);
+          stat.textContent = '✅ 완성 — ' + frames.length + '프레임 · ' + fmtBytes(blob.size) +
+            (fitScale < 1 ? ' · 3MB 제한에 맞춰 크기를 ' + Math.round(fitScale * 100) + '%로 줄였어요' : '');
         });
-      })();
-    }).then(function () {
-      if (stale() || !frames.length) return;
-      return gifEncode(frames, W, H, { colors: colorsS }, function (p) {
-        if (!stale()) stat.textContent = 'GIF 인코딩 중… ' + Math.round(p * 100) + '%';
-      }).then(function (blob) {
-        if (stale()) return;
-        gifSetResult(v2gState, $('#v2gResultImg'), $('#v2gResultInfo'), $('#v2gResultWrap'), blob, W, H, frames.length);
-        stat.textContent = '✅ 완성 — ' + frames.length + '프레임 · ' + fmtBytes(blob.size);
       });
+    }
+    /* 사전 추정으로 첫 배율을 정해 재추출 낭비를 줄인다 — 표본 3프레임 실측 외삽 */
+    return (function () {
+      var estCanvas = document.createElement('canvas');
+      var kE = kBase;
+      var We = Math.max(2, Math.round(cr.w * kE)), He = Math.max(2, Math.round(cr.h * kE));
+      estCanvas.width = We; estCanvas.height = He;
+      var ex = estCanvas.getContext('2d', { willReadFrequently: true });
+      var samples = [];
+      var times = [t0s, t0s + len / 2, t0s + len];
+      var chain = Promise.resolve();
+      times.forEach(function (t) {
+        chain = chain.then(function () {
+          if (stale()) return;
+          return v2gSeek(t).then(function () {
+            if (stale()) return;
+            ex.fillStyle = '#ffffff';
+            ex.fillRect(0, 0, We, He);
+            ex.drawImage(v2gVideo, cr.x, cr.y, cr.w, cr.h, 0, 0, We, He);
+            samples.push({ data: ex.getImageData(0, 0, We, He).data, delay: 100 });
+          });
+        });
+      });
+      return chain.then(function () {
+        if (stale() || !samples.length) return;
+        return gifEstimateFrom(samples, We, He, colorsS, total).then(function (est) {
+          if (est > GIF_FIT_TARGET) fitScale = Math.max(0.2, Math.sqrt(GIF_FIT_TARGET / est));
+        });
+      });
+    })().then(function () {
+      return v2gAttempt(0);
     }).catch(function () {
       if (!stale()) { stat.textContent = ''; toast('GIF 만들기에 실패했어요.'); }
     }).then(function () {
@@ -4038,6 +4120,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function v2gClearAll(resetStat) {
     v2gEstSeq++;
     clearTimeout(v2gEstTimer);
+    v2gLastEstBytes = 0;
     $('#v2gEst').textContent = '';
     v2gPrevStop();
     v2gState.seq++;
@@ -4067,7 +4150,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
   var v2gBusy = function () { return v2gState.busy; };
   gifBindChips('#v2gFpsChips', function (b) { v2gState.fps = parseInt(b.dataset.v2gfps, 10); v2gSyncTrim(); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
-  gifBindChips('#v2gSpeedChips', function (b) { v2gState.speed = parseFloat(b.dataset.v2gspeed); v2gSyncTrim(); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
+  gifBindChips('#v2gSpeedChips', function (b) { v2gState.speed = parseFloat(b.dataset.v2gspeed); v2gSyncTrim(); v2gMarkStale(); v2gEstLine(); v2gScheduleEst(); }, v2gBusy);
   gifBindChips('#v2gSizeChips', function (b) { v2gState.size = parseInt(b.dataset.gifsize, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
   gifBindChips('#v2gColorChips', function (b) { v2gState.colors = parseInt(b.dataset.gifcolors, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
   $('#v2gMake').addEventListener('click', v2gMakeGif);
