@@ -178,15 +178,10 @@ input[type="color"] { width: 52px; height: 34px; padding: 2px; border: 1px solid
 .v2g-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: 6px; width: 6px; border-radius: 4px; background: var(--accent); box-shadow: 0 0 0 2px #fff; }
 .v2g-times { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
 
-/* 압축 결과 공통 이름 — 결과 목록 위에 떠 있는 중앙 정렬 바 */
-.bulkname-bar { position: sticky; top: 64px; z-index: 30; display: flex; justify-content: center; margin: 4px 0 12px; }
-.bulkname-bar .inner {
-  display: flex; align-items: center; gap: 10px; width: min(560px, 94%);
-  background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
-  box-shadow: 0 8px 28px rgba(15, 23, 42, .14); padding: 8px 12px 8px 18px;
-}
-.bulkname-bar label { font-size: 13px; font-weight: 700; white-space: nowrap; }
-.bulkname-bar input { flex: 1 1 auto; min-width: 0; border-radius: 999px; }
+/* 압축 요약 박스 — 저장(좌) / 공유(우) 분리 정렬 + 이름 입력 구획선 */
+.summary-split { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; width: 100%; }
+.summary-split .sa-left, .summary-split .sa-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.summary-divider { border-top: 1px solid var(--border); margin: 14px 0 12px; }
 
 /* 배경 일괄 제거 — 이미지 목록과 상태 배지 */
 .cut-rail { list-style: none; padding: 8px; margin: 8px 0 0; display: flex; gap: 8px; overflow-x: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; scrollbar-width: thin; }
@@ -247,9 +242,9 @@ input.num-inline:focus-visible { outline: 2px solid var(--accent); outline-offse
 /* ---------- summary ---------- */
 .summary {
   margin-top: 16px; padding: 13px 18px;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  display: block;
 }
-.summary p { margin: 0; font-weight: 600; font-size: 14.5px; }
+.summary > p#summaryText { margin: 0 0 10px; font-weight: 600; font-size: 14.5px; }
 .summary-actions { display: flex; gap: 8px; }
 
 /* ---------- buttons ---------- */
@@ -797,24 +792,27 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
     <section id="summary" class="card summary" hidden>
       <p id="summaryText" aria-live="polite"></p>
-      <div class="summary-actions">
-        <div class="seg-slide seg-sm right" id="saveModeSeg" role="tablist" aria-label="저장 방식 선택">
-          <div class="seg-thumb" aria-hidden="true"></div>
-          <button type="button" class="seg-opt" data-savemode="zip" role="tab" aria-selected="false">🗜️ ZIP 한 개로</button>
-          <button type="button" class="seg-opt on" data-savemode="each" role="tab" aria-selected="true">🖼️ 개별 파일로</button>
+      <div class="summary-actions summary-split">
+        <div class="sa-left">
+          <div class="seg-slide seg-sm right" id="saveModeSeg" role="tablist" aria-label="저장 방식 선택">
+            <div class="seg-thumb" aria-hidden="true"></div>
+            <button type="button" class="seg-opt" data-savemode="zip" role="tab" aria-selected="false">🗜️ ZIP 한 개로</button>
+            <button type="button" class="seg-opt on" data-savemode="each" role="tab" aria-selected="true">🖼️ 개별 파일로</button>
+          </div>
+          <button id="saveAllBtn" class="btn primary" type="button">모두 저장</button>
         </div>
-        <button id="saveAllBtn" class="btn primary" type="button">모두 저장</button>
-        <button id="shareCompress" class="btn btn-share" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
-        <button id="clearBtn" class="btn" type="button">전체 지우기</button>
+        <div class="sa-right">
+          <button id="clearBtn" class="btn" type="button">전체 지우기</button>
+          <button id="shareCompress" class="btn btn-share" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
+        </div>
+      </div>
+      <div class="summary-divider" aria-hidden="true"></div>
+      <div class="field">
+        <label class="field-label" for="bulkName">파일 이름 <span class="sub">— 입력하는 즉시 아래 전체가 <b>이름-1, 이름-2…</b>로 바뀌어요 (비우면 원래 이름)</span></label>
+        <input type="text" id="bulkName" maxlength="60" placeholder="예: 여행사진">
       </div>
     </section>
 
-    <div class="bulkname-bar" id="bulkNameBar" hidden>
-      <div class="inner">
-        <label for="bulkName">파일 이름</label>
-        <input type="text" id="bulkName" maxlength="60" placeholder="입력하면 아래 전체가 이름-1, 이름-2…로 바뀌어요">
-      </div>
-    </div>
     <ul id="results" class="results"></ul>
   </section>
 
@@ -1238,8 +1236,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
               </div>
             </div>
           </div>
+          <div id="gifPrevWrap" hidden style="margin-top:12px">
+            <canvas id="gifPrevCanvas" class="gif-result" style="cursor:default"></canvas>
+            <p class="muted" style="font-size:12.5px">지금 설정(순서·전환 간격)대로 도는 미리보기예요 — 색감은 실제 GIF와 조금 다를 수 있어요</p>
+          </div>
           <div class="btn-row">
             <button class="btn primary" id="gifMake" type="button">GIF 만들기</button>
+            <button class="btn" id="gifPrevBtn" type="button">▶ 미리보기</button>
             <button class="btn" id="gifClear" type="button">트레이 비우기</button>
           </div>
           <p class="muted" id="gifStat" role="status"></p>
@@ -1263,13 +1266,16 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         </div>
         <video id="v2gVideo" muted playsinline preload="auto" style="display:none"></video>
         <div id="v2gBody" hidden>
-          <p class="field-label" style="margin-top:16px">크롭 <span class="sub">— 미리보기 위를 드래그해 남길 영역을 그려요 · 사각형 안을 끌면 이동</span>
+          <p class="field-label" style="margin-top:16px">크롭 <span class="sub">— 프레임 테두리·모서리를 끌어 안쪽으로 좁혀 나가요 · 안쪽을 끌면 이동</span>
             <button type="button" class="chip" id="v2gCropReset" style="margin-left:8px">전체로 초기화</button>
           </p>
           <div class="v2g-wrap svg-opts">
             <canvas id="v2gCanvas"></canvas>
           </div>
-          <p class="field-label" style="margin-top:14px">구간 <span class="sub">— 양쪽 핸들을 끌어 시작·끝을 정해요 (영상 편집툴처럼)</span></p>
+          <p class="field-label" style="margin-top:14px">구간 <span class="sub">— 양쪽 핸들을 끌어 시작·끝을 정해요 (영상 편집툴처럼)</span>
+            <button type="button" class="chip" id="v2gZoomBtn" style="margin-left:8px">🔍 구간 확대 (미세 조정)</button>
+            <button type="button" class="chip" id="v2gPrevBtn">▶ 구간 미리보기</button>
+          </p>
           <div class="v2g-strip" id="v2gStrip">
             <canvas id="v2gStripCanvas" width="640" height="48"></canvas>
             <div class="v2g-shade" id="v2gShadeL" style="left:0"></div>
@@ -2578,11 +2584,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function renderSummary() {
     if (!items.length) {
       el.summary.hidden = true;
-      $('#bulkNameBar').hidden = true;
       return;
     }
     el.summary.hidden = false;
-    $('#bulkNameBar').hidden = false;
     var done = items.filter(function (i) { return i.status === 'done'; });
     var errs = items.filter(function (i) { return i.status === 'error'; }).length;
     var busy = items.length - done.length - errs;
@@ -3157,6 +3161,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       rm.addEventListener('click', function () {
         URL.revokeObjectURL(item.url);
         gifState.items.splice(gifState.items.indexOf(item), 1);
+        if (!gifState.items.length) gifPrevStop(true);
         gifRenderTray();
         gifMarkStale();
       });
@@ -3230,6 +3235,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function gifMakeFromImages() {
     if (gifState.busy || !gifState.items.length) return Promise.resolve();
     gifState.busy = true;
+    gifPrevStop();
     var seq = ++gifState.seq;
     var stat = $('#gifStat');
     var btn = $('#gifMake');
@@ -3302,6 +3308,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   gifBindChips('#gifColorChips', function (b) { gifState.colors = parseInt(b.dataset.gifcolors, 10); gifMarkStale(); }, gifBusy);
   $('#gifMake').addEventListener('click', gifMakeFromImages);
   $('#gifClear').addEventListener('click', function () {
+    gifPrevStop(true);
     gifState.seq++;
     gifState.busy = false;
     gifState.items.forEach(function (it) { URL.revokeObjectURL(it.url); });
@@ -3311,6 +3318,66 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#gifStat').textContent = '';
     gifRenderTray();
   });
+  /* 트레이 미리보기 — 지금 순서·간격대로 도는 애니메이션 (인코딩 없이) */
+  var gifPrev = { on: false, timer: 0, idx: 0 };
+  function gifPrevStop(hide) {
+    if (gifPrev.on) {
+      gifPrev.on = false;
+      clearTimeout(gifPrev.timer);
+      $('#gifPrevBtn').textContent = '▶ 미리보기';
+    }
+    if (hide) $('#gifPrevWrap').hidden = true;
+  }
+  function gifPrevDrawItem(item) {
+    if (!item._img) {
+      var img = new Image();
+      img.onload = function () { item._imgReady = true; };
+      img.src = item.url;
+      item._img = img;
+      return;
+    }
+    if (!item._imgReady) return;
+    var c = $('#gifPrevCanvas');
+    var x = c.getContext('2d');
+    x.fillStyle = '#ffffff';
+    x.fillRect(0, 0, c.width, c.height);
+    var iw = item._img.naturalWidth, ih = item._img.naturalHeight;
+    var k = Math.min(c.width / iw, c.height / ih);
+    var dw = Math.max(1, Math.round(iw * k)), dh = Math.max(1, Math.round(ih * k));
+    x.drawImage(item._img, Math.round((c.width - dw) / 2), Math.round((c.height - dh) / 2), dw, dh);
+  }
+  function gifPrevTick() {
+    if (!gifPrev.on) return;
+    var items = gifState.items;
+    if (!items.length) { gifPrevStop(true); return; }
+    gifPrev.idx = gifPrev.idx % items.length;
+    gifPrevDrawItem(items[gifPrev.idx]);
+    gifPrev.idx++;
+    /* 간격은 라이브로 읽는다 — 슬라이더를 움직이면 다음 장부터 바로 반영 */
+    gifPrev.timer = setTimeout(gifPrevTick, gifState.interval * 1000);
+  }
+  function gifPrevStart() {
+    if (!gifState.items.length || gifPrev.on) return;
+    var first = new Image();
+    first.onload = function () {
+      if (!gifState.items.length) return;
+      var k = Math.min(1, 360 / Math.max(first.naturalWidth, first.naturalHeight));
+      var c = $('#gifPrevCanvas');
+      c.width = Math.max(2, Math.round(first.naturalWidth * k));
+      c.height = Math.max(2, Math.round(first.naturalHeight * k));
+      $('#gifPrevWrap').hidden = false;
+      gifPrev.on = true;
+      gifPrev.idx = 0;
+      $('#gifPrevBtn').textContent = '⏸ 미리보기 멈춤';
+      gifPrevTick();
+    };
+    first.src = gifState.items[0].url;
+  }
+  $('#gifPrevBtn').addEventListener('click', function () {
+    if (gifPrev.on) gifPrevStop();
+    else gifPrevStart();
+  });
+
   function gifOutName(state, inputSel, fallback) {
     var v = splitSafeName(($(inputSel).value || '').trim());
     return (v || fallback || 'animation') + '.gif';
@@ -3333,7 +3400,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   var v2gState = {
     file: null, url: null, W: 0, H: 0, dur: 0,
     crop: null, t0: 0, t1: 0, fps: 10, size: 480, colors: 256,
-    busy: false, seq: 0, makeSeq: 0, result: null, dispW: 0, dispH: 0
+    busy: false, seq: 0, makeSeq: 0, result: null, dispW: 0, dispH: 0,
+    view: { a: 0, b: 0 }, zoomed: false, stripSeq: 0
   };
   var v2gVideo = $('#v2gVideo');
   var v2gCanvas = $('#v2gCanvas');
@@ -3388,14 +3456,28 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(x, y, w, h);
+      /* 테두리·모서리 핸들 — '여기를 끌어 좁힌다'는 어포던스 */
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#3182f6';
+      var HS = 5;
+      [[x, y], [x + w / 2, y], [x + w, y], [x, y + h / 2], [x + w, y + h / 2],
+       [x, y + h], [x + w / 2, y + h], [x + w, y + h]].forEach(function (pt) {
+        ctx.fillRect(pt[0] - HS, pt[1] - HS, HS * 2, HS * 2);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(pt[0] - HS, pt[1] - HS, HS * 2, HS * 2);
+      });
       ctx.restore();
     }
   }
   v2gVideo.addEventListener('seeked', v2gDraw);
 
   function v2gSyncTrim() {
-    var p0 = v2gState.dur ? v2gState.t0 / v2gState.dur : 0;
-    var p1 = v2gState.dur ? v2gState.t1 / v2gState.dur : 1;
+    /* 핸들·음영은 뷰 윈도(view.a~view.b) 기준 — 확대 보기에서 좁은 구간을 넓게 편다 */
+    var a = v2gState.view.a, b = v2gState.view.b || v2gState.dur;
+    var span = Math.max(0.001, b - a);
+    var p0 = Math.min(1, Math.max(0, (v2gState.t0 - a) / span));
+    var p1 = Math.min(1, Math.max(0, (v2gState.t1 - a) / span));
     $('#v2gHandleS').style.left = (p0 * 100) + '%';
     $('#v2gHandleE').style.left = (p1 * 100) + '%';
     /* 음영도 % — 창 크기가 바뀌어도 핸들과 항상 정합 */
@@ -3405,11 +3487,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#v2gT1').textContent = v2gFmtT(v2gState.t1);
     var len = v2gState.t1 - v2gState.t0;
     var nf = Math.min(V2G_MAX_FRAMES, Math.max(1, Math.floor(len * v2gState.fps) + 1));
-    $('#v2gRange').textContent = '선택 ' + len.toFixed(1) + '초 · 약 ' + nf + '프레임';
+    $('#v2gRange').textContent = '선택 ' + len.toFixed(2) + '초 · 약 ' + nf + '프레임' +
+      (v2gState.zoomed ? ' · 🔍 확대 보기' : '');
   }
   function v2gBindHandle(el, isStart) {
     el.addEventListener('pointerdown', function (e) {
       if (v2gState.busy) return;   /* 만들기 중 트림 조작은 프레임을 오염시킨다 */
+      v2gPrevStop();
       e.preventDefault();
       var pid = e.pointerId;
       var strip = $('#v2gStrip');
@@ -3417,9 +3501,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var move = function (ev) {
         if (ev.pointerId !== pid) return;
         var r = strip.getBoundingClientRect();
-        var t = Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1) * v2gState.dur;
-        if (isStart) v2gState.t0 = Math.min(t, v2gState.t1 - 0.2);
-        else v2gState.t1 = Math.max(t, v2gState.t0 + 0.2);
+        var a = v2gState.view.a, b = v2gState.view.b || v2gState.dur;
+        var t = a + Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1) * (b - a);
+        /* 확대 보기에선 최소 간격도 촘촘하게(뷰 폭의 2%, 최소 0.05초) */
+        var gap = Math.max(0.05, Math.min(0.2, (b - a) * 0.02));
+        if (isStart) v2gState.t0 = Math.min(t, v2gState.t1 - gap);
+        else v2gState.t1 = Math.max(t, v2gState.t0 + gap);
         v2gState.t0 = Math.max(0, v2gState.t0);
         v2gState.t1 = Math.min(v2gState.dur, v2gState.t1);
         v2gSyncTrim();
@@ -3445,14 +3532,22 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   v2gBindHandle($('#v2gHandleE'), false);
   $('#v2gStripCanvas').addEventListener('pointerdown', function (e) {
     if (v2gState.busy) return;
+    v2gPrevStop();
     var r = $('#v2gStrip').getBoundingClientRect();
-    var t = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * v2gState.dur;
+    var a = v2gState.view.a, b = v2gState.view.b || v2gState.dur;
+    var t = a + Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) * (b - a);
     v2gSeek(t);
   });
 
-  /* 크롭: 빈 곳 드래그 = 새 사각형, 사각형 안 드래그 = 이동. 8px 미만 드래그는 무시 */
+  /* 크롭: 전체 프레임에서 시작해 테두리·모서리 핸들을 끌어 안쪽으로 좁혀 나간다.
+     안쪽 드래그 = 이동. 사각형을 새로 그리는 방식이 아니다. */
   (function () {
-    var mode = null, sx = 0, sy = 0, orig = null, prevCrop = null;
+    var mode = null, sx = 0, sy = 0, orig = null;
+    var EDGE = 14;   /* 핸들 판정 폭 (디스플레이 px) */
+    var CURSOR = {
+      n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+      ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', move: 'move'
+    };
     function pos(e) {
       var r = v2gCanvas.getBoundingClientRect();
       return {
@@ -3460,52 +3555,76 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         y: (e.clientY - r.top) * (v2gState.dispH / r.height)
       };
     }
+    function hit(p) {
+      var cr = v2gState.crop;
+      if (!cr) return null;
+      var sc = v2gState.dispW / v2gState.W;
+      var x = cr.x * sc, y = cr.y * sc, w = cr.w * sc, h = cr.h * sc;
+      var L = Math.abs(p.x - x) <= EDGE, R = Math.abs(p.x - (x + w)) <= EDGE;
+      var T = Math.abs(p.y - y) <= EDGE, B = Math.abs(p.y - (y + h)) <= EDGE;
+      var inX = p.x > x - EDGE && p.x < x + w + EDGE;
+      var inY = p.y > y - EDGE && p.y < y + h + EDGE;
+      if (T && L) return 'nw';
+      if (T && R) return 'ne';
+      if (B && L) return 'sw';
+      if (B && R) return 'se';
+      if (T && inX) return 'n';
+      if (B && inX) return 's';
+      if (L && inY) return 'w';
+      if (R && inY) return 'e';
+      if (p.x > x && p.x < x + w && p.y > y && p.y < y + h) return 'move';
+      return null;
+    }
     v2gCanvas.addEventListener('pointerdown', function (e) {
       if (!v2gState.dispW || v2gState.busy) return;
+      var p = pos(e);
+      var m = hit(p);
+      if (!m) return;
       e.preventDefault();
       try { v2gCanvas.setPointerCapture(e.pointerId); } catch (err) {}
-      var p = pos(e);
+      mode = m;
       sx = p.x; sy = p.y;
-      prevCrop = v2gState.crop;   /* 실수 클릭이면 되돌린다 */
       var cr = v2gState.crop;
-      var sc = v2gState.dispW / v2gState.W;
-      if (cr && p.x >= cr.x * sc && p.x <= (cr.x + cr.w) * sc && p.y >= cr.y * sc && p.y <= (cr.y + cr.h) * sc) {
-        mode = 'move';
-        orig = { x: cr.x, y: cr.y, w: cr.w, h: cr.h };
-      } else {
-        mode = 'draw';
-      }
+      orig = { x: cr.x, y: cr.y, w: cr.w, h: cr.h };
     });
     v2gCanvas.addEventListener('pointermove', function (e) {
-      if (!mode) return;
+      if (!v2gState.dispW) return;
       var p = pos(e);
-      var sc = v2gState.W / v2gState.dispW;
-      if (mode === 'draw') {
-        var x0 = Math.min(sx, p.x) * sc, y0 = Math.min(sy, p.y) * sc;
-        var x1 = Math.max(sx, p.x) * sc, y1 = Math.max(sy, p.y) * sc;
-        v2gState.crop = {
-          x: Math.max(0, Math.round(x0)), y: Math.max(0, Math.round(y0)),
-          w: Math.min(v2gState.W, Math.round(x1)) - Math.max(0, Math.round(x0)),
-          h: Math.min(v2gState.H, Math.round(y1)) - Math.max(0, Math.round(y0))
-        };
-      } else {
-        var dx = (p.x - sx) * sc, dy = (p.y - sy) * sc;
-        v2gState.crop = {
-          x: Math.round(Math.min(Math.max(0, orig.x + dx), v2gState.W - orig.w)),
-          y: Math.round(Math.min(Math.max(0, orig.y + dy), v2gState.H - orig.h)),
-          w: orig.w, h: orig.h
-        };
+      if (!mode) {
+        var hv = v2gState.busy ? null : hit(p);
+        v2gCanvas.style.cursor = hv ? CURSOR[hv] : 'default';
+        return;
       }
+      var sc = v2gState.W / v2gState.dispW;
+      var dx = (p.x - sx) * sc, dy = (p.y - sy) * sc;
+      var W = v2gState.W, H = v2gState.H, MIN = 24;
+      function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+      var c2 = { x: orig.x, y: orig.y, w: orig.w, h: orig.h };
+      if (mode === 'move') {
+        c2.x = clamp(orig.x + dx, 0, W - orig.w);
+        c2.y = clamp(orig.y + dy, 0, H - orig.h);
+      } else {
+        if (mode.indexOf('w') >= 0) {
+          var nx = clamp(orig.x + dx, 0, orig.x + orig.w - MIN);
+          c2.w = orig.w + (orig.x - nx);
+          c2.x = nx;
+        }
+        if (mode.indexOf('e') >= 0) c2.w = clamp(orig.w + dx, MIN, W - orig.x);
+        if (mode.indexOf('n') >= 0) {
+          var ny = clamp(orig.y + dy, 0, orig.y + orig.h - MIN);
+          c2.h = orig.h + (orig.y - ny);
+          c2.y = ny;
+        }
+        if (mode.indexOf('s') >= 0) c2.h = clamp(orig.h + dy, MIN, H - orig.y);
+      }
+      v2gState.crop = {
+        x: Math.round(c2.x), y: Math.round(c2.y),
+        w: Math.round(c2.w), h: Math.round(c2.h)
+      };
       v2gDraw();
     });
-    function end(e) {
+    function end() {
       if (!mode) return;
-      var p = pos(e);
-      if (mode === 'draw' && (Math.abs(p.x - sx) < 8 || Math.abs(p.y - sy) < 8)) {
-        /* 너무 작은 드래그 = 실수 클릭 — 기존 크롭을 그대로 유지한다 */
-        v2gState.crop = prevCrop;
-      }
-      if (v2gState.crop && (v2gState.crop.w < 16 || v2gState.crop.h < 16)) v2gState.crop = prevCrop;
       mode = null;
       v2gDraw();
       v2gMarkStale();
@@ -3514,9 +3633,95 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     v2gCanvas.addEventListener('pointercancel', end);
   })();
   $('#v2gCropReset').addEventListener('click', function () {
-    v2gState.crop = null;
+    if (!v2gState.W) return;
+    v2gState.crop = { x: 0, y: 0, w: v2gState.W, h: v2gState.H };
     v2gDraw();
     v2gMarkStale();
+  });
+
+  /* 필름스트립: 현재 뷰 윈도를 10칸으로 나눠 순차 seek — 확대 보기에서도 재사용 */
+  function v2gBuildStrip() {
+    var seq = ++v2gState.stripSeq;
+    var lseq = v2gState.seq;
+    v2gState.stripDone = false;
+    var sc2 = $('#v2gStripCanvas');
+    var scx = sc2.getContext('2d');
+    scx.fillStyle = '#0d1117';
+    scx.fillRect(0, 0, sc2.width, sc2.height);
+    var a = v2gState.view.a, b = v2gState.view.b || v2gState.dur;
+    var cells = 10, cw = sc2.width / cells;
+    var ci = 0;
+    (function nextCell() {
+      if (seq !== v2gState.stripSeq || lseq !== v2gState.seq || v2gState.busy) return;
+      if (ci >= cells) {
+        v2gState.stripDone = true;
+        v2gSeek(v2gState.t0);
+        return;
+      }
+      var t = a + (b - a) * (ci + 0.5) / cells;
+      v2gSeek(t).then(function () {
+        if (seq !== v2gState.stripSeq || lseq !== v2gState.seq || v2gState.busy) return;
+        var k = Math.max(cw / v2gState.W, sc2.height / v2gState.H);
+        var w2 = v2gState.W * k, h2 = v2gState.H * k;
+        scx.drawImage(v2gVideo, ci * cw + (cw - w2) / 2, (sc2.height - h2) / 2, w2, h2);
+        ci++;
+        nextCell();
+      });
+    })();
+  }
+
+  /* 좁게 잡은 구간을 확 펼쳐 미세 조정 — 뷰 윈도를 선택 구간 ±30%로 줄인다 */
+  $('#v2gZoomBtn').addEventListener('click', function () {
+    if (!v2gState.dur || v2gState.busy) return;
+    v2gPrevStop();
+    if (!v2gState.zoomed) {
+      var len = v2gState.t1 - v2gState.t0;
+      var pad = Math.max(0.3, len * 0.3);
+      v2gState.view = { a: Math.max(0, v2gState.t0 - pad), b: Math.min(v2gState.dur, v2gState.t1 + pad) };
+      v2gState.zoomed = true;
+      this.textContent = '↩ 전체 보기';
+    } else {
+      v2gState.view = { a: 0, b: v2gState.dur };
+      v2gState.zoomed = false;
+      this.textContent = '🔍 구간 확대 (미세 조정)';
+    }
+    v2gSyncTrim();
+    v2gBuildStrip();
+  });
+
+  /* 구간 미리보기 — 선택 구간을 반복 재생하며 크롭 프레임까지 겹쳐 보여준다 */
+  var v2gPrev = { on: false, raf: 0 };
+  function v2gPrevStop() {
+    if (!v2gPrev.on) return;
+    v2gPrev.on = false;
+    if (v2gPrev.raf) cancelAnimationFrame(v2gPrev.raf);
+    v2gPrev.raf = 0;
+    try { v2gVideo.pause(); } catch (e) {}
+    $('#v2gPrevBtn').textContent = '▶ 구간 미리보기';
+    v2gDraw();
+    /* 미리보기가 스트립 생성을 끊었었다면 이어서 다시 그린다 */
+    if (v2gState.dur && !v2gState.stripDone && !v2gState.busy) v2gBuildStrip();
+  }
+  function v2gPrevStart() {
+    if (v2gState.busy || !v2gState.dur || v2gPrev.on) return;
+    v2gState.stripSeq++;   /* 진행 중 스트립 생성과의 seek 경쟁 방지 */
+    v2gPrev.on = true;
+    $('#v2gPrevBtn').textContent = '⏸ 미리보기 멈춤';
+    v2gSeek(v2gState.t0).then(function () {
+      if (!v2gPrev.on) return;
+      var p = v2gVideo.play();
+      if (p && p.catch) p.catch(function () {});
+      (function loop() {
+        if (!v2gPrev.on) return;
+        if (v2gVideo.currentTime >= v2gState.t1 - 0.02 || v2gVideo.ended) v2gVideo.currentTime = v2gState.t0;
+        v2gDraw();
+        v2gPrev.raf = requestAnimationFrame(loop);
+      })();
+    });
+  }
+  $('#v2gPrevBtn').addEventListener('click', function () {
+    if (v2gPrev.on) v2gPrevStop();
+    else v2gPrevStart();
   });
 
   function v2gLoad(file) {
@@ -3572,27 +3777,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       $('#v2gName').placeholder = baseName(file.name || 'video');
       stat.textContent = v2gState.W + '×' + v2gState.H + ' · ' + v2gFmtT(v2gState.dur) +
         (v2gState.dur > 5 ? ' — 기본 구간 5초, 핸들로 조절하세요' : '');
+      v2gState.view = { a: 0, b: v2gState.dur };
+      v2gState.zoomed = false;
+      $('#v2gZoomBtn').textContent = '🔍 구간 확대 (미세 조정)';
+      v2gState.crop = { x: 0, y: 0, w: v2gState.W, h: v2gState.H };   /* 전체 프레임에서 시작 */
       v2gSyncTrim();
-      /* 필름스트립: 10칸 순차 seek */
-      var sc2 = $('#v2gStripCanvas');
-      var scx = sc2.getContext('2d');
-      scx.fillStyle = '#0d1117';
-      scx.fillRect(0, 0, sc2.width, sc2.height);
-      var cells = 10, cw = sc2.width / cells;
-      var ci = 0;
-      (function nextCell() {
-        if (seq !== v2gState.seq) return;
-        if (ci >= cells) { v2gSeek(0); return; }
-        var t = v2gState.dur * (ci + 0.5) / cells;
-        v2gSeek(t).then(function () {
-          if (seq !== v2gState.seq) return;
-          var k = Math.max(cw / v2gState.W, sc2.height / v2gState.H);
-          var w2 = v2gState.W * k, h2 = v2gState.H * k;
-          scx.drawImage(v2gVideo, ci * cw + (cw - w2) / 2, (sc2.height - h2) / 2, w2, h2);
-          ci++;
-          nextCell();
-        });
-      })();
+      v2gBuildStrip();
     };
     v2gVideo.addEventListener('loadedmetadata', onMeta);
     v2gVideo.onerror = function () {
@@ -3608,6 +3798,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     v2gState.busy = true;
     /* 만들기용 seq는 로드용과 분리 — 만들기가 필름스트립 생성을 죽이지 않는다.
        로드/비우기는 둘 다 올려 진행 중인 만들기를 무효화한다. */
+    v2gPrevStop();
     var mseq = ++v2gState.makeSeq;
     var lseq = v2gState.seq;
     function stale() { return mseq !== v2gState.makeSeq || lseq !== v2gState.seq; }
@@ -3661,12 +3852,17 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     }).catch(function () {
       if (!stale()) { stat.textContent = ''; toast('GIF 만들기에 실패했어요.'); }
     }).then(function () {
-      if (!stale()) v2gState.busy = false;
+      if (!stale()) {
+        v2gState.busy = false;
+        /* 만들기가 필름스트립 생성을 중단시켰다면 다시 그린다 */
+        if (!v2gState.stripDone) v2gBuildStrip();
+      }
       btn.disabled = false;
     });
   }
 
   function v2gClearAll(resetStat) {
+    v2gPrevStop();
     v2gState.seq++;
     v2gState.makeSeq++;
     v2gState.busy = false;
@@ -10914,6 +11110,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     get gifState() { return gifState; },
     get gifMode() { return gifMode; },
     v2gLoad: function (f) { return v2gLoad(f); },
+    v2gBuildStrip: function () { return v2gBuildStrip(); },
+    v2gPrevStart: function () { return v2gPrevStart(); },
+    v2gPrevStop: function () { return v2gPrevStop(); },
+    gifPrevStart: function () { return gifPrevStart(); },
+    gifPrevStop: function () { return gifPrevStop(); },
+    get v2gVideoEl() { return v2gVideo; },
     v2gMakeGif: function () { return v2gMakeGif(); },
     get v2gState() { return v2gState; },
     doneEntries: function () { return doneEntries(); },
