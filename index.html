@@ -1240,10 +1240,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             <canvas id="gifPrevCanvas" class="gif-result" style="cursor:default"></canvas>
             <p class="muted" style="font-size:12.5px">지금 설정(순서·전환 간격)대로 도는 미리보기예요 — 색감은 실제 GIF와 조금 다를 수 있어요</p>
           </div>
-          <div class="btn-row">
+          <div class="btn-row" style="align-items:center">
             <button class="btn primary" id="gifMake" type="button">GIF 만들기</button>
             <button class="btn" id="gifPrevBtn" type="button">▶ 미리보기</button>
             <button class="btn" id="gifClear" type="button">트레이 비우기</button>
+            <span class="muted" id="gifEst" role="status" style="font-size:13px"></span>
           </div>
           <p class="muted" id="gifStat" role="status"></p>
           <div id="gifResultWrap" hidden>
@@ -1272,8 +1273,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <div class="v2g-wrap svg-opts">
             <canvas id="v2gCanvas"></canvas>
           </div>
-          <p class="field-label" style="margin-top:14px">구간 <span class="sub">— 양쪽 핸들을 끌어 시작·끝을 정해요 (영상 편집툴처럼)</span>
-            <button type="button" class="chip" id="v2gZoomBtn" style="margin-left:8px">🔍 구간 확대 (미세 조정)</button>
+          <p class="field-label" style="margin-top:14px">구간 <span class="sub">— 양쪽 핸들을 끌어 시작·끝을 정해요 · 좁게 잡으면 자동으로 확대돼 미세 조정할 수 있어요</span>
+            <button type="button" class="chip" id="v2gZoomBtn" style="margin-left:8px" hidden>↩ 전체 보기</button>
             <button type="button" class="chip" id="v2gPrevBtn">▶ 구간 미리보기</button>
           </p>
           <div class="v2g-strip" id="v2gStrip">
@@ -1298,6 +1299,15 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
               </div>
             </div>
             <div class="field">
+              <span class="field-label">재생 속도 <span class="sub">— GIF가 도는 빠르기 (미리보기에도 적용)</span></span>
+              <div class="chips" id="v2gSpeedChips">
+                <button type="button" class="chip" data-v2gspeed="0.5">0.5×</button>
+                <button type="button" class="chip on" data-v2gspeed="1">1×</button>
+                <button type="button" class="chip" data-v2gspeed="1.5">1.5×</button>
+                <button type="button" class="chip" data-v2gspeed="2">2×</button>
+              </div>
+            </div>
+            <div class="field">
               <label class="field-label" for="v2gName">파일 이름 <span class="sub">— 비우면 영상 이름</span></label>
               <input type="text" id="v2gName" maxlength="60" placeholder="">
             </div>
@@ -1319,9 +1329,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
               </div>
             </div>
           </div>
-          <div class="btn-row">
+          <div class="btn-row" style="align-items:center">
             <button class="btn primary" id="v2gMake" type="button">GIF 만들기</button>
             <button class="btn" id="v2gClear" type="button">비우기</button>
+            <span class="muted" id="v2gEst" role="status" style="font-size:13px"></span>
           </div>
           <p class="muted" id="v2gStat" role="status"></p>
           <div id="v2gResultWrap" hidden>
@@ -3127,11 +3138,83 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     });
   }
 
+  /* 표본 프레임 몇 장을 실제로 인코딩해 전체 용량을 외삽 — 공식 추정이 아니라 실측 기반.
+     GIF 압축률은 내용에 따라 크게 달라서 ±30% 안내를 붙인다. */
+  function gifEstimateFrom(sampleFrames, W, H, colors, totalFrames) {
+    var payloads = [];
+    var chain = Promise.resolve();
+    sampleFrames.forEach(function (fr) {
+      chain = chain.then(function () {
+        return gifEncode([fr], W, H, { colors: colors }).then(function (b) {
+          payloads.push(b.size);
+        });
+      });
+    });
+    return chain.then(function () {
+      if (!payloads.length) return 0;
+      var avg = payloads.reduce(function (a, b) { return a + b; }, 0) / payloads.length;
+      var fixed = 32 + 3 * colors;   /* 헤더·GCT 등 1회 비용 근사 */
+      var per = Math.max(120, avg - fixed);
+      return Math.round(fixed + per * totalFrames);
+    });
+  }
+
   /* ---------- 이미지 → GIF ---------- */
   var gifState = { items: [], interval: 0.5, size: 480, colors: 256, busy: false, seq: 0, result: null };
 
   function gifMarkStale() {
     if (gifState.result) $('#gifStat').textContent = '설정이 바뀌었어요 — [GIF 만들기]를 다시 눌러 주세요.';
+  }
+  var gifEstTimer = 0, gifEstSeq = 0;
+  function gifScheduleEst() {
+    clearTimeout(gifEstTimer);
+    if (!gifState.items.length) { $('#gifEst').textContent = ''; return; }
+    if (gifState.busy) return;
+    $('#gifEst').textContent = '예상 용량 계산 중…';
+    gifEstTimer = setTimeout(function () {
+      var seq = ++gifEstSeq;
+      var items = gifState.items.slice();
+      if (!items.length) { $('#gifEst').textContent = ''; return; }
+      /* 표본: 처음·중간·끝 (중복 제거) */
+      var picks = [items[0], items[items.length >> 1], items[items.length - 1]]
+        .filter(function (v, i, arr) { return arr.indexOf(v) === i; });
+      var sizeS = gifState.size, colorsS = gifState.colors, total = items.length;
+      var W = 0, H = 0, frames = [];
+      var chain = Promise.resolve();
+      picks.forEach(function (item) {
+        chain = chain.then(function () {
+          if (seq !== gifEstSeq) return;
+          return decodeToSource(item.file).then(function (dec) {
+            var sw = srcW(dec.source) || 512, sh = srcH(dec.source) || 512;
+            if (!W) {
+              var k = Math.min(1, sizeS / Math.max(sw, sh));
+              W = Math.max(2, Math.round(sw * k));
+              H = Math.max(2, Math.round(sh * k));
+            }
+            var c = document.createElement('canvas');
+            c.width = W; c.height = H;
+            var x = c.getContext('2d', { willReadFrequently: true });
+            x.fillStyle = '#ffffff';
+            x.fillRect(0, 0, W, H);
+            var k2 = Math.min(W / sw, H / sh);
+            x.drawImage(dec.source, Math.round((W - sw * k2) / 2), Math.round((H - sh * k2) / 2),
+              Math.max(1, Math.round(sw * k2)), Math.max(1, Math.round(sh * k2)));
+            if (dec.url) URL.revokeObjectURL(dec.url);
+            if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+            frames.push({ data: x.getImageData(0, 0, W, H).data, delay: 100 });
+          });
+        });
+      });
+      chain.then(function () {
+        if (seq !== gifEstSeq || !frames.length) return;
+        return gifEstimateFrom(frames, W, H, colorsS, total).then(function (est) {
+          if (seq !== gifEstSeq) return;
+          $('#gifEst').textContent = '예상 용량 약 ' + fmtBytes(est) + ' (±30%)';
+        });
+      }).catch(function () {
+        if (seq === gifEstSeq) $('#gifEst').textContent = '';
+      });
+    }, 400);
   }
   function gifRenderTray() {
     var ul = $('#gifTray');
@@ -3175,6 +3258,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#gifCount').textContent = gifState.items.length ? gifState.items.length + '장' : '';
     $('#gifBody').hidden = gifState.items.length === 0;
     $('#gifName').placeholder = gifState.items.length ? baseName(gifState.items[0].file.name || 'animation') : '';
+    gifScheduleEst();
   }
   /* PDF 큐와 같은 패턴 — insertBefore로 요소가 이동해도 문서 레벨 리스너로 추적 */
   function gifBindDrag(handle, li) {
@@ -3304,10 +3388,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     gifMarkStale();
   });
   var gifBusy = function () { return gifState.busy; };
-  gifBindChips('#gifSizeChips', function (b) { gifState.size = parseInt(b.dataset.gifsize, 10); gifMarkStale(); }, gifBusy);
-  gifBindChips('#gifColorChips', function (b) { gifState.colors = parseInt(b.dataset.gifcolors, 10); gifMarkStale(); }, gifBusy);
+  gifBindChips('#gifSizeChips', function (b) { gifState.size = parseInt(b.dataset.gifsize, 10); gifMarkStale(); gifScheduleEst(); }, gifBusy);
+  gifBindChips('#gifColorChips', function (b) { gifState.colors = parseInt(b.dataset.gifcolors, 10); gifMarkStale(); gifScheduleEst(); }, gifBusy);
   $('#gifMake').addEventListener('click', gifMakeFromImages);
   $('#gifClear').addEventListener('click', function () {
+    gifEstSeq++;
+    clearTimeout(gifEstTimer);
+    $('#gifEst').textContent = '';
     gifPrevStop(true);
     gifState.seq++;
     gifState.busy = false;
@@ -3399,7 +3486,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   /* ---------- 영상 → GIF ---------- */
   var v2gState = {
     file: null, url: null, W: 0, H: 0, dur: 0,
-    crop: null, t0: 0, t1: 0, fps: 10, size: 480, colors: 256,
+    crop: null, t0: 0, t1: 0, fps: 10, speed: 1, size: 480, colors: 256,
     busy: false, seq: 0, makeSeq: 0, result: null, dispW: 0, dispH: 0,
     view: { a: 0, b: 0 }, zoomed: false, stripSeq: 0
   };
@@ -3415,6 +3502,56 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
   function v2gMarkStale() {
     if (v2gState.result) $('#v2gStat').textContent = '설정이 바뀌었어요 — [GIF 만들기]를 다시 눌러 주세요.';
+  }
+  var v2gEstTimer = 0, v2gEstSeq = 0;
+  function v2gScheduleEst() {
+    clearTimeout(v2gEstTimer);
+    if (!v2gState.dur) { $('#v2gEst').textContent = ''; return; }
+    if (v2gState.busy || v2gPrev.on) return;   /* 만들기·미리보기와 seek 경쟁 금지 */
+    $('#v2gEst').textContent = '예상 용량 계산 중…';
+    v2gEstTimer = setTimeout(function () {
+      if (v2gState.busy || v2gPrev.on) { $('#v2gEst').textContent = ''; return; }
+      if (!v2gState.stripDone) { v2gScheduleEst(); return; }   /* 스트립 생성 끝난 뒤에 */
+      var seq = ++v2gEstSeq;
+      var lseq = v2gState.seq;
+      function stale() {
+        return seq !== v2gEstSeq || lseq !== v2gState.seq || v2gState.busy || v2gPrev.on;
+      }
+      var cr = v2gState.crop || { x: 0, y: 0, w: v2gState.W, h: v2gState.H };
+      var k = Math.min(1, v2gState.size / Math.max(cr.w, cr.h));
+      var W = Math.max(2, Math.round(cr.w * k));
+      var H = Math.max(2, Math.round(cr.h * k));
+      var t0s = v2gState.t0, t1s = v2gState.t1, colorsS = v2gState.colors;
+      var total = Math.min(V2G_MAX_FRAMES, Math.max(1, Math.floor((t1s - t0s) * v2gState.fps) + 1));
+      var times = [t0s, (t0s + t1s) / 2, t1s];
+      var c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      var x = c.getContext('2d', { willReadFrequently: true });
+      var frames = [];
+      var chain = Promise.resolve();
+      times.forEach(function (t) {
+        chain = chain.then(function () {
+          if (stale()) return;
+          return v2gSeek(t).then(function () {
+            if (stale()) return;
+            x.fillStyle = '#ffffff';
+            x.fillRect(0, 0, W, H);
+            x.drawImage(v2gVideo, cr.x, cr.y, cr.w, cr.h, 0, 0, W, H);
+            frames.push({ data: x.getImageData(0, 0, W, H).data, delay: 100 });
+          });
+        });
+      });
+      chain.then(function () {
+        if (stale() || !frames.length) return;
+        return gifEstimateFrom(frames, W, H, colorsS, total).then(function (est) {
+          if (stale()) return;
+          $('#v2gEst').textContent = '예상 용량 약 ' + fmtBytes(est) + ' (±30%)';
+          v2gSeek(t0s);   /* 재생 헤드를 시작점으로 되돌린다 */
+        });
+      }).catch(function () {
+        if (seq === v2gEstSeq) $('#v2gEst').textContent = '';
+      });
+    }, 500);
   }
   function v2gSeek(t) {
     return new Promise(function (res) {
@@ -3522,6 +3659,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         document.removeEventListener('pointerup', up);
         document.removeEventListener('pointercancel', up);
         v2gSeek(isStart ? v2gState.t0 : v2gState.t1);
+        v2gAutoFrame();   /* 놓는 순간 구간에 맞춰 자동 확대/복귀 */
+        v2gScheduleEst();
       };
       document.addEventListener('pointermove', move);
       document.addEventListener('pointerup', up);
@@ -3628,6 +3767,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       mode = null;
       v2gDraw();
       v2gMarkStale();
+      v2gScheduleEst();
     }
     v2gCanvas.addEventListener('pointerup', end);
     v2gCanvas.addEventListener('pointercancel', end);
@@ -3656,6 +3796,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (ci >= cells) {
         v2gState.stripDone = true;
         v2gSeek(v2gState.t0);
+        v2gScheduleEst();   /* 스트립이 끝나면 예상 용량 갱신 */
         return;
       }
       var t = a + (b - a) * (ci + 0.5) / cells;
@@ -3670,21 +3811,37 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     })();
   }
 
-  /* 좁게 잡은 구간을 확 펼쳐 미세 조정 — 뷰 윈도를 선택 구간 ±30%로 줄인다 */
+  function v2gSyncZoomBtn() {
+    $('#v2gZoomBtn').hidden = !v2gState.zoomed;
+  }
+  /* 핸들을 놓는 순간 선택 구간에 맞춰 자동으로 확대/복귀 프레이밍.
+     구간이 뷰의 35% 미만이면 확 펼치고(±30%, 최소 0.3s), 85%를 넘치면 넓힌다.
+     계산된 뷰가 전체의 85% 이상이면 그냥 전체 보기로. */
+  function v2gAutoFrame() {
+    if (!v2gState.dur || v2gState.busy) return;
+    var sel = v2gState.t1 - v2gState.t0;
+    var a = v2gState.view.a, b = v2gState.view.b || v2gState.dur;
+    var span = Math.max(0.001, b - a);
+    var frac = sel / span;
+    if (frac >= 0.35 && frac <= 0.85) return;   /* 뷰에 보기 좋게 차 있으면 그대로 */
+    /* pad를 구간에 비례시켜(하한 0.05s) 좁힐 때마다 연속해서 더 깊이 확대된다 */
+    var pad = Math.max(0.05, sel * 0.3);
+    var na = Math.max(0, v2gState.t0 - pad);
+    var nb = Math.min(v2gState.dur, v2gState.t1 + pad);
+    if (nb - na >= v2gState.dur * 0.85) { na = 0; nb = v2gState.dur; }
+    if (Math.abs(na - a) < span * 0.02 && Math.abs(nb - b) < span * 0.02) return;
+    v2gState.view = { a: na, b: nb };
+    v2gState.zoomed = !(na === 0 && nb === v2gState.dur);
+    v2gSyncZoomBtn();
+    v2gSyncTrim();
+    v2gBuildStrip();
+  }
   $('#v2gZoomBtn').addEventListener('click', function () {
     if (!v2gState.dur || v2gState.busy) return;
     v2gPrevStop();
-    if (!v2gState.zoomed) {
-      var len = v2gState.t1 - v2gState.t0;
-      var pad = Math.max(0.3, len * 0.3);
-      v2gState.view = { a: Math.max(0, v2gState.t0 - pad), b: Math.min(v2gState.dur, v2gState.t1 + pad) };
-      v2gState.zoomed = true;
-      this.textContent = '↩ 전체 보기';
-    } else {
-      v2gState.view = { a: 0, b: v2gState.dur };
-      v2gState.zoomed = false;
-      this.textContent = '🔍 구간 확대 (미세 조정)';
-    }
+    v2gState.view = { a: 0, b: v2gState.dur };
+    v2gState.zoomed = false;
+    v2gSyncZoomBtn();
     v2gSyncTrim();
     v2gBuildStrip();
   });
@@ -3697,6 +3854,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (v2gPrev.raf) cancelAnimationFrame(v2gPrev.raf);
     v2gPrev.raf = 0;
     try { v2gVideo.pause(); } catch (e) {}
+    try { v2gVideo.playbackRate = 1; } catch (e) {}
     $('#v2gPrevBtn').textContent = '▶ 구간 미리보기';
     v2gDraw();
     /* 미리보기가 스트립 생성을 끊었었다면 이어서 다시 그린다 */
@@ -3709,6 +3867,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#v2gPrevBtn').textContent = '⏸ 미리보기 멈춤';
     v2gSeek(v2gState.t0).then(function () {
       if (!v2gPrev.on) return;
+      v2gVideo.playbackRate = v2gState.speed;   /* 미리보기도 GIF와 같은 배속으로 */
       var p = v2gVideo.play();
       if (p && p.catch) p.catch(function () {});
       (function loop() {
@@ -3779,7 +3938,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         (v2gState.dur > 5 ? ' — 기본 구간 5초, 핸들로 조절하세요' : '');
       v2gState.view = { a: 0, b: v2gState.dur };
       v2gState.zoomed = false;
-      $('#v2gZoomBtn').textContent = '🔍 구간 확대 (미세 조정)';
+      v2gSyncZoomBtn();
       v2gState.crop = { x: 0, y: 0, w: v2gState.W, h: v2gState.H };   /* 전체 프레임에서 시작 */
       v2gSyncTrim();
       v2gBuildStrip();
@@ -3807,7 +3966,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     btn.disabled = true;
     /* 시작 시점 설정을 전부 스냅샷 — 만드는 도중 조작이 결과를 오염시키지 않게 */
     var cr = v2gState.crop || { x: 0, y: 0, w: v2gState.W, h: v2gState.H };
-    var t0s = v2gState.t0, fpsS = v2gState.fps, colorsS = v2gState.colors;
+    var t0s = v2gState.t0, fpsS = v2gState.fps, colorsS = v2gState.colors, speedS = v2gState.speed;
     var k = Math.min(1, v2gState.size / Math.max(cr.w, cr.h));
     var W = Math.max(2, Math.round(cr.w * k));
     var H = Math.max(2, Math.round(cr.h * k));
@@ -3817,7 +3976,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       total = V2G_MAX_FRAMES;
       toast('프레임이 많아 앞 ' + Math.round(V2G_MAX_FRAMES / fpsS) + '초까지만 담아요.');
     }
-    var delay = 1000 / fpsS;
+    var delay = 1000 / fpsS / speedS;   /* 배속 — 프레임은 그대로, 도는 속도만 변한다 */
     var c = document.createElement('canvas');
     c.width = W; c.height = H;
     var x = c.getContext('2d', { willReadFrequently: true });
@@ -3862,6 +4021,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
 
   function v2gClearAll(resetStat) {
+    v2gEstSeq++;
+    clearTimeout(v2gEstTimer);
+    $('#v2gEst').textContent = '';
     v2gPrevStop();
     v2gState.seq++;
     v2gState.makeSeq++;
@@ -3889,9 +4051,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#v2gFile').click(); }
   });
   var v2gBusy = function () { return v2gState.busy; };
-  gifBindChips('#v2gFpsChips', function (b) { v2gState.fps = parseInt(b.dataset.v2gfps, 10); v2gSyncTrim(); v2gMarkStale(); }, v2gBusy);
-  gifBindChips('#v2gSizeChips', function (b) { v2gState.size = parseInt(b.dataset.gifsize, 10); v2gMarkStale(); }, v2gBusy);
-  gifBindChips('#v2gColorChips', function (b) { v2gState.colors = parseInt(b.dataset.gifcolors, 10); v2gMarkStale(); }, v2gBusy);
+  gifBindChips('#v2gFpsChips', function (b) { v2gState.fps = parseInt(b.dataset.v2gfps, 10); v2gSyncTrim(); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
+  gifBindChips('#v2gSpeedChips', function (b) { v2gState.speed = parseFloat(b.dataset.v2gspeed); v2gMarkStale(); }, v2gBusy);
+  gifBindChips('#v2gSizeChips', function (b) { v2gState.size = parseInt(b.dataset.gifsize, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
+  gifBindChips('#v2gColorChips', function (b) { v2gState.colors = parseInt(b.dataset.gifcolors, 10); v2gMarkStale(); v2gScheduleEst(); }, v2gBusy);
   $('#v2gMake').addEventListener('click', v2gMakeGif);
   $('#v2gClear').addEventListener('click', function () { v2gClearAll(); });
   $('#v2gSave').addEventListener('click', function () {
