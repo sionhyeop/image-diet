@@ -3387,7 +3387,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             return gifAttempt(attemptNo + 1);
           }
           gifSetResult(gifState, $('#gifResultImg'), $('#gifResultInfo'), $('#gifResultWrap'), blob, W, H, frames.length);
-          stat.textContent = '✅ 완성 — ' + frames.length + '프레임 · ' + fmtBytes(blob.size) +
+          stat.textContent = '✅ 완성 — ' + (Math.round(frames.length * intervalS * 10) / 10) + '초 루프(무한 반복) · ' + frames.length + '프레임 · ' + fmtBytes(blob.size) +
             (fitScale < 1 ? ' · 3MB 제한에 맞춰 크기를 ' + Math.round(fitScale * 100) + '%로 줄였어요' : '');
         });
       });
@@ -4105,7 +4105,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             return v2gAttempt(attemptNo + 1);
           }
           gifSetResult(v2gState, $('#v2gResultImg'), $('#v2gResultInfo'), $('#v2gResultWrap'), blob, W, H, frames.length);
-          stat.textContent = '✅ 완성 — ' + frames.length + '프레임 · ' + fmtBytes(blob.size) +
+          stat.textContent = '✅ 완성 — ' + (Math.round(frames.length * delay / 100) / 10) + '초 루프(무한 반복) · ' + frames.length + '프레임 · ' + fmtBytes(blob.size) +
             (fitScale < 1 ? ' · 3MB 제한에 맞춰 크기를 ' + Math.round(fitScale * 100) + '%로 줄였어요' : '');
         });
       });
