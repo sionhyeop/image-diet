@@ -1230,7 +1230,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           </div>
           <div id="gifPrevWrap" hidden style="margin-top:12px">
             <canvas id="gifPrevCanvas" class="gif-result" style="cursor:default"></canvas>
-            <p class="muted" style="font-size:12.5px">지금 설정(순서·전환 간격)대로 도는 미리보기예요 — 색감은 실제 GIF와 조금 다를 수 있어요</p>
+            <p class="muted" id="gifPrevCap" style="font-size:12.5px">지금 설정(순서·전환 간격)대로 도는 미리보기예요 — 색감은 실제 GIF와 조금 다를 수 있어요</p>
           </div>
           <div class="btn-row" style="align-items:center">
             <button class="btn primary" id="gifMake" type="button">GIF 만들기</button>
@@ -1268,6 +1268,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <p class="field-label" style="margin-top:14px">구간 <span class="sub">— 양쪽 핸들을 끌어 시작·끝을 정해요 · 좁게 잡으면 자동으로 확대돼 미세 조정할 수 있어요</span>
             <button type="button" class="chip" id="v2gZoomBtn" style="margin-left:8px" hidden>↩ 전체 보기</button>
             <button type="button" class="chip" id="v2gPrevBtn">▶ 구간 미리보기</button>
+            <span class="muted" id="v2gPrevCap" style="font-size:12.5px"></span>
           </p>
           <div class="v2g-strip" id="v2gStrip">
             <canvas id="v2gStripCanvas" width="640" height="48"></canvas>
@@ -3273,6 +3274,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#gifBody').hidden = gifState.items.length === 0;
     $('#gifName').placeholder = gifState.items.length ? baseName(gifState.items[0].file.name || 'animation') : '';
     gifScheduleEst();
+    gifPrevCapUpdate();
   }
   /* PDF 큐와 같은 패턴 — insertBefore로 요소가 이동해도 문서 레벨 리스너로 추적 */
   function gifBindDrag(handle, li) {
@@ -3413,6 +3415,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#gifIntervalOut').textContent = this.value + '초 (초당 ' + (Math.round(10 / gifState.interval) / 10) + '장)';
     gifMarkStale();
     gifEstLine();   /* 총 길이는 즉시 반영 (용량은 간격과 무관) */
+    gifPrevCapUpdate();
   });
   var gifBusy = function () { return gifState.busy; };
   gifBindChips('#gifSizeChips', function (b) { gifState.size = parseInt(b.dataset.gifsize, 10); gifMarkStale(); gifScheduleEst(); }, gifBusy);
@@ -3434,6 +3437,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
   /* 트레이 미리보기 — 지금 순서·간격대로 도는 애니메이션 (인코딩 없이) */
   var gifPrev = { on: false, timer: 0, idx: 0 };
+  function gifPrevCapUpdate() {
+    $('#gifPrevCap').textContent = (Math.round(gifState.items.length * gifState.interval * 10) / 10) +
+      '초 루프 — 지금 설정(순서·전환 간격)대로 도는 미리보기예요 · 색감은 실제 GIF와 조금 다를 수 있어요';
+  }
   function gifPrevStop(hide) {
     if (gifPrev.on) {
       gifPrev.on = false;
@@ -3946,6 +3953,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     try { v2gVideo.pause(); } catch (e) {}
     try { v2gVideo.playbackRate = 1; } catch (e) {}
     $('#v2gPrevBtn').textContent = '▶ 구간 미리보기';
+    $('#v2gPrevCap').textContent = '';
     v2gDraw();
     /* 미리보기가 스트립 생성을 끊었었다면 이어서 다시 그린다 */
     if (v2gState.dur && !v2gState.stripDone && !v2gState.busy) v2gBuildStrip();
@@ -3955,6 +3963,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     v2gState.stripSeq++;   /* 진행 중 스트립 생성과의 seek 경쟁 방지 */
     v2gPrev.on = true;
     $('#v2gPrevBtn').textContent = '⏸ 미리보기 멈춤';
+    $('#v2gPrevCap').textContent =
+      (Math.round((v2gState.t1 - v2gState.t0) / v2gState.speed * 10) / 10) + '초 루프 반복 중';
     v2gSeek(v2gState.t0).then(function () {
       if (!v2gPrev.on) return;
       v2gVideo.playbackRate = v2gState.speed;   /* 미리보기도 GIF와 같은 배속으로 */
