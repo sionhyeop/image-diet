@@ -1193,14 +1193,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     <div class="card b64-card">
       <h2>GIF</h2>
       <div class="field" id="gifModeField" style="margin-bottom:12px">
-        <div class="seg-slide" id="gifModeSeg" role="tablist" aria-label="이미지→GIF / 영상→GIF 전환">
+        <div class="seg-slide right" id="gifModeSeg" role="tablist" aria-label="이미지→GIF / 영상→GIF 전환">
           <div class="seg-thumb" aria-hidden="true"></div>
-          <button type="button" class="seg-opt on" data-gifmode="img" role="tab" aria-selected="true">🖼️ 이미지 → GIF</button>
-          <button type="button" class="seg-opt" data-gifmode="video" role="tab" aria-selected="false">🎬 영상 → GIF</button>
+          <button type="button" class="seg-opt" data-gifmode="img" role="tab" aria-selected="false">🖼️ 이미지 → GIF</button>
+          <button type="button" class="seg-opt on" data-gifmode="video" role="tab" aria-selected="true">🎬 영상 → GIF</button>
         </div>
       </div>
 
-      <div id="img2gifBody">
+      <div id="img2gifBody" hidden>
         <div class="dropzone dropzone-sm" id="gifDropzone" role="button" tabindex="0" aria-label="GIF로 만들 이미지 선택 또는 드래그하여 추가">
           <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
           <p class="dz-hint">여러 장이 넣은 순서대로 도는 GIF가 돼요 · ⠿를 끌면 순서 변경 · Ctrl+V 붙여넣기 지원</p>
@@ -1251,7 +1251,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         </div>
       </div>
 
-      <div id="vid2gifBody" hidden>
+      <div id="vid2gifBody">
         <div class="dropzone dropzone-sm" id="v2gDropzone" role="button" tabindex="0" aria-label="GIF로 만들 영상 선택 또는 드래그">
           <p class="dz-main">영상을 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
           <p class="dz-hint">MP4·WebM 등 브라우저가 재생하는 영상 — 변환은 전부 내 브라우저 안에서</p>
@@ -3113,7 +3113,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
 
   /* ---------- GIF 탭 공통 ---------- */
-  var gifMode = 'img';
+  var gifMode = 'video';   /* 기본 모드 — 영상 → GIF */
   function syncGifMode() {
     var seg = $('#gifModeSeg');
     seg.classList.toggle('right', gifMode === 'video');
