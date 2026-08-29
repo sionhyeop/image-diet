@@ -1107,13 +1107,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     <div class="card b64-card">
       <h2>PDF</h2>
       <div class="field" id="pdfModeField" style="margin-bottom:12px">
-        <div class="seg-slide" id="pdfModeSeg" role="tablist" aria-label="이미지→PDF / PDF→이미지 전환">
+        <div class="seg-slide right" id="pdfModeSeg" role="tablist" aria-label="이미지→PDF / PDF→이미지 전환">
           <div class="seg-thumb" aria-hidden="true"></div>
-          <button type="button" class="seg-opt on" data-pdfmode="img2pdf" role="tab" aria-selected="true">🖼️ 이미지 → PDF</button>
-          <button type="button" class="seg-opt" data-pdfmode="pdf2img" role="tab" aria-selected="false">📄 PDF → 이미지</button>
+          <button type="button" class="seg-opt" data-pdfmode="img2pdf" role="tab" aria-selected="false">🖼️ 이미지 → PDF</button>
+          <button type="button" class="seg-opt on" data-pdfmode="pdf2img" role="tab" aria-selected="true">📄 PDF → 이미지</button>
         </div>
       </div>
-      <div id="img2pdfBody">
+      <div id="img2pdfBody" hidden>
       <div class="dropzone dropzone-sm" id="pdfDropzone" role="button" tabindex="0" aria-label="PDF로 묶을 이미지 선택 또는 드래그하여 추가">
         <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
         <p class="dz-hint">여러 장 지원 — 넣은 순서대로 한 장씩 PDF 페이지가 돼요 · Ctrl+V 붙여넣기 지원</p>
@@ -1148,11 +1148,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         <p class="muted" id="pdfStat" role="status"></p>
       </div>
       </div>
-      <div id="pdf2imgBody" hidden>
-        <div class="dropzone dropzone-sm" id="p2iDropzone" role="button" tabindex="0" aria-label="이미지로 바꿀 PDF 선택 또는 드래그">
+      <div id="pdf2imgBody">
+        <div class="dropzone dropzone-sm" id="p2iDropzone" role="button" tabindex="0" aria-label="이미지로 바꿀 PDF 선택 또는 드래그 — 여러 개 가능">
           <p class="dz-main">PDF를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-          <p class="dz-hint">페이지마다 이미지 한 장으로 저장돼요 · 변환은 전부 내 브라우저 안에서 (변환 도구 약 1.5MB, 첫 사용 시 1회 로드)</p>
-          <input type="file" id="p2iFile" accept="application/pdf,.pdf" hidden>
+          <p class="dz-hint">여러 PDF를 한꺼번에 넣을 수 있어요 · 페이지마다 이미지 한 장으로 저장돼요 · 변환은 전부 내 브라우저 안에서 (변환 도구 약 1.5MB, 첫 사용 시 1회 로드)</p>
+          <input type="file" id="p2iFile" accept="application/pdf,.pdf" multiple hidden>
         </div>
         <div id="p2iBody" hidden>
           <div class="settings-grid svg-opts">
@@ -4753,7 +4753,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   /* ================= PDF → 이미지 =================
      pdf.js(vendor/ 번들, 첫 사용 시 1회 로드)로 페이지를 캔버스에 렌더해
      선택한 형식으로 인코딩한다. 같은 탭의 이미지→PDF와 토글로 전환. */
-  var pdfMode = 'img2pdf';
+  var pdfMode = 'pdf2img';   /* 기본 모드 — PDF → 이미지 */
   function syncPdfMode() {
     var seg = $('#pdfModeSeg');
     seg.classList.toggle('right', pdfMode === 'pdf2img');
@@ -4790,7 +4790,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return pdfjsReady;
   }
 
-  var p2iState = { file: null, name: '', pages: [], busy: false, seq: 0, fmt: 'png', scale: 1.5 };
+  var p2iState = { files: [], pages: [], busy: false, seq: 0, fmt: 'png', scale: 1.5 };
   var P2I_MAX_SIDE = 4096;   /* 페이지 긴 변 상한 — 초대형 캔버스로 메모리가 터지지 않게 */
 
   function p2iRelease() {
@@ -4800,7 +4800,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function p2iClear() {
     p2iState.seq++;
     p2iRelease();
-    p2iState.file = null;
+    p2iState.files = [];
     p2iState.busy = false;
     $('#p2iGrid').textContent = '';
     $('#p2iCount').textContent = '';
@@ -4827,7 +4827,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         openLightbox(p.url, p.name + ' · ' + p.w + '×' + p.h + ' · ' + fmtBytes(p.blob.size));
       });
       var cap = document.createElement('p');
-      cap.textContent = p.n + '쪽 · ' + fmtBytes(p.blob.size);
+      /* PDF가 여러 개면 어느 파일의 몇 쪽인지 구분되게 파일 이름을 앞에 붙인다 */
+      cap.textContent = (p2iState.files.length > 1 ? p.base + ' · ' : '') + p.n + '쪽 · ' + fmtBytes(p.blob.size);
       var save = document.createElement('button');
       save.type = 'button';
       save.className = 'btn';
@@ -4838,100 +4839,134 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       li.appendChild(save);
       ul.appendChild(li);
     });
-    $('#p2iCount').textContent = p2iState.pages.length ? p2iState.pages.length + '쪽' : '';
+    $('#p2iCount').textContent = p2iState.pages.length
+      ? p2iState.pages.length + '쪽' + (p2iState.files.length > 1 ? ' (PDF ' + p2iState.files.length + '개)' : '')
+      : '';
   }
 
-  /* PDF 파일 → 페이지 이미지들. 옵션(형식·해상도)이 바뀌면 같은 파일로 다시 호출된다. */
-  function p2iLoad(file) {
-    if (!file) return Promise.resolve();
-    p2iState.file = file;
-    p2iState.name = baseName(file.name || 'pdf');
+  /* PDF 파일들 → 페이지 이미지들. 옵션(형식·해상도)이 바뀌면 같은 파일들로 다시 호출된다.
+     append=true면 기존 결과를 지우지 않고 새 PDF들을 뒤에 이어 붙인다.
+     한 파일이 실패(암호·손상)해도 나머지 파일은 계속 변환한다. */
+  function p2iLoad(files, append) {
+    if (files && typeof files.length !== 'number') files = [files];   /* 단일 File 호출 호환 */
+    files = Array.prototype.slice.call(files || []);
+    if (!files.length) return Promise.resolve();
+    if (append && p2iState.busy) { toast('아직 변환 중이에요 — 끝난 뒤에 다시 넣어 주세요.'); return Promise.resolve(); }
     var seq = ++p2iState.seq;
-    p2iRelease();
+    if (!append) {
+      p2iRelease();
+      p2iState.files = [];
+      $('#p2iGrid').textContent = '';
+      $('#p2iCount').textContent = '';
+    }
+    var doneCnt = p2iState.files.length;
+    p2iState.files = p2iState.files.concat(files);
     p2iState.busy = true;
     $('#p2iBody').hidden = false;
-    $('#p2iGrid').textContent = '';
-    $('#p2iCount').textContent = '';
     var stat = $('#p2iStat');
     stat.textContent = '📄 PDF 변환 도구 준비 중…';
     var mime = p2iMime();
     var q = parseFloat($('#p2iQ').value);
     var ext = mime === 'image/png' ? 'png' : (mime === 'image/webp' ? 'webp' : 'jpg');
-    var doc = null;
-    return loadPdfJs().then(function () {
-      return file.arrayBuffer();
-    }).then(function (ab) {
-      return window.pdfjsLib.getDocument({ data: ab }).promise;
-    }).then(function (d) {
-      if (seq !== p2iState.seq) { try { d.destroy(); } catch (e) {} return; }
-      doc = d;
-      var total = d.numPages;
-      var pad = total >= 10 ? String(total).length : 1;
-      var chain = Promise.resolve();
-      for (var n = 1; n <= total; n++) {
-        (function (n) {
-          chain = chain.then(function () {
-            if (seq !== p2iState.seq) return;
-            stat.textContent = n + ' / ' + total + ' 쪽 변환 중…';
-            return doc.getPage(n).then(function (page) {
+
+    function convertOne(file, fi) {
+      var base = baseName(file.name || 'pdf');
+      var head = p2iState.files.length > 1 ? 'PDF ' + (doneCnt + fi + 1) + '/' + p2iState.files.length + ' · ' : '';
+      var doc = null;
+      return file.arrayBuffer().then(function (ab) {
+        return window.pdfjsLib.getDocument({ data: ab }).promise;
+      }).then(function (d) {
+        if (seq !== p2iState.seq) { try { d.destroy(); } catch (e) {} return; }
+        doc = d;
+        var total = d.numPages;
+        var pad = total >= 10 ? String(total).length : 1;
+        var chain = Promise.resolve();
+        for (var n = 1; n <= total; n++) {
+          (function (n) {
+            chain = chain.then(function () {
               if (seq !== p2iState.seq) return;
-              var vp = page.getViewport({ scale: p2iState.scale });
-              var k = Math.min(1, P2I_MAX_SIDE / Math.max(vp.width, vp.height));
-              if (k < 1) vp = page.getViewport({ scale: p2iState.scale * k });
-              var c = document.createElement('canvas');
-              c.width = Math.max(1, Math.round(vp.width));
-              c.height = Math.max(1, Math.round(vp.height));
-              var x = c.getContext('2d');
-              /* JPEG에는 투명이 없고 PDF 기본 배경도 흰색 — 흰 바탕을 먼저 깐다 */
-              x.fillStyle = '#ffffff';
-              x.fillRect(0, 0, c.width, c.height);
-              return page.render({ canvasContext: x, viewport: vp }).promise.then(function () {
+              stat.textContent = head + n + ' / ' + total + ' 쪽 변환 중…';
+              return doc.getPage(n).then(function (page) {
                 if (seq !== p2iState.seq) return;
-                return encodeCanvas(c, mime, mime === 'image/png' ? undefined : q);
-              }).then(function (b) {
-                if (!b || seq !== p2iState.seq) return;
-                var num = String(n);
-                while (num.length < pad) num = '0' + num;
-                p2iState.pages.push({
-                  blob: b, url: URL.createObjectURL(b), w: c.width, h: c.height, n: n,
-                  name: p2iState.name + '-' + num + '.' + ext
+                var vp = page.getViewport({ scale: p2iState.scale });
+                var k = Math.min(1, P2I_MAX_SIDE / Math.max(vp.width, vp.height));
+                if (k < 1) vp = page.getViewport({ scale: p2iState.scale * k });
+                var c = document.createElement('canvas');
+                c.width = Math.max(1, Math.round(vp.width));
+                c.height = Math.max(1, Math.round(vp.height));
+                var x = c.getContext('2d');
+                /* JPEG에는 투명이 없고 PDF 기본 배경도 흰색 — 흰 바탕을 먼저 깐다 */
+                x.fillStyle = '#ffffff';
+                x.fillRect(0, 0, c.width, c.height);
+                return page.render({ canvasContext: x, viewport: vp }).promise.then(function () {
+                  if (seq !== p2iState.seq) return;
+                  return encodeCanvas(c, mime, mime === 'image/png' ? undefined : q);
+                }).then(function (b) {
+                  if (!b || seq !== p2iState.seq) return;
+                  var num = String(n);
+                  while (num.length < pad) num = '0' + num;
+                  p2iState.pages.push({
+                    blob: b, url: URL.createObjectURL(b), w: c.width, h: c.height, n: n,
+                    base: base, name: base + '-' + num + '.' + ext
+                  });
+                  p2iRenderGrid();
                 });
-                p2iRenderGrid();
               });
             });
-          });
-        })(n);
-      }
+          })(n);
+        }
+        return chain;
+      }).catch(function (e) {
+        if (seq !== p2iState.seq) return;
+        var pw = e && (e.name === 'PasswordException' || /password/i.test(String(e.message || '')));
+        toast((file.name || 'PDF') + ' — ' + (pw ? '암호가 걸려 있어 열 수 없어요.' : '열지 못했어요 (손상됐을 수 있어요).'));
+      }).then(function () {
+        if (doc) { try { doc.destroy(); } catch (e) {} }
+      });
+    }
+
+    return loadPdfJs().then(function () {
+      var chain = Promise.resolve();
+      files.forEach(function (f, fi) {
+        chain = chain.then(function () {
+          if (seq !== p2iState.seq) return;
+          return convertOne(f, fi);
+        });
+      });
       return chain.then(function () {
         if (seq !== p2iState.seq) return;
         p2iState.busy = false;
+        if (!p2iState.pages.length) {
+          stat.textContent = '';
+          $('#p2iBody').hidden = true;
+          return;
+        }
         var sum = 0;
         p2iState.pages.forEach(function (p) { sum += p.blob.size; });
-        stat.textContent = '✅ ' + p2iState.pages.length + '쪽 변환 완료 · 합계 ' + fmtBytes(sum);
+        stat.textContent = '✅ ' + p2iState.pages.length + '쪽 변환 완료' +
+          (p2iState.files.length > 1 ? ' (PDF ' + p2iState.files.length + '개)' : '') + ' · 합계 ' + fmtBytes(sum);
       });
-    }).catch(function (e) {
+    }).catch(function () {
+      /* pdf.js 자체를 못 불러온 경우 */
       if (seq !== p2iState.seq) return;
       p2iState.busy = false;
       stat.textContent = '';
       $('#p2iBody').hidden = p2iState.pages.length === 0;
-      var pw = e && (e.name === 'PasswordException' || /password/i.test(String(e.message || '')));
-      toast(pw ? '암호가 걸린 PDF는 열 수 없어요.' : 'PDF를 열지 못했어요 — 파일이 손상됐을 수 있어요.');
-    }).then(function () {
-      if (doc) { try { doc.destroy(); } catch (e) {} }
+      toast('PDF 변환 도구를 불러오지 못했어요 — 네트워크를 확인해 주세요.');
     });
   }
 
   /* PDF/이미지가 어느 모드로 들어와도 맞는 쪽으로 자동 전환해 받는다 */
   function pdfAcceptFiles(files) {
-    var pdf = null, imgs = [];
+    var pdfs = [], imgs = [];
     Array.prototype.forEach.call(files || [], function (f) {
       if (!f) return;
-      if (!pdf && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''))) pdf = f;
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '')) pdfs.push(f);
       else if (/^image\//.test(f.type) || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(f.name || '')) imgs.push(f);
     });
-    if (pdf) {
+    if (pdfs.length) {
       if (pdfMode !== 'pdf2img') { pdfMode = 'pdf2img'; syncPdfMode(); }
-      p2iLoad(pdf);
+      p2iLoad(pdfs, true);   /* 이미 변환된 결과가 있으면 뒤에 이어 붙인다 */
       if (imgs.length) toast('PDF를 변환해요 — 이미지는 이미지 → PDF 모드에서 넣어주세요.');
       return;
     }
@@ -4955,7 +4990,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (p2iState.fmt === b.dataset.p2ifmt) return;
       p2iState.fmt = b.dataset.p2ifmt;
       document.querySelectorAll('#p2iFmtChips .chip').forEach(function (o) { o.classList.toggle('on', o === b); });
-      if (p2iState.file) p2iLoad(p2iState.file);
+      if (p2iState.files.length) p2iLoad(p2iState.files.slice());
     });
   });
   document.querySelectorAll('#p2iScaleChips .chip').forEach(function (b) {
@@ -4964,7 +4999,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (p2iState.scale === v) return;
       p2iState.scale = v;
       document.querySelectorAll('#p2iScaleChips .chip').forEach(function (o) { o.classList.toggle('on', o === b); });
-      if (p2iState.file) p2iLoad(p2iState.file);
+      if (p2iState.files.length) p2iLoad(p2iState.files.slice());
     });
   });
   $('#p2iQ').addEventListener('input', function () {
@@ -4972,12 +5007,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
   $('#p2iQ').addEventListener('change', function () {
     /* 품질은 손을 뗐을 때 한 번만 다시 인코딩 (PNG는 무손실이라 영향 없음) */
-    if (p2iState.file && p2iState.fmt !== 'png') p2iLoad(p2iState.file);
+    if (p2iState.files.length && p2iState.fmt !== 'png') p2iLoad(p2iState.files.slice());
   });
   $('#p2iZip').addEventListener('click', function () {
     if (!p2iState.pages.length) return;
     makeZip(p2iState.pages.map(function (p) { return { name: p.name, blob: p.blob }; })).then(function (zip) {
-      saveBlob(zip, p2iState.name + '-이미지.zip');
+      var zn = baseName((p2iState.files[0] && p2iState.files[0].name) || 'pdf') +
+        (p2iState.files.length > 1 ? ' 외 ' + (p2iState.files.length - 1) + '개' : '');
+      saveBlob(zip, zn + '-이미지.zip');
       toast('ZIP으로 ' + p2iState.pages.length + '쪽을 저장했어요.');
     });
   });
@@ -11405,7 +11442,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     buildPdfQueue: function () { return buildPdfQueue(); },
     addPdfImages: function (fs) { return addPdfImages(fs); },
     pdfAcceptFiles: function (fs) { return pdfAcceptFiles(fs); },
-    p2iLoad: function (f) { return p2iLoad(f); },
+    p2iLoad: function (f, a) { return p2iLoad(f, a); },
     get p2iState() { return p2iState; },
     get pdfMode() { return pdfMode; },
     gifEncode: function (f, w, h, o, p) { return gifEncode(f, w, h, o, p); },
