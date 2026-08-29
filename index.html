@@ -1338,13 +1338,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   </section>
   <section id="panel-base64" role="tabpanel" aria-labelledby="tabBase64" hidden>
     <div class="card b64-card">
-      <h2>이미지 → Base64 (Data URI)</h2>
-      <div class="dropzone dropzone-sm" id="b64Dropzone" role="button" tabindex="0" aria-label="Base64로 변환할 이미지 선택 또는 드래그하여 추가">
-        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-        <p class="dz-hint">Ctrl+V 붙여넣기 지원 · 기본은 원본 그대로 변환</p>
-        <input type="file" id="b64File" accept="image/*,.svg" hidden>
+      <h2>파일 → Base64 (Data URI)</h2>
+      <div class="dropzone dropzone-sm" id="b64Dropzone" role="button" tabindex="0" aria-label="Base64로 변환할 파일 선택 또는 드래그하여 추가">
+        <p class="dz-main">파일을 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">이미지는 압축 옵션 지원 · PDF·오디오·영상·ZIP 등 다른 형식은 자동으로 인코딩(20MB 이하) · Ctrl+V 붙여넣기 지원</p>
+        <input type="file" id="b64File" hidden>
       </div>
-      <label class="check-label" style="margin-top:10px"><input type="checkbox" id="b64Compress"> 압축해서 변환 <span class="sub">— 최대 1920px로 줄이고 재인코딩한 뒤 Data URI 생성</span></label>
+      <label class="check-label" style="margin-top:10px"><input type="checkbox" id="b64Compress"> 압축해서 변환 <span class="sub">— 이미지 전용 · 최대 1920px로 줄이고 재인코딩한 뒤 Data URI 생성</span></label>
       <div class="field" id="b64EncQField" hidden>
         <label class="field-label" for="b64EncQ">압축 품질 <output id="b64EncQOut">80</output>%</label>
         <input type="range" id="b64EncQ" min="0.4" max="0.95" step="0.01" value="0.8">
@@ -1357,27 +1357,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         </div>
         <div class="btn-row">
           <button class="btn primary" id="copyUri" type="button">Data URI 복사</button>
+          <button class="btn" id="copyRaw" type="button">Base64만 복사</button>
           <button class="btn" id="copyImg" type="button">&lt;img&gt; 태그 복사</button>
           <button class="btn" id="copyCss" type="button">CSS background 복사</button>
           <button class="btn btn-share" id="b64Share" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
-        </div>
-      </div>
-      <div class="dec-compress" style="margin-top:14px">
-        <p class="field-label" style="margin:0">파일 → Base64 <span class="sub">— 이미지 외 어떤 파일이든 (PDF·오디오·영상·ZIP…, 20MB 이하)</span></p>
-        <div class="dropzone dropzone-sm" id="b64AnyDrop" role="button" tabindex="0" aria-label="Base64로 바꿀 파일 선택 또는 드래그" style="margin-top:10px">
-          <p class="dz-main" style="font-size:14px">파일을 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
-          <input type="file" id="b64AnyFile" hidden>
-        </div>
-        <div id="b64AnyResult" hidden>
-          <p id="b64AnyStats" class="muted"></p>
-          <div class="ta-wrap">
-            <textarea id="b64AnyOut" readonly rows="4" spellcheck="false" aria-label="파일 Base64 결과"></textarea>
-            <span class="char-count" id="b64AnyCount" aria-hidden="true">0자</span>
-          </div>
-          <div class="btn-row">
-            <button class="btn primary" id="b64AnyCopyUri" type="button">Data URI 복사</button>
-            <button class="btn" id="b64AnyCopyRaw" type="button">Base64만 복사</button>
-          </div>
         </div>
       </div>
     </div>
@@ -2942,14 +2925,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     } else if (!$('#panel-gif').hidden) {
       gifAcceptFiles(files);
     } else if (!$('#panel-base64').hidden) {
-      var bf = files[0];
-      if (/^image\//.test(bf.type) || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(bf.name || '')) {
-        encodeFileToBase64(bf);
-        toast('이미지를 Base64 문자열로 변환했어요.');
-      } else {
-        b64AnyEncode(bf);   /* 이미지가 아니면 범용 파일 → Base64 영역으로 */
-        toast('파일을 Base64 문자열로 변환했어요.');
-      }
+      b64EncodeAny(files[0]);   /* 이미지든 아니든 통합 인코더가 알아서 분기 */
+      toast('파일을 Base64 문자열로 변환했어요.');
     } else {
       addFiles(files);
       if (fromPaste) toast('클립보드 이미지를 추가했어요.');
@@ -4379,13 +4356,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
   $('#b64Compress').addEventListener('change', function () {
     $('#b64EncQField').hidden = !this.checked;
-    if (b64Enc.file) encodeFileToBase64(b64Enc.file);
+    if (b64Enc.file && b64IsImage(b64Enc.file)) encodeFileToBase64(b64Enc.file);
   });
   $('#b64EncQ').addEventListener('input', function () {
     $('#b64EncQOut').textContent = Math.round(parseFloat(this.value) * 100);
     clearTimeout(b64EncQTimer);
     b64EncQTimer = setTimeout(function () {
-      if (b64Enc.file && $('#b64Compress').checked) encodeFileToBase64(b64Enc.file);
+      if (b64Enc.file && $('#b64Compress').checked && b64IsImage(b64Enc.file)) encodeFileToBase64(b64Enc.file);
     }, 300);
   });
   var b64EncQTimer = null;
@@ -4393,7 +4370,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   b64File.addEventListener('change', function () {
     var f = b64File.files && b64File.files[0];
     b64File.value = '';
-    if (f) encodeFileToBase64(f);
+    if (f) b64EncodeAny(f);
   });
   var b64Dropzone = $('#b64Dropzone');
   b64Dropzone.addEventListener('click', function () { b64File.click(); });
@@ -4409,12 +4386,15 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       text = '<img src="' + b64Enc.dataUrl + '"' + wh + ' alt="' + escAttr(baseName(b64Enc.file.name)) + '">';
     } else if (kind === 'css') {
       text = "background-image: url('" + b64Enc.dataUrl + "');";
+    } else if (kind === 'raw') {
+      text = b64Enc.dataUrl.replace(/^data:[^,]*,/, '');
     }
     copyText(text).then(function (ok) {
       toast(ok ? '복사 완료 (' + fmtBytes(text.length) + ')' : '복사에 실패했어요.');
     });
   }
   $('#copyUri').addEventListener('click', function () { copyEnc('uri'); });
+  $('#copyRaw').addEventListener('click', function () { copyEnc('raw'); });
   $('#copyImg').addEventListener('click', function () { copyEnc('img'); });
   $('#copyCss').addEventListener('click', function () { copyEnc('css'); });
 
@@ -4688,41 +4668,44 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return f ? [f] : [];
   }, '디코딩한 파일');
 
-  /* 파일 → Base64 — 이미지 외 어떤 파일이든 (인코더 카드의 작은 범용 영역) */
+  /* 통합 인코더 입구 — 이미지는 기존 파이프라인(압축 옵션·img/CSS 복사),
+     그 외 형식은 자동으로 범용 인코딩. 결과창은 하나를 같이 쓴다. */
   var B64_ANY_MAX = 20 * 1024 * 1024;
-  function b64AnyEncode(file) {
-    if (!file) return;
-    if (file.size > B64_ANY_MAX) {
+  function b64IsImage(f) {
+    return /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif|bmp|svg|avif|ico)$/i.test(f.name || '');
+  }
+  function b64SetKind(isImg) {
+    $('#copyImg').hidden = !isImg;
+    $('#copyCss').hidden = !isImg;
+  }
+  function b64EncodeAny(f) {
+    if (!f) return;
+    if (b64IsImage(f)) {
+      b64SetKind(true);
+      encodeFileToBase64(f);
+      return;
+    }
+    if (f.size > B64_ANY_MAX) {
       toast('20MB가 넘는 파일은 Base64 문자열이 너무 길어져요 — 20MB 이하만 지원해요.');
       return;
     }
-    blobToDataURL(file).then(function (uri) {
+    var seq = ++b64EncSeq;
+    blobToDataURL(f).then(function (uri) {
+      if (seq !== b64EncSeq) return;
       if (uri.slice(0, 6) === 'data:;') uri = 'data:application/octet-stream;' + uri.slice(6);
-      $('#b64AnyOut').value = uri;
-      setCharCount($('#b64AnyCount'), uri.length);
-      $('#b64AnyStats').textContent = (file.name || '파일') + ' · ' +
-        fmtLabel(file.type || 'application/octet-stream') + ' · ' + fmtBytes(file.size) +
-        ' → 문자열 ' + uri.length.toLocaleString() + '자 (약 ' +
-        (Math.round(uri.length / Math.max(1, file.size) * 10) / 10) + '배)';
-      $('#b64AnyResult').hidden = false;
+      b64Enc.dataUrl = uri;
+      b64Enc.file = f;
+      b64Enc.w = 0; b64Enc.h = 0;
+      b64Out.value = uri;
+      setCharCount(b64OutCount, uri.length);
+      b64EncStats.textContent = (f.name || '파일') + ' · ' + fmtLabel(f.type || 'application/octet-stream') +
+        ' · ' + fmtBytes(f.size) + ' → 문자열 ' + fmtBytes(uri.length);
+      b64SetKind(false);
+      b64EncResult.hidden = false;
+    }).catch(function () {
+      if (seq === b64EncSeq) toast('파일을 읽지 못했어요.');
     });
   }
-  $('#b64AnyFile').addEventListener('change', function () {
-    if (this.files && this.files.length) b64AnyEncode(this.files[0]);
-    this.value = '';
-  });
-  $('#b64AnyDrop').addEventListener('click', function () { $('#b64AnyFile').click(); });
-  $('#b64AnyDrop').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#b64AnyFile').click(); }
-  });
-  $('#b64AnyCopyUri').addEventListener('click', function () {
-    var v = $('#b64AnyOut').value;
-    if (v) copyText(v).then(function (ok) { toast(ok ? 'Data URI를 복사했어요.' : '복사하지 못했어요.'); });
-  });
-  $('#b64AnyCopyRaw').addEventListener('click', function () {
-    var v = $('#b64AnyOut').value;
-    if (v) copyText(v.replace(/^data:[^,]*,/, '')).then(function (ok) { toast(ok ? 'Base64 본문만 복사했어요.' : '복사하지 못했어요.'); });
-  });
 
   b64Qual.addEventListener('input', function () {
     b64QualOut.textContent = Math.round(parseFloat(b64Qual.value) * 100);
@@ -11680,7 +11663,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     get items() { return items; },
     get settings() { return settings; },
     decodeB64Input: function () { return decodeB64Input(); },
-    b64AnyEncode: function (f) { return b64AnyEncode(f); },
+    b64AnyEncode: function (f) { return b64EncodeAny(f); },
     get b64DecBlob() { return decBlob; },
     applySettings: function (patch) {
       Object.assign(settings, patch);
