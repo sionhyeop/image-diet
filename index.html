@@ -1683,7 +1683,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     'image/webp': 'WebP', 'image/jpeg': 'JPEG', 'image/png': 'PNG',
     'image/gif': 'GIF', 'image/svg+xml': 'SVG', 'image/bmp': 'BMP', 'image/avif': 'AVIF',
     'image/x-icon': 'ICO 아이콘',
-    'application/pdf': 'PDF 문서', 'application/zip': 'ZIP (Office 문서 포함)', 'application/gzip': 'GZIP 압축',
+    'application/pdf': 'PDF 문서', 'application/zip': 'ZIP 압축', 'application/gzip': 'GZIP 압축',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word 문서',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel 문서',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint 문서',
+    'application/hwp+zip': '한글 문서 (HWPX)', 'application/x-hwp': '한글 문서 (HWP)',
+    'application/vnd.oasis.opendocument.text': 'OpenDocument 문서',
+    'application/msword': 'Word 문서 (구형 doc)', 'application/vnd.ms-excel': 'Excel 문서 (구형 xls)',
+    'application/vnd.ms-powerpoint': 'PowerPoint 문서 (구형 ppt)', 'application/x-cfb': '구형 Office 문서',
     'audio/mpeg': 'MP3 오디오', 'audio/wav': 'WAV 오디오', 'audio/ogg': 'OGG 오디오',
     'video/mp4': 'MP4 영상', 'video/webm': 'WebM 영상',
     'font/woff': 'WOFF 글꼴', 'font/woff2': 'WOFF2 글꼴', 'font/ttf': 'TTF 글꼴', 'font/otf': 'OTF 글꼴',
@@ -1719,8 +1726,16 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     if (mime === 'text/plain') return 'txt';
     if (mime === 'text/html') return 'html';
     if (mime === 'application/json') return 'json';
-    if (mime === 'application/octet-stream') return 'bin';
-    return 'img';
+    if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+    if (mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
+    if (mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx';
+    if (mime === 'application/hwp+zip') return 'hwpx';
+    if (mime === 'application/x-hwp') return 'hwp';
+    if (mime === 'application/vnd.oasis.opendocument.text') return 'odt';
+    if (mime === 'application/msword') return 'doc';
+    if (mime === 'application/vnd.ms-excel') return 'xls';
+    if (mime === 'application/vnd.ms-powerpoint') return 'ppt';
+    return mime.slice(0, 6) === 'image/' ? 'img' : 'bin';
   }
   function escAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -4443,6 +4458,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     /* 이미지 외 형식 — 매직 바이트 */
     if (text.slice(0, 4) === '%PDF') return 'application/pdf';
     if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4B) return 'application/zip';
+    if (bytes.length >= 8 && bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0) return 'application/x-cfb';
     if (bytes.length >= 2 && bytes[0] === 0x1F && bytes[1] === 0x8B) return 'application/gzip';
     if (bytes.length >= 12 && text.slice(0, 4) === 'RIFF' && text.slice(8, 12) === 'WAVE') return 'audio/wav';
     if (text.slice(0, 4) === 'OggS') return 'audio/ogg';
@@ -4485,6 +4501,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function b64ShowFileResult(mime, bytes, textStr, seq) {
     var kind = mime.split('/')[0];
     var icon = mime === 'application/pdf' ? '📕'
+      : (/wordprocessingml|msword/.test(mime)) ? '📘'
+      : (/spreadsheetml|ms-excel/.test(mime)) ? '📗'
+      : (/presentationml|ms-powerpoint/.test(mime)) ? '📙'
+      : (/hwp|opendocument/.test(mime)) ? '📃'
       : (mime === 'application/zip' || mime === 'application/gzip') ? '🗜️'
       : kind === 'audio' ? '🎵' : kind === 'video' ? '🎬' : kind === 'font' ? '🔤'
       : (textStr != null) ? '📄' : '📦';
@@ -4585,6 +4605,21 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         } else if (mime === 'application/json' || mime.slice(0, 5) === 'text/') {
           var tp2 = b64TextProbe(bytes);
           if (tp2) decText = tp2.text;
+        }
+        /* ZIP·CFB는 문서 컨테이너 — 내부 항목 이름으로 실제 형식을 세분해
+           docx가 .zip으로 저장돼 XML 뭉치로 풀리는 일을 막는다 */
+        if (mime === 'application/zip') {
+          if (bin.indexOf('word/document.xml') >= 0) mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (bin.indexOf('xl/workbook.xml') >= 0) mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          else if (bin.indexOf('ppt/presentation.xml') >= 0) mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+          else if (bin.indexOf('application/hwp+zip') >= 0) mime = 'application/hwp+zip';
+          else if (bin.indexOf('application/vnd.oasis.opendocument.text') >= 0) mime = 'application/vnd.oasis.opendocument.text';
+        } else if (mime === 'application/x-cfb') {
+          /* 구형 Office·한글 — CFB 디렉터리의 스트림 이름(UTF-16)·HWP 시그니처 */
+          if (bin.indexOf('HWP Document File') >= 0) mime = 'application/x-hwp';
+          else if (bin.indexOf('W\u0000o\u0000r\u0000d\u0000D\u0000o\u0000c\u0000') >= 0) mime = 'application/msword';
+          else if (bin.indexOf('W\u0000o\u0000r\u0000k\u0000b\u0000o\u0000o\u0000k\u0000') >= 0) mime = 'application/vnd.ms-excel';
+          else if (bin.indexOf('P\u0000o\u0000w\u0000e\u0000r\u0000P\u0000o\u0000i\u0000n\u0000t\u0000') >= 0) mime = 'application/vnd.ms-powerpoint';
         }
       }
       decBlob = new Blob([bytes], { type: mime });
