@@ -456,6 +456,12 @@ body.save-open #toasts { bottom: 150px; }
 .b64-card { padding: 20px; margin-top: 16px; }
 .b64-card h2 { margin: 0 0 4px; font-size: 17px; }
 .b64-card > .muted { margin: 0 0 14px; font-size: 13.5px; }
+/* Base64 탭 — 인코딩/디코딩 카드를 한눈에 구분 (색 테두리 + 배지) */
+.b64-card.enc-card { border-left: 4px solid var(--accent); }
+.b64-card.dec-card { border-left: 4px solid var(--ok); }
+.card-badge { display: inline-block; vertical-align: 2px; margin-left: 8px; padding: 2px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; }
+.card-badge.enc { color: var(--accent-strong); background: var(--accent-soft); }
+.card-badge.dec { color: var(--ok); background: var(--ok-soft); }
 textarea {
   width: 100%; margin-top: 12px; padding: 10px 12px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
@@ -1337,8 +1343,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     </div>
   </section>
   <section id="panel-base64" role="tabpanel" aria-labelledby="tabBase64" hidden>
-    <div class="card b64-card">
-      <h2>파일 → Base64 (Data URI)</h2>
+    <div class="card b64-card enc-card">
+      <h2>📤 파일 → Base64 <span class="card-badge enc">인코딩</span></h2>
+      <p class="muted">파일을 텍스트 문자열(Data URI)로 바꿔요 — HTML에 붙여넣거나 전송하기 좋아요</p>
       <div class="dropzone dropzone-sm" id="b64Dropzone" role="button" tabindex="0" aria-label="Base64로 변환할 파일 선택 또는 드래그하여 추가">
         <p class="dz-main">파일을 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
         <p class="dz-hint">이미지는 압축 옵션 지원 · PDF·오디오·영상·ZIP 등 다른 형식은 자동으로 인코딩(20MB 이하) · Ctrl+V 붙여넣기 지원</p>
@@ -1364,8 +1371,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         </div>
       </div>
     </div>
-    <div class="card b64-card">
-      <h2>Base64 → 파일</h2>
+    <div class="card b64-card dec-card">
+      <h2>📥 Base64 → 파일 <span class="card-badge dec">디코딩</span></h2>
+      <p class="muted">문자열을 원래 파일로 되돌려요 — 형식은 자동으로 알아봐요</p>
       <div class="ta-wrap">
         <textarea id="b64In" rows="5" placeholder="data:image/png;base64,iVBORw0… — 이미지·PDF·오디오·영상·텍스트 등 아무 Base64나 붙여넣으세요" spellcheck="false" aria-label="Base64 입력"></textarea>
         <span class="char-count" id="b64InCount" aria-hidden="true">0자</span>
