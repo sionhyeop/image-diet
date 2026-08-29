@@ -456,14 +456,13 @@ body.save-open #toasts { bottom: 150px; }
 .b64-card { padding: 20px; margin-top: 16px; }
 .b64-card h2 { margin: 0 0 4px; font-size: 17px; }
 .b64-card > .muted { margin: 0 0 14px; font-size: 13.5px; }
-/* Base64 탭 — 카드 제목 앞의 변환 아이콘: 파일(📄) ↔ base64 코드 알약 */
-.b64-flow { display: inline-flex; align-items: center; gap: 5px; margin-right: 8px; vertical-align: -1px; }
-.b64-flow .bf-arrow { color: var(--muted); font-size: 13px; font-weight: 700; }
-.b64-flow .bf-code {
+/* Base64 탭 — 제목이 곧 변환 흐름: '📄 파일 → [aGk=] Base64' (이모지·코드에 글자를 바로 매칭) */
+.b64-card h2 .bf-arrow { color: var(--muted); font-size: 14px; font-weight: 700; margin: 0 4px; }
+.b64-card h2 .bf-code {
   font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
-  font-size: 11.5px; font-weight: 700; letter-spacing: .02em; color: var(--muted);
+  font-size: 12.5px; font-weight: 700; letter-spacing: .02em; color: var(--muted);
   background: var(--panel-2); border: 1px solid var(--border);
-  padding: 2px 7px; border-radius: 7px;
+  padding: 2px 7px; border-radius: 7px; vertical-align: 2px; margin-right: 2px;
 }
 textarea {
   width: 100%; margin-top: 12px; padding: 10px 12px; border-radius: 10px;
@@ -1347,7 +1346,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   </section>
   <section id="panel-base64" role="tabpanel" aria-labelledby="tabBase64" hidden>
     <div class="card b64-card enc-card">
-      <h2><span class="b64-flow" aria-hidden="true">📄<span class="bf-arrow">→</span><span class="bf-code">aGk=</span></span>파일 → Base64</h2>
+      <h2>📄 파일 <span class="bf-arrow">→</span> <span class="bf-code">aGk=</span> Base64</h2>
       <p class="muted">파일을 텍스트 문자열(Data URI)로 바꿔요 — HTML에 붙여넣거나 전송하기 좋아요</p>
       <div class="dropzone dropzone-sm" id="b64Dropzone" role="button" tabindex="0" aria-label="Base64로 변환할 파일 선택 또는 드래그하여 추가">
         <p class="dz-main">파일을 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
@@ -1375,7 +1374,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       </div>
     </div>
     <div class="card b64-card dec-card">
-      <h2><span class="b64-flow" aria-hidden="true"><span class="bf-code">aGk=</span><span class="bf-arrow">→</span>📄</span>Base64 → 파일</h2>
+      <h2><span class="bf-code">aGk=</span> Base64 <span class="bf-arrow">→</span> 📄 파일</h2>
       <p class="muted">문자열을 원래 파일로 되돌려요 — 형식은 자동으로 알아봐요</p>
       <div class="ta-wrap">
         <textarea id="b64In" rows="5" placeholder="data:image/png;base64,iVBORw0… — 이미지·PDF·오디오·영상·텍스트 등 아무 Base64나 붙여넣으세요" spellcheck="false" aria-label="Base64 입력"></textarea>
