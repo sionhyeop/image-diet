@@ -1368,6 +1368,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             <button type="button" class="seg-opt on" data-qrmode="make" role="tab" aria-selected="true">🔳 QR 생성</button>
             <button type="button" class="seg-opt" data-qrmode="read" role="tab" aria-selected="false">🔍 QR 해석</button>
           </div>
+          <div id="qrHeadCtrls" style="display:flex; align-items:center; gap:14px; margin-left:auto; flex:0 0 auto">
           <label class="field-label" id="qrTypeLabel" style="margin:0; display:flex; align-items:center; gap:6px; flex:0 0 auto; white-space:nowrap">만들 내용
             <select id="qrType">
               <option value="url" selected>🔗 URL · 텍스트</option>
@@ -1383,6 +1384,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <label class="check-label" id="qrPlainLabel" style="display:none; margin:0; white-space:nowrap; flex:0 0 auto; font-size:13px">
             <input type="checkbox" id="qrPlain"> 복사용
           </label>
+          </div>
         </div>
         <p class="muted" id="qrModeDesc" style="margin:10px 0 0">내용 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 입력한 내용·로고는 어디로도 전송되지 않아요</p>
       </div>
@@ -4952,6 +4954,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       syncQrMode();
     });
   });
+  syncQrMode();   /* 초기 표시 동기화 — '복사용' 체크박스가 첫 로드부터 보이게 */
 
   var qrDecReady = null;
   function loadQrDecoder() {
