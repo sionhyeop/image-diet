@@ -1376,6 +1376,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
               <option value="email">✉️ 이메일</option>
               <option value="wifi">📶 와이파이 접속</option>
               <option value="vcard">👤 연락처 저장</option>
+              <option value="bank">💸 계좌 이체 (토스)</option>
+              <option value="map">🗺️ 지도 위치</option>
             </select>
           </label>
         </div>
@@ -1483,6 +1485,39 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           </div>
         </div>
         <p class="muted" style="margin:8px 0 0">스캔하면 연락처 저장을 제안해요</p>
+      </div>
+      <div id="qrFieldsBank" hidden>
+        <div class="settings-grid">
+          <div class="field">
+            <label class="field-label" for="qrBankName">은행</label>
+            <input type="text" id="qrBankName" list="qrBankList" placeholder="국민" autocomplete="off">
+            <datalist id="qrBankList">
+              <option value="국민"></option><option value="신한"></option><option value="우리"></option>
+              <option value="하나"></option><option value="NH농협"></option><option value="IBK기업"></option>
+              <option value="카카오뱅크"></option><option value="토스뱅크"></option><option value="케이뱅크"></option>
+              <option value="SC제일"></option><option value="씨티"></option><option value="새마을금고"></option>
+              <option value="우체국"></option><option value="신협"></option><option value="수협"></option>
+              <option value="부산"></option><option value="대구"></option><option value="광주"></option>
+              <option value="전북"></option><option value="경남"></option><option value="제주"></option>
+            </datalist>
+          </div>
+          <div class="field">
+            <label class="field-label" for="qrBankAcct">계좌번호</label>
+            <input type="text" id="qrBankAcct" placeholder="123456-01-234567" autocomplete="off" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label class="field-label" for="qrBankAmount">금액 (원) <span class="sub">— 선택, 비우면 스캔한 사람이 입력</span></label>
+            <input type="text" id="qrBankAmount" placeholder="50000" autocomplete="off" inputmode="numeric">
+          </div>
+        </div>
+        <p class="muted" style="margin:8px 0 0">토스 앱이 있는 폰에서 카메라·토스로 스캔하면 은행·계좌·금액이 채워진 <strong>송금 화면이 바로</strong> 열려요 — 가게 계좌 QR 스티커와 같은 방식(토스 송금 딥링크)</p>
+      </div>
+      <div id="qrFieldsMap" hidden>
+        <div class="field">
+          <label class="field-label" for="qrMapUrl">지도 공유 링크</label>
+          <input type="url" id="qrMapUrl" placeholder="https://naver.me/… · https://kko.to/… · https://maps.app.goo.gl/…" autocomplete="off" spellcheck="false" style="width:100%">
+        </div>
+        <p class="muted" style="margin:8px 0 0">네이버·카카오·구글 지도 앱에서 장소를 열고 <strong>공유 → 링크 복사</strong>한 주소를 붙여넣으세요 — 스캔하면 그 지도가 바로 열려요</p>
       </div>
       <p class="muted" id="qrFinalUrl" style="word-break:break-all; margin:8px 0 0"></p>
       <div class="settings-grid svg-opts" style="margin-top:14px">
@@ -4616,6 +4651,20 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (memo) m += 'NOTE:' + qrEscField(memo) + ';';
       return m + ';';
     }
+    if (t === 'bank') {
+      /* 토스 송금 딥링크 — 가게 계좌 QR 스티커들이 쓰는 사실상 표준 */
+      var bank = $('#qrBankName').value.trim();
+      var acct = $('#qrBankAcct').value.replace(/[^\d-]/g, '');
+      if (!bank || !acct) return '';
+      var s2 = 'supertoss://send?bank=' + encodeURIComponent(bank) + '&accountNo=' + acct;
+      var amt = $('#qrBankAmount').value.replace(/[^\d]/g, '');
+      if (amt) s2 += '&amount=' + amt;
+      return s2 + '&origin=qr';
+    }
+    if (t === 'map') {
+      var mu = $('#qrMapUrl').value.trim();
+      return /^https?:\/\//i.test(mu) ? mu : '';
+    }
     return '';
   }
 
@@ -4732,6 +4781,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
 
   function qrFileSlug() {
+    if (qrState.type === 'bank') return 'qr-send-' + ($('#qrBankName').value.trim().replace(/[^\w가-힣.-]/g, '_') || 'bank');
+    if (qrState.type === 'map') return 'qr-map';
     if (qrState.type === 'tel') return 'qr-tel';
     if (qrState.type === 'sms') return 'qr-sms';
     if (qrState.type === 'email') return 'qr-email';
@@ -4765,12 +4816,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
 
   ['qrText', 'qrUtmSource', 'qrUtmMedium', 'qrUtmCampaign', 'qrUtmContent', 'qrUtmTerm',
    'qrTelNum', 'qrSmsNum', 'qrSmsBody', 'qrEmailTo', 'qrEmailSubj', 'qrEmailBody',
-   'qrWifiSsid', 'qrWifiPw', 'qrVcName', 'qrVcTel', 'qrVcEmail', 'qrVcMemo'].forEach(function (id) {
+   'qrWifiSsid', 'qrWifiPw', 'qrVcName', 'qrVcTel', 'qrVcEmail', 'qrVcMemo',
+   'qrBankName', 'qrBankAcct', 'qrBankAmount', 'qrMapUrl'].forEach(function (id) {
     $('#' + id).addEventListener('input', qrScheduleRender);
   });
   $('#qrWifiHidden').addEventListener('change', qrScheduleRender);
   gifBindChips('#qrWifiSecChips', function (b) { qrState.wifiSec = b.dataset.qrwifisec; qrRender(); });
-  var QR_FIELD_WRAPS = { url: 'qrFieldsUrl', tel: 'qrFieldsTel', sms: 'qrFieldsSms', email: 'qrFieldsEmail', wifi: 'qrFieldsWifi', vcard: 'qrFieldsVcard' };
+  var QR_FIELD_WRAPS = { url: 'qrFieldsUrl', tel: 'qrFieldsTel', sms: 'qrFieldsSms', email: 'qrFieldsEmail', wifi: 'qrFieldsWifi', vcard: 'qrFieldsVcard', bank: 'qrFieldsBank', map: 'qrFieldsMap' };
   $('#qrType').addEventListener('change', function () {
     qrState.type = this.value;
     for (var k in QR_FIELD_WRAPS) $('#' + QR_FIELD_WRAPS[k]).hidden = k !== qrState.type;
@@ -4881,7 +4933,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function qrReadShow(text) {
     var kind = '텍스트';
     var openHref = '';
-    if (/^https?:\/\//i.test(text)) { kind = '링크'; openHref = text; }
+    if (/^https?:\/\/(naver\.me|map\.naver\.com|kko\.to|map\.kakao\.com|place\.map\.kakao\.com|maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?google\.[^/]+\/maps)/i.test(text)) { kind = '지도 링크'; openHref = text; }
+    else if (/^https?:\/\//i.test(text)) { kind = '링크'; openHref = text; }
+    else if (/^supertoss:\/\//i.test(text)) kind = '계좌 이체 (토스 송금)';
     else if (/^tel:/i.test(text)) kind = '전화번호';
     else if (/^sms:/i.test(text)) kind = '문자 보내기';
     else if (/^mailto:/i.test(text)) kind = '이메일';
