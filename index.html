@@ -1376,9 +1376,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
               <option value="email">✉️ 이메일</option>
               <option value="wifi">📶 와이파이 접속</option>
               <option value="vcard">👤 연락처 저장</option>
-              <option value="bank">💸 계좌 이체 (토스)</option>
+              <option value="bank">💸 계좌 이체</option>
               <option value="map">🗺️ 지도 위치</option>
             </select>
+          </label>
+          <label class="check-label" id="qrBankPlainLabel" style="display:none; margin:0; white-space:nowrap; flex:0 0 auto; font-size:13px">
+            <input type="checkbox" id="qrBankPlain"> 범용 텍스트 <span class="sub">— 토스 없이 아무 폰</span>
           </label>
         </div>
         <p class="muted" id="qrModeDesc" style="margin:10px 0 0">내용 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 입력한 내용·로고는 어디로도 전송되지 않아요</p>
@@ -1509,8 +1512,12 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
             <label class="field-label" for="qrBankAmount">금액 (원) <span class="sub">— 선택, 비우면 스캔한 사람이 입력</span></label>
             <input type="text" id="qrBankAmount" placeholder="50000" autocomplete="off" inputmode="numeric">
           </div>
+          <div class="field">
+            <label class="field-label" for="qrBankHolder">예금주 <span class="sub">— 선택, 범용 텍스트에 표시</span></label>
+            <input type="text" id="qrBankHolder" placeholder="홍길동" autocomplete="off">
+          </div>
         </div>
-        <p class="muted" style="margin:8px 0 0">토스 앱이 있는 폰에서 카메라·토스로 스캔하면 은행·계좌·금액이 채워진 <strong>송금 화면이 바로</strong> 열려요 — 가게 계좌 QR 스티커와 같은 방식(토스 송금 딥링크)</p>
+        <p class="muted" id="qrBankHint" style="margin:8px 0 0">토스 앱이 있는 폰에서 카메라·토스로 스캔하면 은행·계좌·금액이 채워진 <strong>송금 화면이 바로</strong> 열려요 — 가게 계좌 QR 스티커와 같은 방식(토스 송금 딥링크)</p>
       </div>
       <div id="qrFieldsMap" hidden>
         <div class="field">
@@ -4652,12 +4659,19 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       return m + ';';
     }
     if (t === 'bank') {
-      /* 토스 송금 딥링크 — 가게 계좌 QR 스티커들이 쓰는 사실상 표준 */
       var bank = $('#qrBankName').value.trim();
       var acct = $('#qrBankAcct').value.replace(/[^\d-]/g, '');
       if (!bank || !acct) return '';
-      var s2 = 'supertoss://send?bank=' + encodeURIComponent(bank) + '&accountNo=' + acct;
       var amt = $('#qrBankAmount').value.replace(/[^\d]/g, '');
+      if ($('#qrBankPlain').checked) {
+        /* 범용 텍스트 — 아무 스캐너나 읽고 '복사'해서 쓰던 은행 앱에 붙여넣는 방식 */
+        var holder = $('#qrBankHolder').value.trim();
+        var line = bank + ' ' + acct + (holder ? ' ' + holder : '');
+        if (amt) line += '\n' + Number(amt).toLocaleString('ko-KR') + '원';
+        return line;
+      }
+      /* 토스 송금 딥링크 — 가게 계좌 QR 스티커들이 쓰는 사실상 표준 */
+      var s2 = 'supertoss://send?bank=' + encodeURIComponent(bank) + '&accountNo=' + acct;
       if (amt) s2 += '&amount=' + amt;
       return s2 + '&origin=qr';
     }
@@ -4781,7 +4795,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
 
   function qrFileSlug() {
-    if (qrState.type === 'bank') return 'qr-send-' + ($('#qrBankName').value.trim().replace(/[^\w가-힣.-]/g, '_') || 'bank');
+    if (qrState.type === 'bank') {
+      var bslug = $('#qrBankName').value.trim().replace(/[^\w가-힣.-]/g, '_') || 'bank';
+      return ($('#qrBankPlain').checked ? 'qr-account-' : 'qr-send-') + bslug;
+    }
     if (qrState.type === 'map') return 'qr-map';
     if (qrState.type === 'tel') return 'qr-tel';
     if (qrState.type === 'sms') return 'qr-sms';
@@ -4817,15 +4834,27 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   ['qrText', 'qrUtmSource', 'qrUtmMedium', 'qrUtmCampaign', 'qrUtmContent', 'qrUtmTerm',
    'qrTelNum', 'qrSmsNum', 'qrSmsBody', 'qrEmailTo', 'qrEmailSubj', 'qrEmailBody',
    'qrWifiSsid', 'qrWifiPw', 'qrVcName', 'qrVcTel', 'qrVcEmail', 'qrVcMemo',
-   'qrBankName', 'qrBankAcct', 'qrBankAmount', 'qrMapUrl'].forEach(function (id) {
+   'qrBankName', 'qrBankAcct', 'qrBankAmount', 'qrBankHolder', 'qrMapUrl'].forEach(function (id) {
     $('#' + id).addEventListener('input', qrScheduleRender);
   });
   $('#qrWifiHidden').addEventListener('change', qrScheduleRender);
   gifBindChips('#qrWifiSecChips', function (b) { qrState.wifiSec = b.dataset.qrwifisec; qrRender(); });
   var QR_FIELD_WRAPS = { url: 'qrFieldsUrl', tel: 'qrFieldsTel', sms: 'qrFieldsSms', email: 'qrFieldsEmail', wifi: 'qrFieldsWifi', vcard: 'qrFieldsVcard', bank: 'qrFieldsBank', map: 'qrFieldsMap' };
+  /* 헤더의 계좌 전용 체크박스 — 생성 모드 + 계좌 이체 유형일 때만 */
+  function qrSyncBankExtras() {
+    $('#qrBankPlainLabel').style.display = (qrMode === 'make' && qrState.type === 'bank') ? 'flex' : 'none';
+    $('#qrBankHint').innerHTML = $('#qrBankPlain').checked
+      ? '아무 스캐너로 찍어도 계좌 정보가 보여요 — <strong>복사 버튼 한 번</strong>으로 쓰던 은행 앱에 붙여넣는 방식 (앱 필요 없음)'
+      : '토스 앱이 있는 폰에서 카메라·토스로 스캔하면 은행·계좌·금액이 채워진 <strong>송금 화면이 바로</strong> 열려요 — 가게 계좌 QR 스티커와 같은 방식(토스 송금 딥링크)';
+  }
   $('#qrType').addEventListener('change', function () {
     qrState.type = this.value;
     for (var k in QR_FIELD_WRAPS) $('#' + QR_FIELD_WRAPS[k]).hidden = k !== qrState.type;
+    qrSyncBankExtras();
+    qrRender();
+  });
+  $('#qrBankPlain').addEventListener('change', function () {
+    qrSyncBankExtras();
     qrRender();
   });
   $('#qrFg').addEventListener('input', function () { qrState.fg = this.value; qrContrastCheck(); qrScheduleRender(); });
@@ -4901,6 +4930,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#qrReadBody').hidden = qrMode !== 'read';
     /* 헤더의 '만들 내용' 드롭다운은 생성 모드 전용 (inline flex라 hidden 대신 display 제어) */
     $('#qrTypeLabel').style.display = qrMode === 'make' ? 'flex' : 'none';
+    qrSyncBankExtras();
     $('#qrModeDesc').textContent = qrMode === 'make'
       ? '내용 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 입력한 내용·로고는 어디로도 전송되지 않아요'
       : 'QR 이미지를 올리면 담긴 링크·내용을 읽어드려요 — 해석도 전부 내 브라우저 안에서, 이미지는 어디로도 전송되지 않아요';
