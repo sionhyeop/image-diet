@@ -722,6 +722,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M10 9.5v5l4.5-2.5z"/></svg>
       GIF
     </button>
+    <button class="tab" id="tabQr" role="tab" aria-selected="false" aria-controls="panel-qr" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><path d="M13.5 13.5h3v3h-3zM20 13.5v3M16.5 20H20M13.5 20h.01"/></svg>
+      QR 생성
+    </button>
     <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6 4 12l5 6M15 6l5 6-5 6"/></svg>
       Base64 도구
@@ -1355,6 +1359,80 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       </div>
     </div>
   </section>
+  <section id="panel-qr" role="tabpanel" aria-labelledby="tabQr" hidden>
+    <div class="card b64-card">
+      <div class="card-head">
+        <h2>🔗 URL <span class="bf-arrow">→</span> 🔳 QR 코드</h2>
+        <p class="muted">URL 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 링크가 살아 있는 한 QR도 살아 있고, URL·로고는 어디로도 전송되지 않아요</p>
+      </div>
+      <div class="field">
+        <label class="field-label" for="qrText">URL 또는 텍스트</label>
+        <input type="text" id="qrText" placeholder="https://example.com/page" autocomplete="off" spellcheck="false" style="width:100%">
+      </div>
+      <details id="qrUtmBox" style="margin-top:12px">
+        <summary class="field-label" style="cursor:pointer; display:list-item">UTM 캠페인 파라미터 <span class="sub">— 유입 경로 추적용 (선택)</span></summary>
+        <div class="chips" id="qrUtmPresets" style="margin-top:10px">
+          <button type="button" class="chip" data-qrpreset="facebook">📘 페이스북</button>
+          <button type="button" class="chip" data-qrpreset="newsletter">✉️ 뉴스레터</button>
+          <button type="button" class="chip" data-qrpreset="print">🖨️ 인쇄물</button>
+          <button type="button" class="chip" data-qrpreset="youtube">▶️ 유튜브</button>
+        </div>
+        <div class="settings-grid" style="margin-top:10px">
+          <div class="field"><label class="field-label" for="qrUtmSource">utm_source</label><input type="text" id="qrUtmSource" placeholder="facebook" autocomplete="off"></div>
+          <div class="field"><label class="field-label" for="qrUtmMedium">utm_medium</label><input type="text" id="qrUtmMedium" placeholder="social" autocomplete="off"></div>
+          <div class="field"><label class="field-label" for="qrUtmCampaign">utm_campaign</label><input type="text" id="qrUtmCampaign" placeholder="spring_sale" autocomplete="off"></div>
+          <div class="field"><label class="field-label" for="qrUtmContent">utm_content</label><input type="text" id="qrUtmContent" placeholder="poster_a" autocomplete="off"></div>
+          <div class="field"><label class="field-label" for="qrUtmTerm">utm_term</label><input type="text" id="qrUtmTerm" placeholder="qr" autocomplete="off"></div>
+        </div>
+      </details>
+      <p class="muted" id="qrFinalUrl" style="word-break:break-all; margin:8px 0 0"></p>
+      <div class="settings-grid svg-opts" style="margin-top:14px">
+        <div class="field">
+          <span class="field-label">색상 <span class="sub">— 코드 / 배경</span></span>
+          <div style="display:flex; gap:10px; align-items:center">
+            <input type="color" id="qrFg" value="#000000" aria-label="코드 색">
+            <input type="color" id="qrBg" value="#ffffff" aria-label="배경 색">
+            <span class="muted" id="qrContrastWarn" style="font-size:12.5px"></span>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">오류 정정 <span class="sub">— 높을수록 손상·로고에 강해요</span></span>
+          <div class="chips" id="qrEcChips">
+            <button type="button" class="chip" data-qrec="L">L (7%)</button>
+            <button type="button" class="chip on" data-qrec="M">M (15%)</button>
+            <button type="button" class="chip" data-qrec="Q">Q (25%)</button>
+            <button type="button" class="chip" data-qrec="H">H (30%)</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">PNG 크기</span>
+          <div class="chips" id="qrSizeChips">
+            <button type="button" class="chip" data-qrsize="300">300px</button>
+            <button type="button" class="chip on" data-qrsize="600">600px</button>
+            <button type="button" class="chip" data-qrsize="900">900px</button>
+            <button type="button" class="chip" data-qrsize="1200">1200px</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">로고 <span class="sub">— 중앙에 넣어요 (자동으로 오류 정정 H)</span></span>
+          <div class="btn-row" style="margin-top:0">
+            <button class="btn" id="qrLogoBtn" type="button">로고 넣기</button>
+            <button class="btn" id="qrLogoClear" type="button" hidden>로고 빼기</button>
+            <input type="file" id="qrLogoFile" accept="image/*" hidden>
+          </div>
+        </div>
+      </div>
+      <div id="qrResult" hidden style="margin-top:16px; text-align:center">
+        <canvas id="qrCanvas" style="max-width:260px; width:100%; border:1px solid var(--border); border-radius:12px"></canvas>
+        <p class="muted" id="qrStat" role="status" style="margin:8px 0 0"></p>
+        <div class="btn-row" style="justify-content:center">
+          <button class="btn primary" id="qrSavePng" type="button">PNG 다운로드</button>
+          <button class="btn" id="qrSaveSvg" type="button">SVG 다운로드</button>
+          <button class="btn btn-share" id="qrShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
+        </div>
+      </div>
+    </div>
+  </section>
   <section id="panel-base64" role="tabpanel" aria-labelledby="tabBase64" hidden>
     <div class="card b64-card enc-card">
       <div class="card-head">
@@ -1634,6 +1712,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     { btn: $('#tabSvg'), panel: $('#panel-svg'), key: 'svg', label: 'SVG 변환', desc: '이미지를 선명한 벡터 SVG로 바꿔요' },
     { btn: $('#tabPdf'), panel: $('#panel-pdf'), key: 'pdf', label: 'PDF', desc: '이미지를 PDF로 묶고, PDF를 이미지로 풀어요' },
     { btn: $('#tabGif'), panel: $('#panel-gif'), key: 'gif', label: 'GIF', desc: '이미지·영상을 움직이는 GIF로 만들어요' },
+    { btn: $('#tabQr'), panel: $('#panel-qr'), key: 'qr', label: 'QR 생성', desc: 'URL을 만료 없는 QR 코드로 만들어요' },
     { btn: $('#tabBase64'), panel: $('#panel-base64'), key: 'base64', label: 'Base64 도구', desc: '이미지 ↔ Data URI 변환' },
     { btn: $('#tabMeta'), panel: $('#panel-meta'), key: 'meta', label: '메타데이터 보기·편집', desc: '거의 모든 파일의 속성 정보를 보고 고쳐요' }
   ];
@@ -2949,6 +3028,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       pdfAcceptFiles(files);
     } else if (!$('#panel-gif').hidden) {
       gifAcceptFiles(files);
+    } else if (!$('#panel-qr').hidden) {
+      qrSetLogo(files[0]);   /* QR 탭에 이미지를 떨어뜨리면 로고로 */
     } else if (!$('#panel-base64').hidden) {
       b64EncodeAny(files[0]);   /* 이미지든 아니든 통합 인코더가 알아서 분기 */
       toast('파일을 Base64 문자열로 변환했어요.');
@@ -4319,6 +4400,241 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     }
     if (files && files.length) toast('GIF 탭은 이미지 또는 영상 파일만 받아요.');
   }
+
+  /* ================= qr tab ================= */
+  var qrLibReady = null;
+  function loadQrLib() {
+    if (qrLibReady) return qrLibReady;
+    qrLibReady = new Promise(function (resolve, reject) {
+      if (window.qrcode) return resolve();
+      var sc = document.createElement('script');
+      sc.src = 'vendor/qrcode.js';
+      sc.onload = function () { resolve(); };
+      sc.onerror = function () { reject(new Error('qrcode.js 로드 실패')); };
+      document.head.appendChild(sc);
+    }).then(function () {
+      /* 한글 등 비ASCII도 표준대로 — 디코더들이 UTF-8로 읽는다 */
+      window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8'];
+    });
+    qrLibReady['catch'](function () { qrLibReady = null; });
+    return qrLibReady;
+  }
+
+  var qrState = { ec: 'M', fg: '#000000', bg: '#ffffff', size: 600, logo: null, logoUrl: null, seq: 0 };
+  var qrLast = null;   /* { qr, count, data } — 마지막 렌더 결과 (SVG·저장용) */
+  var qrTimer = null;
+
+  function qrUtmVals() {
+    return {
+      source: $('#qrUtmSource').value.trim(), medium: $('#qrUtmMedium').value.trim(),
+      campaign: $('#qrUtmCampaign').value.trim(), content: $('#qrUtmContent').value.trim(),
+      term: $('#qrUtmTerm').value.trim()
+    };
+  }
+  /* UTM을 붙인 최종 URL — 기존 쿼리(?→&)·해시(# 앞 삽입) 보존, URL이 아니면 원문 그대로 */
+  function qrFinalUrlStr() {
+    var t = $('#qrText').value.trim();
+    if (!t) return '';
+    var u = qrUtmVals();
+    var pairs = [];
+    ['source', 'medium', 'campaign', 'content', 'term'].forEach(function (k) {
+      if (u[k]) pairs.push('utm_' + k + '=' + encodeURIComponent(u[k]));
+    });
+    if (!pairs.length || !/^https?:\/\//i.test(t)) return t;
+    var hash = '';
+    var hi = t.indexOf('#');
+    if (hi >= 0) { hash = t.slice(hi); t = t.slice(0, hi); }
+    return t + (t.indexOf('?') >= 0 ? '&' : '?') + pairs.join('&') + hash;
+  }
+
+  function qrLum(hex) {
+    var r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  function qrContrastCheck() {
+    var lf = qrLum(qrState.fg), lb = qrLum(qrState.bg);
+    var warn = $('#qrContrastWarn');
+    if (lf > lb) warn.textContent = '⚠️ 보통 코드가 배경보다 어두워야 잘 읽혀요';
+    else if (lb - lf < 96) warn.textContent = '⚠️ 대비가 낮으면 스캔이 안 될 수 있어요';
+    else warn.textContent = '';
+  }
+
+  /* 오프스크린에 요청 크기 그대로 그린다 — 콰이어트 존 4모듈, 셀 정수 스냅 후 중앙 정렬 */
+  function qrDrawCanvas(px) {
+    var qr = qrLast.qr, n = qrLast.count;
+    var total = n + 8;
+    var cell = Math.max(1, Math.floor(px / total));
+    var off = Math.round((px - cell * total) / 2);
+    var c = document.createElement('canvas');
+    c.width = px; c.height = px;
+    var x = c.getContext('2d');
+    x.fillStyle = qrState.bg;
+    x.fillRect(0, 0, px, px);
+    x.fillStyle = qrState.fg;
+    for (var r = 0; r < n; r++) {
+      for (var col = 0; col < n; col++) {
+        if (qr.isDark(r, col)) x.fillRect(off + (col + 4) * cell, off + (r + 4) * cell, cell, cell);
+      }
+    }
+    if (qrState.logo) {
+      var box = Math.round(px * 0.22);
+      var pad = Math.round(box * 0.1);
+      var bx = Math.round((px - box) / 2);
+      x.fillStyle = '#ffffff';
+      x.fillRect(bx, bx, box, box);
+      var iw = qrState.logo.naturalWidth || qrState.logo.width, ih = qrState.logo.naturalHeight || qrState.logo.height;
+      var k = Math.min((box - pad * 2) / iw, (box - pad * 2) / ih);
+      var dw = Math.max(1, Math.round(iw * k)), dh = Math.max(1, Math.round(ih * k));
+      x.drawImage(qrState.logo, Math.round((px - dw) / 2), Math.round((px - dh) / 2), dw, dh);
+    }
+    return c;
+  }
+
+  function qrRender() {
+    var data = qrFinalUrlStr();
+    var fu = $('#qrFinalUrl');
+    var raw = $('#qrText').value.trim();
+    if (data && data !== raw) fu.textContent = '최종 URL: ' + data;
+    else if (raw && !/^https?:\/\//i.test(raw) && (qrUtmVals().source || qrUtmVals().medium || qrUtmVals().campaign || qrUtmVals().content || qrUtmVals().term)) fu.textContent = 'URL이 아니라서 UTM은 붙이지 않았어요 — 입력한 텍스트 그대로 담아요';
+    else fu.textContent = '';
+    if (!data) { $('#qrResult').hidden = true; qrLast = null; return Promise.resolve(); }
+    var seq = ++qrState.seq;
+    return loadQrLib().then(function () {
+      if (seq !== qrState.seq) return;
+      var qr;
+      try {
+        qr = window.qrcode(0, qrState.ec);   /* typeNumber 0 = 내용에 맞는 최소 버전 자동 */
+        qr.addData(data, 'Byte');
+        qr.make();
+      } catch (e) {
+        $('#qrResult').hidden = true;
+        qrLast = null;
+        toast('내용이 너무 길어요 — QR 한 장에 담기엔 한계(약 2,900바이트)를 넘었어요.');
+        return;
+      }
+      qrLast = { qr: qr, count: qr.getModuleCount(), data: data };
+      var big = qrDrawCanvas(qrState.size);
+      var prev = $('#qrCanvas');
+      prev.width = big.width; prev.height = big.height;
+      prev.getContext('2d').drawImage(big, 0, 0);
+      $('#qrStat').textContent = '버전 ' + Math.round((qrLast.count - 17) / 4) + ' · ' + qrLast.count + '×' + qrLast.count +
+        ' 모듈 · 오류 정정 ' + qrState.ec + (qrState.logo ? ' · 로고 포함' : '') + ' · ' + qrState.size + 'px';
+      $('#qrResult').hidden = false;
+    })['catch'](function () {
+      if (seq === qrState.seq) toast('QR 생성기를 불러오지 못했어요 — 새로고침 후 다시 시도해 주세요.');
+    });
+  }
+  function qrScheduleRender() {
+    clearTimeout(qrTimer);
+    qrTimer = setTimeout(qrRender, 250);
+  }
+
+  /* SVG — 모듈을 1×1 rect 패스로, 로고는 data URI <image> */
+  function qrSvgString() {
+    if (!qrLast) return '';
+    var n = qrLast.count, total = n + 8;
+    var d = [];
+    for (var r = 0; r < n; r++) {
+      for (var c = 0; c < n; c++) {
+        if (qrLast.qr.isDark(r, c)) d.push('M' + (c + 4) + ' ' + (r + 4) + 'h1v1h-1z');
+      }
+    }
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges">' +
+      '<rect width="' + total + '" height="' + total + '" fill="' + qrState.bg + '"/>' +
+      '<path d="' + d.join('') + '" fill="' + qrState.fg + '"/>';
+    if (qrState.logo && qrState.logoUrl) {
+      var box = total * 0.22, bx = (total - box) / 2, pad = box * 0.1;
+      s += '<rect x="' + bx + '" y="' + bx + '" width="' + box + '" height="' + box + '" fill="#ffffff"/>' +
+        '<image href="' + qrState.logoUrl + '" x="' + (bx + pad) + '" y="' + (bx + pad) + '" width="' + (box - pad * 2) + '" height="' + (box - pad * 2) + '" preserveAspectRatio="xMidYMid meet"/>';
+    }
+    return s + '</svg>';
+  }
+
+  function qrFileSlug() {
+    var m = qrLast && qrLast.data.match(/^https?:\/\/([^/?#]+)/i);
+    return 'qr-' + (m ? m[1].replace(/^www\./, '').replace(/[^\w.-]/g, '_') : 'code');
+  }
+  $('#qrSavePng').addEventListener('click', function () {
+    if (!qrLast) return;
+    qrDrawCanvas(qrState.size).toBlob(function (b) {
+      if (b) saveBlob(b, qrFileSlug() + '.png');
+    }, 'image/png');
+  });
+  $('#qrSaveSvg').addEventListener('click', function () {
+    if (!qrLast) return;
+    saveBlob(new Blob([qrSvgString()], { type: 'image/svg+xml' }), qrFileSlug() + '.svg');
+  });
+  bindShare('#qrShare', function () {
+    if (!qrLast) return Promise.resolve([]);
+    return new Promise(function (res) {
+      qrDrawCanvas(qrState.size).toBlob(function (b) {
+        var f = b && toFile(b, qrFileSlug() + '.png');
+        res(f ? [f] : []);
+      }, 'image/png');
+    });
+  }, 'QR 코드');
+
+  ['qrText', 'qrUtmSource', 'qrUtmMedium', 'qrUtmCampaign', 'qrUtmContent', 'qrUtmTerm'].forEach(function (id) {
+    $('#' + id).addEventListener('input', qrScheduleRender);
+  });
+  $('#qrFg').addEventListener('input', function () { qrState.fg = this.value; qrContrastCheck(); qrScheduleRender(); });
+  $('#qrBg').addEventListener('input', function () { qrState.bg = this.value; qrContrastCheck(); qrScheduleRender(); });
+  gifBindChips('#qrEcChips', function (b) { qrState.ec = b.dataset.qrec; qrRender(); });
+  gifBindChips('#qrSizeChips', function (b) { qrState.size = parseInt(b.dataset.qrsize, 10); qrRender(); });
+
+  var QR_PRESETS = {
+    facebook: { source: 'facebook', medium: 'social' },
+    newsletter: { source: 'newsletter', medium: 'email' },
+    print: { source: 'print', medium: 'qr' },
+    youtube: { source: 'youtube', medium: 'video' }
+  };
+  document.querySelectorAll('#qrUtmPresets .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var p = QR_PRESETS[b.dataset.qrpreset];
+      if (!p) return;
+      document.querySelectorAll('#qrUtmPresets .chip').forEach(function (o) { o.classList.toggle('on', o === b); });
+      $('#qrUtmSource').value = p.source;
+      $('#qrUtmMedium').value = p.medium;
+      $('#qrUtmBox').open = true;
+      qrScheduleRender();
+    });
+  });
+
+  function qrSetEc(ec) {
+    qrState.ec = ec;
+    document.querySelectorAll('#qrEcChips .chip').forEach(function (o) { o.classList.toggle('on', o.dataset.qrec === ec); });
+  }
+  function qrSetLogo(file) {
+    if (!file || !/^image\//.test(file.type)) { toast('로고는 이미지 파일만 넣을 수 있어요.'); return; }
+    blobToDataURL(file).then(function (uri) {
+      var img = new Image();
+      img.onload = function () {
+        qrState.logo = img;
+        qrState.logoUrl = uri;   /* SVG 임베드용 data URI — 파일은 밖으로 안 나간다 */
+        $('#qrLogoClear').hidden = false;
+        $('#qrLogoBtn').textContent = '로고 바꾸기';
+        if (qrState.ec !== 'H') {
+          qrSetEc('H');
+          toast('로고가 가리는 부분을 견디도록 오류 정정을 H로 올렸어요.');
+        }
+        qrRender();
+      };
+      img.onerror = function () { toast('로고 이미지를 읽지 못했어요.'); };
+      img.src = uri;
+    });
+  }
+  $('#qrLogoBtn').addEventListener('click', function () { $('#qrLogoFile').click(); });
+  $('#qrLogoFile').addEventListener('change', function () {
+    if (this.files && this.files.length) qrSetLogo(this.files[0]);
+    this.value = '';
+  });
+  $('#qrLogoClear').addEventListener('click', function () {
+    qrState.logo = null;
+    qrState.logoUrl = null;
+    this.hidden = true;
+    $('#qrLogoBtn').textContent = '로고 넣기';
+    qrRender();
+  });
 
   /* ================= base64 tab ================= */
   var b64File = $('#b64File');
@@ -11690,6 +12006,13 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     decodeB64Input: function () { return decodeB64Input(); },
     b64AnyEncode: function (f) { return b64EncodeAny(f); },
     get b64DecBlob() { return decBlob; },
+    qrRender: function () { return qrRender(); },
+    qrFinalUrlStr: function () { return qrFinalUrlStr(); },
+    qrSvgString: function () { return qrSvgString(); },
+    qrSetLogo: function (f) { return qrSetLogo(f); },
+    qrDrawCanvas: function (px) { return qrDrawCanvas(px); },
+    get qrState() { return qrState; },
+    get qrLast() { return qrLast; },
     applySettings: function (patch) {
       Object.assign(settings, patch);
       syncSettingsUI();
