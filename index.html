@@ -1380,8 +1380,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
               <option value="map">🗺️ 지도 위치</option>
             </select>
           </label>
-          <label class="check-label" id="qrBankPlainLabel" style="display:none; margin:0; white-space:nowrap; flex:0 0 auto; font-size:13px">
-            <input type="checkbox" id="qrBankPlain"> 범용 텍스트 <span class="sub">— 토스 없이 아무 폰</span>
+          <label class="check-label" id="qrPlainLabel" style="display:none; margin:0; white-space:nowrap; flex:0 0 auto; font-size:13px">
+            <input type="checkbox" id="qrPlain"> 복사용
           </label>
         </div>
         <p class="muted" id="qrModeDesc" style="margin:10px 0 0">내용 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 입력한 내용·로고는 어디로도 전송되지 않아요</p>
@@ -4614,23 +4614,28 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   /* 유형별 페이로드 — 스캐너 앱들이 알아보는 표준 URI/형식으로 조립 */
   function qrPayload() {
     var t = qrState.type;
+    /* '복사용' — 동작형 형식(tel:·WIFI:…) 대신 스캐너의 복사 버튼으로
+       쓰기 좋은 순수 텍스트를 담는다. URL·지도는 원래부터 텍스트라 그대로. */
+    var plain = $('#qrPlain').checked;
     if (t === 'url') return qrFinalUrlStr();
     if (t === 'tel') {
       var n = $('#qrTelNum').value.replace(/\s+/g, '');
-      return n ? 'tel:' + n : '';
+      return n ? (plain ? n : 'tel:' + n) : '';
     }
     if (t === 'sms') {
       var sn = $('#qrSmsNum').value.replace(/\s+/g, '');
       if (!sn) return '';
       var b = $('#qrSmsBody').value.trim();
+      if (plain) return sn + (b ? '\n' + b : '');
       return 'sms:' + sn + (b ? '?body=' + encodeURIComponent(b) : '');
     }
     if (t === 'email') {
       var to = $('#qrEmailTo').value.trim();
       if (!to) return '';
-      var q = [];
       var subj = $('#qrEmailSubj').value.trim();
       var body = $('#qrEmailBody').value.trim();
+      if (plain) return to + (subj ? '\n제목: ' + subj : '') + (body ? '\n' + body : '');
+      var q = [];
       if (subj) q.push('subject=' + encodeURIComponent(subj));
       if (body) q.push('body=' + encodeURIComponent(body));
       return 'mailto:' + to + (q.length ? '?' + q.join('&') : '');
@@ -4639,8 +4644,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var ss = $('#qrWifiSsid').value.trim();
       if (!ss) return '';
       var sec = qrState.wifiSec;
-      var s = 'WIFI:T:' + sec + ';S:' + qrEscField(ss) + ';';
       var pw = $('#qrWifiPw').value;
+      if (plain) return '와이파이 ' + ss + (sec !== 'nopass' && pw ? '\n비밀번호 ' + pw : '');
+      var s = 'WIFI:T:' + sec + ';S:' + qrEscField(ss) + ';';
       if (sec !== 'nopass' && pw) s += 'P:' + qrEscField(pw) + ';';
       if ($('#qrWifiHidden').checked) s += 'H:true;';
       return s + ';';
@@ -4649,12 +4655,15 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var nm = $('#qrVcName').value.trim();
       var tl = $('#qrVcTel').value.replace(/\s+/g, '');
       if (!nm && !tl) return '';
+      var em = $('#qrVcEmail').value.trim();
+      var memo = $('#qrVcMemo').value.trim();
+      if (plain) {
+        return [nm, tl, em, memo].filter(function (v) { return !!v; }).join('\n');
+      }
       var m = 'MECARD:';
       if (nm) m += 'N:' + qrEscField(nm) + ';';
       if (tl) m += 'TEL:' + tl + ';';
-      var em = $('#qrVcEmail').value.trim();
       if (em) m += 'EMAIL:' + qrEscField(em) + ';';
-      var memo = $('#qrVcMemo').value.trim();
       if (memo) m += 'NOTE:' + qrEscField(memo) + ';';
       return m + ';';
     }
@@ -4663,8 +4672,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var acct = $('#qrBankAcct').value.replace(/[^\d-]/g, '');
       if (!bank || !acct) return '';
       var amt = $('#qrBankAmount').value.replace(/[^\d]/g, '');
-      if ($('#qrBankPlain').checked) {
-        /* 범용 텍스트 — 아무 스캐너나 읽고 '복사'해서 쓰던 은행 앱에 붙여넣는 방식 */
+      if (plain) {
+        /* 아무 스캐너나 읽고 '복사'해서 쓰던 은행 앱에 붙여넣는 방식 */
         var holder = $('#qrBankHolder').value.trim();
         var line = bank + ' ' + acct + (holder ? ' ' + holder : '');
         if (amt) line += '\n' + Number(amt).toLocaleString('ko-KR') + '원';
@@ -4729,7 +4738,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var data = qrPayload();
     var fu = $('#qrFinalUrl');
     if (qrState.type !== 'url') {
-      fu.textContent = data ? '담기는 내용: ' + data : '';
+      fu.textContent = data ? ('담기는 내용' + ($('#qrPlain').checked ? ' (복사용 텍스트)' : '') + ': ' + data) : '';
     } else {
       var raw = $('#qrText').value.trim();
       if (data && data !== raw) fu.textContent = '최종 URL: ' + data;
@@ -4797,7 +4806,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   function qrFileSlug() {
     if (qrState.type === 'bank') {
       var bslug = $('#qrBankName').value.trim().replace(/[^\w가-힣.-]/g, '_') || 'bank';
-      return ($('#qrBankPlain').checked ? 'qr-account-' : 'qr-send-') + bslug;
+      return ($('#qrPlain').checked ? 'qr-account-' : 'qr-send-') + bslug;
     }
     if (qrState.type === 'map') return 'qr-map';
     if (qrState.type === 'tel') return 'qr-tel';
@@ -4840,21 +4849,22 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   $('#qrWifiHidden').addEventListener('change', qrScheduleRender);
   gifBindChips('#qrWifiSecChips', function (b) { qrState.wifiSec = b.dataset.qrwifisec; qrRender(); });
   var QR_FIELD_WRAPS = { url: 'qrFieldsUrl', tel: 'qrFieldsTel', sms: 'qrFieldsSms', email: 'qrFieldsEmail', wifi: 'qrFieldsWifi', vcard: 'qrFieldsVcard', bank: 'qrFieldsBank', map: 'qrFieldsMap' };
-  /* 헤더의 계좌 전용 체크박스 — 생성 모드 + 계좌 이체 유형일 때만 */
-  function qrSyncBankExtras() {
-    $('#qrBankPlainLabel').style.display = (qrMode === 'make' && qrState.type === 'bank') ? 'flex' : 'none';
-    $('#qrBankHint').innerHTML = $('#qrBankPlain').checked
+  /* 헤더의 '복사용' 체크박스 — 생성 모드의 모든 유형 공통.
+     체크하면 동작형 형식 대신 복사하기 좋은 순수 텍스트를 담는다. */
+  function qrSyncPlainExtras() {
+    $('#qrPlainLabel').style.display = qrMode === 'make' ? 'flex' : 'none';
+    $('#qrBankHint').innerHTML = $('#qrPlain').checked
       ? '아무 스캐너로 찍어도 계좌 정보가 보여요 — <strong>복사 버튼 한 번</strong>으로 쓰던 은행 앱에 붙여넣는 방식 (앱 필요 없음)'
       : '토스 앱이 있는 폰에서 카메라·토스로 스캔하면 은행·계좌·금액이 채워진 <strong>송금 화면이 바로</strong> 열려요 — 가게 계좌 QR 스티커와 같은 방식(토스 송금 딥링크)';
   }
   $('#qrType').addEventListener('change', function () {
     qrState.type = this.value;
     for (var k in QR_FIELD_WRAPS) $('#' + QR_FIELD_WRAPS[k]).hidden = k !== qrState.type;
-    qrSyncBankExtras();
+    qrSyncPlainExtras();
     qrRender();
   });
-  $('#qrBankPlain').addEventListener('change', function () {
-    qrSyncBankExtras();
+  $('#qrPlain').addEventListener('change', function () {
+    qrSyncPlainExtras();
     qrRender();
   });
   $('#qrFg').addEventListener('input', function () { qrState.fg = this.value; qrContrastCheck(); qrScheduleRender(); });
@@ -4930,7 +4940,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     $('#qrReadBody').hidden = qrMode !== 'read';
     /* 헤더의 '만들 내용' 드롭다운은 생성 모드 전용 (inline flex라 hidden 대신 display 제어) */
     $('#qrTypeLabel').style.display = qrMode === 'make' ? 'flex' : 'none';
-    qrSyncBankExtras();
+    qrSyncPlainExtras();
     $('#qrModeDesc').textContent = qrMode === 'make'
       ? '내용 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 입력한 내용·로고는 어디로도 전송되지 않아요'
       : 'QR 이미지를 올리면 담긴 링크·내용을 읽어드려요 — 해석도 전부 내 브라우저 안에서, 이미지는 어디로도 전송되지 않아요';
