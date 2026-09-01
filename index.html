@@ -1360,15 +1360,23 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     </div>
   </section>
   <section id="panel-qr" role="tabpanel" aria-labelledby="tabQr" hidden>
+    <div class="field" id="qrModeField" style="margin-bottom:12px">
+      <div class="seg-slide" id="qrModeSeg" role="tablist" aria-label="QR 생성 / QR 해석 전환">
+        <div class="seg-thumb" aria-hidden="true"></div>
+        <button type="button" class="seg-opt on" data-qrmode="make" role="tab" aria-selected="true">🔳 QR 생성</button>
+        <button type="button" class="seg-opt" data-qrmode="read" role="tab" aria-selected="false">🔍 QR 해석</button>
+      </div>
+    </div>
+    <div id="qrMakeBody">
     <div class="card b64-card">
       <div class="card-head">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap">
-          <div>
+          <div style="flex:1 1 0; min-width:0">
             <h2>🔗 URL <span class="bf-arrow">→</span> 🔳 QR 코드</h2>
             <p class="muted">내용 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 입력한 내용·로고는 어디로도 전송되지 않아요</p>
           </div>
-          <label class="field-label" style="margin:2px 0 0; white-space:nowrap">만들 내용
-            <select id="qrType" style="margin-left:6px">
+          <label class="field-label" style="margin:2px 0 0; display:flex; align-items:center; gap:6px; flex:0 0 auto">만들 내용
+            <select id="qrType">
               <option value="url" selected>🔗 URL · 텍스트</option>
               <option value="tel">📞 전화번호</option>
               <option value="sms">💬 문자 보내기</option>
@@ -1526,6 +1534,31 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <button class="btn" id="qrSaveSvg" type="button">SVG 다운로드</button>
           <button class="btn btn-share" id="qrShare" type="button"><span class="sh-ico" aria-hidden="true">🔗</span>공유하기</button>
         </div>
+      </div>
+    </div>
+    </div>
+    <div id="qrReadBody" hidden>
+      <div class="card b64-card">
+        <div class="card-head">
+          <h2>🔳 QR 코드 <span class="bf-arrow">→</span> 🔗 내용</h2>
+          <p class="muted">QR 이미지를 올리면 담긴 링크·내용을 읽어드려요 — 해석도 전부 내 브라우저 안에서, 이미지는 어디로도 전송되지 않아요</p>
+        </div>
+        <div class="dropzone dropzone-sm" id="qrReadDrop" role="button" tabindex="0" aria-label="해석할 QR 이미지 선택 또는 드래그">
+          <p class="dz-main">QR 이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+          <p class="dz-hint">스크린샷·사진 속 QR도 돼요 · Ctrl+V 붙여넣기 지원 (해석 도구 ~94KB, 첫 사용 시 1회 로드)</p>
+          <input type="file" id="qrReadFile" accept="image/*" hidden>
+        </div>
+        <div id="qrReadResult" hidden style="margin-top:14px">
+          <p class="field-label" style="margin:0 0 6px">읽은 내용 <span class="sub" id="qrReadKind"></span></p>
+          <div class="ta-wrap">
+            <textarea id="qrReadOut" readonly rows="3" spellcheck="false" aria-label="QR에서 읽은 내용"></textarea>
+          </div>
+          <div class="btn-row">
+            <a class="btn primary" id="qrReadOpen" target="_blank" rel="noopener noreferrer" hidden>🔗 링크 열기</a>
+            <button class="btn" id="qrReadCopy" type="button">내용 복사</button>
+          </div>
+        </div>
+        <p class="muted" id="qrReadStat" role="status"></p>
       </div>
     </div>
   </section>
@@ -3125,7 +3158,9 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     } else if (!$('#panel-gif').hidden) {
       gifAcceptFiles(files);
     } else if (!$('#panel-qr').hidden) {
-      qrSetLogo(files[0]);   /* QR 탭에 이미지를 떨어뜨리면 로고로 */
+      /* 생성 모드면 로고로, 해석 모드면 해석할 QR 이미지로 */
+      if ($('#qrReadBody').hidden) qrSetLogo(files[0]);
+      else qrReadImage(files[0]);
     } else if (!$('#panel-base64').hidden) {
       b64EncodeAny(files[0]);   /* 이미지든 아니든 통합 인코더가 알아서 분기 */
       toast('파일을 Base64 문자열로 변환했어요.');
@@ -4809,6 +4844,120 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     this.hidden = true;
     $('#qrLogoBtn').textContent = '로고 넣기';
     qrRender();
+  });
+
+  /* ---- QR 해석 (이미지 → 내용) — paulmillr/qr 디코더(MIT 선택) 지연 로드 ---- */
+  var qrMode = 'make';
+  function syncQrMode() {
+    var seg = $('#qrModeSeg');
+    seg.classList.toggle('right', qrMode === 'read');
+    seg.querySelectorAll('.seg-opt').forEach(function (b) {
+      var on = b.dataset.qrmode === qrMode;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    $('#qrMakeBody').hidden = qrMode !== 'make';
+    $('#qrReadBody').hidden = qrMode !== 'read';
+  }
+  document.querySelectorAll('#qrModeSeg .seg-opt').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (qrMode === b.dataset.qrmode) return;
+      qrMode = b.dataset.qrmode;
+      syncQrMode();
+    });
+  });
+
+  var qrDecReady = null;
+  function loadQrDecoder() {
+    if (qrDecReady) return qrDecReady;
+    qrDecReady = new Promise(function (resolve, reject) {
+      if (window.QRDecodeLib) return resolve();
+      var sc = document.createElement('script');
+      sc.src = 'vendor/qr-decode.js';
+      sc.onload = function () { resolve(); };
+      sc.onerror = function () { reject(new Error('qr-decode.js 로드 실패')); };
+      document.head.appendChild(sc);
+    });
+    qrDecReady['catch'](function () { qrDecReady = null; });
+    return qrDecReady;
+  }
+
+  var qrReadSeq = 0;
+  /* 내용 종류를 사람이 읽게 분류 — 링크는 열기 버튼까지 */
+  function qrReadShow(text) {
+    var kind = '텍스트';
+    var openHref = '';
+    if (/^https?:\/\//i.test(text)) { kind = '링크'; openHref = text; }
+    else if (/^tel:/i.test(text)) kind = '전화번호';
+    else if (/^sms:/i.test(text)) kind = '문자 보내기';
+    else if (/^mailto:/i.test(text)) kind = '이메일';
+    else if (/^WIFI:/i.test(text)) kind = '와이파이 접속 정보';
+    else if (/^MECARD:|^BEGIN:VCARD/i.test(text)) kind = '연락처';
+    $('#qrReadKind').textContent = '— ' + kind;
+    $('#qrReadOut').value = text;
+    var open = $('#qrReadOpen');
+    open.hidden = !openHref;
+    if (openHref) open.href = openHref;
+    $('#qrReadResult').hidden = false;
+    $('#qrReadStat').textContent = '✅ 해석 완료 — ' + text.length + '자';
+  }
+  function qrReadImage(file) {
+    if (!file || !/^image\//.test(file.type)) { toast('QR 해석은 이미지 파일만 받아요.'); return Promise.resolve(); }
+    var seq = ++qrReadSeq;
+    $('#qrReadResult').hidden = true;
+    var stat = $('#qrReadStat');
+    stat.textContent = '🔍 QR을 찾는 중…';
+    var url = URL.createObjectURL(file);
+    return loadQrDecoder().then(function () {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { reject(new Error('img')); };
+        img.src = url;
+      });
+    }).then(function (img) {
+      if (seq !== qrReadSeq) return;
+      var iw = img.naturalWidth, ih = img.naturalHeight;
+      /* 사진 크기·초점이 제각각이라 여러 스케일로 재시도 */
+      var sides = [1000, 600, 1600, Math.max(iw, ih)];
+      var found = null, lastErr = null;
+      for (var i = 0; i < sides.length && !found; i++) {
+        var k = Math.min(1, sides[i] / Math.max(iw, ih));
+        var w = Math.max(1, Math.round(iw * k)), h = Math.max(1, Math.round(ih * k));
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        var x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(img, 0, 0, w, h);
+        var id = x.getImageData(0, 0, w, h);
+        try {
+          found = window.QRDecodeLib.decodeQR({ width: w, height: h, data: id.data });
+        } catch (e) { lastErr = e; }
+      }
+      if (seq !== qrReadSeq) return;
+      if (found) qrReadShow(found);
+      else {
+        stat.textContent = '';
+        toast('QR을 찾지 못했어요 — 코드가 크고 선명하게 나온 이미지로 다시 시도해 주세요.');
+      }
+    })['catch'](function () {
+      if (seq !== qrReadSeq) return;
+      stat.textContent = '';
+      toast('이미지를 읽지 못했어요.');
+    }).then(function () {
+      URL.revokeObjectURL(url);
+    });
+  }
+  $('#qrReadDrop').addEventListener('click', function () { $('#qrReadFile').click(); });
+  $('#qrReadDrop').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#qrReadFile').click(); }
+  });
+  $('#qrReadFile').addEventListener('change', function () {
+    if (this.files && this.files.length) qrReadImage(this.files[0]);
+    this.value = '';
+  });
+  $('#qrReadCopy').addEventListener('click', function () {
+    var v = $('#qrReadOut').value;
+    if (v) copyText(v).then(function (ok) { toast(ok ? '내용을 복사했어요.' : '복사하지 못했어요.'); });
   });
 
   /* ================= base64 tab ================= */
@@ -12186,6 +12335,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     qrPayload: function () { return qrPayload(); },
     qrSvgString: function () { return qrSvgString(); },
     qrSetLogo: function (f) { return qrSetLogo(f); },
+    qrReadImage: function (f) { return qrReadImage(f); },
+    get qrMode() { return qrMode; },
     qrDrawCanvas: function (px) { return qrDrawCanvas(px); },
     get qrState() { return qrState; },
     get qrLast() { return qrLast; },
