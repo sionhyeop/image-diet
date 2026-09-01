@@ -1362,9 +1362,24 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   <section id="panel-qr" role="tabpanel" aria-labelledby="tabQr" hidden>
     <div class="card b64-card">
       <div class="card-head">
-        <h2>🔗 URL <span class="bf-arrow">→</span> 🔳 QR 코드</h2>
-        <p class="muted">URL 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 링크가 살아 있는 한 QR도 살아 있고, URL·로고는 어디로도 전송되지 않아요</p>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap">
+          <div>
+            <h2>🔗 URL <span class="bf-arrow">→</span> 🔳 QR 코드</h2>
+            <p class="muted">내용 자체가 코드에 담겨요 — 서버·리다이렉트·만료 없음. 입력한 내용·로고는 어디로도 전송되지 않아요</p>
+          </div>
+          <label class="field-label" style="margin:2px 0 0; white-space:nowrap">만들 내용
+            <select id="qrType" style="margin-left:6px">
+              <option value="url" selected>🔗 URL · 텍스트</option>
+              <option value="tel">📞 전화번호</option>
+              <option value="sms">💬 문자 보내기</option>
+              <option value="email">✉️ 이메일</option>
+              <option value="wifi">📶 와이파이 접속</option>
+              <option value="vcard">👤 연락처 저장</option>
+            </select>
+          </label>
+        </div>
       </div>
+      <div id="qrFieldsUrl">
       <div class="field">
         <label class="field-label" for="qrText">URL 또는 텍스트</label>
         <input type="text" id="qrText" placeholder="https://example.com/page" autocomplete="off" spellcheck="false" style="width:100%">
@@ -1385,6 +1400,87 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <div class="field"><label class="field-label" for="qrUtmTerm">utm_term</label><input type="text" id="qrUtmTerm" placeholder="qr" autocomplete="off"></div>
         </div>
       </details>
+      </div>
+      <div id="qrFieldsTel" hidden>
+        <div class="field">
+          <label class="field-label" for="qrTelNum">전화번호 <span class="sub">— 해외에서도 스캔한다면 +82 국제형식 권장</span></label>
+          <input type="tel" id="qrTelNum" placeholder="010-1234-5678 또는 +82-10-1234-5678" autocomplete="off" style="width:100%">
+        </div>
+        <p class="muted" style="margin:8px 0 0">스캔하면 바로 전화 걸기 화면이 떠요</p>
+      </div>
+      <div id="qrFieldsSms" hidden>
+        <div class="settings-grid">
+          <div class="field">
+            <label class="field-label" for="qrSmsNum">받는 번호</label>
+            <input type="tel" id="qrSmsNum" placeholder="010-1234-5678" autocomplete="off">
+          </div>
+          <div class="field field-wide">
+            <label class="field-label" for="qrSmsBody">문자 내용 <span class="sub">— 선택, 미리 채워져요</span></label>
+            <input type="text" id="qrSmsBody" placeholder="안녕하세요, 문의드립니다" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div id="qrFieldsEmail" hidden>
+        <div class="settings-grid">
+          <div class="field">
+            <label class="field-label" for="qrEmailTo">받는 주소</label>
+            <input type="email" id="qrEmailTo" placeholder="hello@example.com" autocomplete="off">
+          </div>
+          <div class="field">
+            <label class="field-label" for="qrEmailSubj">제목 <span class="sub">— 선택</span></label>
+            <input type="text" id="qrEmailSubj" placeholder="문의드립니다" autocomplete="off">
+          </div>
+          <div class="field field-wide">
+            <label class="field-label" for="qrEmailBody">내용 <span class="sub">— 선택</span></label>
+            <input type="text" id="qrEmailBody" placeholder="본문 첫 줄" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div id="qrFieldsWifi" hidden>
+        <div class="settings-grid">
+          <div class="field">
+            <label class="field-label" for="qrWifiSsid">와이파이 이름 (SSID)</label>
+            <input type="text" id="qrWifiSsid" placeholder="OurCafe_5G" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <label class="field-label" for="qrWifiPw">비밀번호</label>
+            <input type="text" id="qrWifiPw" placeholder="cafe1234" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <span class="field-label">보안 방식 <span class="sub">— 요즘 공유기는 대부분 WPA</span></span>
+            <div class="chips" id="qrWifiSecChips">
+              <button type="button" class="chip on" data-qrwifisec="WPA">WPA/WPA2</button>
+              <button type="button" class="chip" data-qrwifisec="WEP">WEP</button>
+              <button type="button" class="chip" data-qrwifisec="nopass">비밀번호 없음</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="check-label" style="margin-top:22px"><input type="checkbox" id="qrWifiHidden"> 숨김 네트워크</label>
+          </div>
+        </div>
+        <p class="muted" style="margin:8px 0 0">스캔하면 와이파이 접속을 제안해요 — 비밀번호를 입력할 필요가 없어요</p>
+      </div>
+      <div id="qrFieldsVcard" hidden>
+        <div class="settings-grid">
+          <div class="field">
+            <label class="field-label" for="qrVcName">이름</label>
+            <input type="text" id="qrVcName" placeholder="홍길동" autocomplete="off">
+          </div>
+          <div class="field">
+            <label class="field-label" for="qrVcTel">전화번호</label>
+            <input type="tel" id="qrVcTel" placeholder="010-1234-5678" autocomplete="off">
+          </div>
+          <div class="field">
+            <label class="field-label" for="qrVcEmail">이메일 <span class="sub">— 선택</span></label>
+            <input type="email" id="qrVcEmail" placeholder="hello@example.com" autocomplete="off">
+          </div>
+          <div class="field">
+            <label class="field-label" for="qrVcMemo">메모 <span class="sub">— 선택 (소속·직함 등)</span></label>
+            <input type="text" id="qrVcMemo" placeholder="이미지 다이어트 · 개발" autocomplete="off">
+          </div>
+        </div>
+        <p class="muted" style="margin:8px 0 0">스캔하면 연락처 저장을 제안해요</p>
+      </div>
       <p class="muted" id="qrFinalUrl" style="word-break:break-all; margin:8px 0 0"></p>
       <div class="settings-grid svg-opts" style="margin-top:14px">
         <div class="field">
@@ -4420,7 +4516,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     return qrLibReady;
   }
 
-  var qrState = { ec: 'M', fg: '#000000', bg: '#ffffff', size: 600, logo: null, logoUrl: null, seq: 0 };
+  var qrState = { type: 'url', wifiSec: 'WPA', ec: 'M', fg: '#000000', bg: '#ffffff', size: 600, logo: null, logoUrl: null, seq: 0 };
   var qrLast = null;   /* { qr, count, data } — 마지막 렌더 결과 (SVG·저장용) */
   var qrTimer = null;
 
@@ -4445,6 +4541,58 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var hi = t.indexOf('#');
     if (hi >= 0) { hash = t.slice(hi); t = t.slice(0, hi); }
     return t + (t.indexOf('?') >= 0 ? '&' : '?') + pairs.join('&') + hash;
+  }
+
+  /* WIFI:·MECARD: 페이로드의 특수문자 이스케이프 (\ ; , : ") */
+  function qrEscField(s) { return s.replace(/([\\;,:"])/g, '\\$1'); }
+  /* 유형별 페이로드 — 스캐너 앱들이 알아보는 표준 URI/형식으로 조립 */
+  function qrPayload() {
+    var t = qrState.type;
+    if (t === 'url') return qrFinalUrlStr();
+    if (t === 'tel') {
+      var n = $('#qrTelNum').value.replace(/\s+/g, '');
+      return n ? 'tel:' + n : '';
+    }
+    if (t === 'sms') {
+      var sn = $('#qrSmsNum').value.replace(/\s+/g, '');
+      if (!sn) return '';
+      var b = $('#qrSmsBody').value.trim();
+      return 'sms:' + sn + (b ? '?body=' + encodeURIComponent(b) : '');
+    }
+    if (t === 'email') {
+      var to = $('#qrEmailTo').value.trim();
+      if (!to) return '';
+      var q = [];
+      var subj = $('#qrEmailSubj').value.trim();
+      var body = $('#qrEmailBody').value.trim();
+      if (subj) q.push('subject=' + encodeURIComponent(subj));
+      if (body) q.push('body=' + encodeURIComponent(body));
+      return 'mailto:' + to + (q.length ? '?' + q.join('&') : '');
+    }
+    if (t === 'wifi') {
+      var ss = $('#qrWifiSsid').value.trim();
+      if (!ss) return '';
+      var sec = qrState.wifiSec;
+      var s = 'WIFI:T:' + sec + ';S:' + qrEscField(ss) + ';';
+      var pw = $('#qrWifiPw').value;
+      if (sec !== 'nopass' && pw) s += 'P:' + qrEscField(pw) + ';';
+      if ($('#qrWifiHidden').checked) s += 'H:true;';
+      return s + ';';
+    }
+    if (t === 'vcard') {
+      var nm = $('#qrVcName').value.trim();
+      var tl = $('#qrVcTel').value.replace(/\s+/g, '');
+      if (!nm && !tl) return '';
+      var m = 'MECARD:';
+      if (nm) m += 'N:' + qrEscField(nm) + ';';
+      if (tl) m += 'TEL:' + tl + ';';
+      var em = $('#qrVcEmail').value.trim();
+      if (em) m += 'EMAIL:' + qrEscField(em) + ';';
+      var memo = $('#qrVcMemo').value.trim();
+      if (memo) m += 'NOTE:' + qrEscField(memo) + ';';
+      return m + ';';
+    }
+    return '';
   }
 
   function qrLum(hex) {
@@ -4491,13 +4639,22 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
 
   function qrRender() {
-    var data = qrFinalUrlStr();
+    var data = qrPayload();
     var fu = $('#qrFinalUrl');
-    var raw = $('#qrText').value.trim();
-    if (data && data !== raw) fu.textContent = '최종 URL: ' + data;
-    else if (raw && !/^https?:\/\//i.test(raw) && (qrUtmVals().source || qrUtmVals().medium || qrUtmVals().campaign || qrUtmVals().content || qrUtmVals().term)) fu.textContent = 'URL이 아니라서 UTM은 붙이지 않았어요 — 입력한 텍스트 그대로 담아요';
-    else fu.textContent = '';
-    if (!data) { $('#qrResult').hidden = true; qrLast = null; return Promise.resolve(); }
+    if (qrState.type !== 'url') {
+      fu.textContent = data ? '담기는 내용: ' + data : '';
+    } else {
+      var raw = $('#qrText').value.trim();
+      if (data && data !== raw) fu.textContent = '최종 URL: ' + data;
+      else if (raw && !/^https?:\/\//i.test(raw) && (qrUtmVals().source || qrUtmVals().medium || qrUtmVals().campaign || qrUtmVals().content || qrUtmVals().term)) fu.textContent = 'URL이 아니라서 UTM은 붙이지 않았어요 — 입력한 텍스트 그대로 담아요';
+      else fu.textContent = '';
+    }
+    if (!data) {
+      qrState.seq++;   /* 날아가던 이전 렌더가 뒤늦게 결과를 되살리지 않게 무효화 */
+      $('#qrResult').hidden = true;
+      qrLast = null;
+      return Promise.resolve();
+    }
     var seq = ++qrState.seq;
     return loadQrLib().then(function () {
       if (seq !== qrState.seq) return;
@@ -4551,6 +4708,14 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
 
   function qrFileSlug() {
+    if (qrState.type === 'tel') return 'qr-tel';
+    if (qrState.type === 'sms') return 'qr-sms';
+    if (qrState.type === 'email') return 'qr-email';
+    if (qrState.type === 'wifi') {
+      var ss = $('#qrWifiSsid').value.trim().replace(/[^\w.-]/g, '_');
+      return 'qr-wifi' + (ss ? '-' + ss : '');
+    }
+    if (qrState.type === 'vcard') return 'qr-contact';
     var m = qrLast && qrLast.data.match(/^https?:\/\/([^/?#]+)/i);
     return 'qr-' + (m ? m[1].replace(/^www\./, '').replace(/[^\w.-]/g, '_') : 'code');
   }
@@ -4574,8 +4739,18 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     });
   }, 'QR 코드');
 
-  ['qrText', 'qrUtmSource', 'qrUtmMedium', 'qrUtmCampaign', 'qrUtmContent', 'qrUtmTerm'].forEach(function (id) {
+  ['qrText', 'qrUtmSource', 'qrUtmMedium', 'qrUtmCampaign', 'qrUtmContent', 'qrUtmTerm',
+   'qrTelNum', 'qrSmsNum', 'qrSmsBody', 'qrEmailTo', 'qrEmailSubj', 'qrEmailBody',
+   'qrWifiSsid', 'qrWifiPw', 'qrVcName', 'qrVcTel', 'qrVcEmail', 'qrVcMemo'].forEach(function (id) {
     $('#' + id).addEventListener('input', qrScheduleRender);
+  });
+  $('#qrWifiHidden').addEventListener('change', qrScheduleRender);
+  gifBindChips('#qrWifiSecChips', function (b) { qrState.wifiSec = b.dataset.qrwifisec; qrRender(); });
+  var QR_FIELD_WRAPS = { url: 'qrFieldsUrl', tel: 'qrFieldsTel', sms: 'qrFieldsSms', email: 'qrFieldsEmail', wifi: 'qrFieldsWifi', vcard: 'qrFieldsVcard' };
+  $('#qrType').addEventListener('change', function () {
+    qrState.type = this.value;
+    for (var k in QR_FIELD_WRAPS) $('#' + QR_FIELD_WRAPS[k]).hidden = k !== qrState.type;
+    qrRender();
   });
   $('#qrFg').addEventListener('input', function () { qrState.fg = this.value; qrContrastCheck(); qrScheduleRender(); });
   $('#qrBg').addEventListener('input', function () { qrState.bg = this.value; qrContrastCheck(); qrScheduleRender(); });
@@ -12008,6 +12183,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     get b64DecBlob() { return decBlob; },
     qrRender: function () { return qrRender(); },
     qrFinalUrlStr: function () { return qrFinalUrlStr(); },
+    qrPayload: function () { return qrPayload(); },
     qrSvgString: function () { return qrSvgString(); },
     qrSetLogo: function (f) { return qrSetLogo(f); },
     qrDrawCanvas: function (px) { return qrDrawCanvas(px); },
