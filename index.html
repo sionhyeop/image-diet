@@ -710,6 +710,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M12 3.5v17M3.5 12h17"/></svg>
       이미지 분할
     </button>
+    <button class="tab" id="tabCrop" role="tab" aria-selected="false" aria-controls="panel-crop" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 2.5v12.5a2 2 0 0 0 2 2h12.5M2.5 7h12.5a2 2 0 0 1 2 2v12.5"/></svg>
+      일괄 크롭
+    </button>
     <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17c3-7 6-10 9-10s5 4 7 4"/><circle cx="4" cy="17" r="1.5"/><circle cx="20" cy="11" r="1.5"/></svg>
       SVG 변환
@@ -1058,6 +1062,57 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           <button class="btn" id="splitSaveOne" type="button">이 원본 개별 저장</button>
           <button class="btn primary" id="splitZip" type="button">전체 ZIP으로 저장</button>
           <button class="btn" id="splitSaveAll" type="button">전체 개별 저장</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section id="panel-crop" role="tabpanel" aria-labelledby="tabCrop" hidden>
+    <div class="card b64-card">
+      <div class="card-head">
+        <h2>✂️ 일괄 크롭</h2>
+        <p class="muted">한 장에서 자를 영역을 정하면 올린 모든 이미지에 똑같이 적용해요 — 크기가 다른 이미지에는 같은 비율(%)로 적용돼요</p>
+      </div>
+      <div class="dropzone dropzone-sm" id="cropDropzone" role="button" tabindex="0" aria-label="일괄 크롭할 이미지 선택 또는 드래그 — 여러 장 가능">
+        <p class="dz-main">이미지를 끌어다 놓거나 <strong>클릭</strong>해서 선택하세요</p>
+        <p class="dz-hint">여러 장을 한 번에 · Ctrl+V 붙여넣기 지원 · 첫 장이 기준 이미지가 돼요</p>
+        <input type="file" id="cropFile" accept="image/*" multiple hidden>
+      </div>
+      <div id="cropBody" hidden>
+        <p class="field-label" style="margin-top:16px">이미지 <output id="cropCount"></output> <span class="sub">— 썸네일을 클릭하면 기준 이미지가 바뀌어요 · ✕로 빼요</span></p>
+        <ul id="cropThumbs" class="bg-batch-list"></ul>
+        <p class="field-label" style="margin-top:14px">자를 영역 <span class="sub">— 테두리·모서리 핸들을 끌어 안쪽으로 좁히고, 안쪽을 끌면 이동해요</span></p>
+        <div style="text-align:center">
+          <canvas id="cropCanvas" style="max-width:100%; border-radius:12px; touch-action:none; border:1px solid var(--border)"></canvas>
+        </div>
+        <p class="muted" id="cropInfo" style="margin:6px 0 0"></p>
+        <div class="settings-grid svg-opts" style="margin-top:12px">
+          <div class="field">
+            <span class="field-label">출력 형식</span>
+            <div class="chips" id="cropFmtChips">
+              <button type="button" class="chip on" data-cropfmt="auto">원본 유지</button>
+              <button type="button" class="chip" data-cropfmt="webp">WebP</button>
+              <button type="button" class="chip" data-cropfmt="jpeg">JPEG</button>
+              <button type="button" class="chip" data-cropfmt="png">PNG</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="cropQ">품질 <output id="cropQOut">85</output>% <span class="sub">— PNG는 무손실</span></label>
+            <input type="range" id="cropQ" min="0.5" max="0.95" step="0.01" value="0.85">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="cropApply" type="button">모두 자르기</button>
+          <button class="btn" id="cropReset" type="button">크롭 초기화</button>
+          <button class="btn" id="cropClear" type="button">비우기</button>
+        </div>
+        <p class="muted" id="cropStat" role="status"></p>
+        <div id="cropResults" hidden>
+          <p class="field-label" style="margin-top:14px">결과 <output id="cropResCount"></output> <span class="sub">— 썸네일을 클릭하면 크게 봐요</span></p>
+          <ul id="cropGrid" class="bg-batch-list"></ul>
+          <div class="btn-row">
+            <button class="btn primary" id="cropZip" type="button">ZIP으로 모두 저장</button>
+            <button class="btn" id="cropSaveAll" type="button">개별 파일로 모두 저장</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1871,6 +1926,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     { btn: $('#tabCompress'), panel: $('#panel-compress'), key: 'compress', label: '이미지 압축', desc: '사진 용량을 화질 그대로 줄여요' },
     { btn: $('#tabBg'), panel: $('#panel-bg'), key: 'bg', label: '배경 제거 · 요소 추출', desc: '클릭 한 번으로 배경을 지우고 원하는 요소만 뽑아요' },
     { btn: $('#tabSplit'), panel: $('#panel-split'), key: 'split', label: '이미지 분할', desc: '사진을 격자로 잘라 한꺼번에 저장해요' },
+    { btn: $('#tabCrop'), panel: $('#panel-crop'), key: 'crop', label: '일괄 크롭', desc: '한 장에서 정한 크롭을 모든 이미지에 똑같이 적용해요' },
     { btn: $('#tabSvg'), panel: $('#panel-svg'), key: 'svg', label: 'SVG 변환', desc: '이미지를 선명한 벡터 SVG로 바꿔요' },
     { btn: $('#tabPdf'), panel: $('#panel-pdf'), key: 'pdf', label: 'PDF', desc: '이미지를 PDF로 묶고, PDF를 이미지로 풀어요' },
     { btn: $('#tabGif'), panel: $('#panel-gif'), key: 'gif', label: 'GIF', desc: '이미지·영상을 움직이는 GIF로 만들어요' },
@@ -3181,6 +3237,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       loadMetaFile(files[0]);
     } else if (!$('#panel-bg').hidden) {
       bgAcceptFiles(files);
+    } else if (!$('#panel-crop').hidden) {
+      cropAddImages(files);
     } else if (!$('#panel-split').hidden) {
       loadSplitFiles(files);
     } else if (!$('#panel-svg').hidden) {
@@ -4564,6 +4622,374 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     }
     if (files && files.length) toast('GIF 탭은 이미지 또는 영상 파일만 받아요.');
   }
+
+  /* ================= batch crop tab (일괄 크롭) ================= */
+  /* 크롭 사각형은 기준 이미지의 '비율(0~1)'로 저장 — 크기가 다른 이미지에도
+     같은 비율로 적용된다 (전부 같은 크기면 픽셀 단위로 동일). */
+  var cropState = {
+    items: [], baseIdx: 0, rect: { x: 0, y: 0, w: 1, h: 1 },
+    baseW: 0, baseH: 0, dispW: 0, dispH: 0,
+    fmt: 'auto', results: [], busy: false, seq: 0
+  };
+  var cropCanvas = $('#cropCanvas');
+  var cropBaseImg = null;
+
+  function cropReleaseResults() {
+    cropState.results.forEach(function (r) { URL.revokeObjectURL(r.url); });
+    cropState.results = [];
+    $('#cropResults').hidden = true;
+    $('#cropGrid').textContent = '';
+  }
+  function cropRenderThumbs() {
+    var ul = $('#cropThumbs');
+    ul.textContent = '';
+    cropState.items.forEach(function (it, idx) {
+      var li = document.createElement('li');
+      li.className = 'bg-batch-item';
+      var img = document.createElement('img');
+      img.className = 'bg-batch-thumb is-done';
+      img.src = it.url;
+      img.alt = it.file.name || ('이미지 ' + (idx + 1));
+      img.style.cursor = 'pointer';
+      img.style.outline = idx === cropState.baseIdx ? '3px solid var(--accent)' : 'none';
+      img.title = idx === cropState.baseIdx ? '기준 이미지' : '클릭하면 기준 이미지로';
+      img.addEventListener('click', function () {
+        if (cropState.busy || cropState.baseIdx === idx) return;
+        cropState.baseIdx = idx;
+        cropRenderThumbs();
+        cropLoadBase();
+      });
+      var cap = document.createElement('p');
+      cap.textContent = (idx === cropState.baseIdx ? '★ 기준 · ' : '') + (it.file.name || '이미지');
+      var rm = document.createElement('button');
+      rm.className = 'btn';
+      rm.type = 'button';
+      rm.textContent = '✕';
+      rm.setAttribute('aria-label', (it.file.name || '이미지') + ' 빼기');
+      rm.addEventListener('click', function () {
+        if (cropState.busy) return;
+        URL.revokeObjectURL(it.url);
+        var i2 = cropState.items.indexOf(it);
+        cropState.items.splice(i2, 1);
+        if (!cropState.items.length) { cropClearAll(); return; }
+        if (cropState.baseIdx >= cropState.items.length) cropState.baseIdx = cropState.items.length - 1;
+        cropReleaseResults();
+        cropRenderThumbs();
+        cropLoadBase();
+      });
+      li.appendChild(img);
+      li.appendChild(cap);
+      li.appendChild(rm);
+      ul.appendChild(li);
+    });
+    $('#cropCount').textContent = cropState.items.length ? cropState.items.length + '장' : '';
+  }
+  function cropInfoLine() {
+    var r = cropState.rect;
+    var px = Math.round(r.x * cropState.baseW), py = Math.round(r.y * cropState.baseH);
+    var pw = Math.max(1, Math.round(r.w * cropState.baseW)), ph = Math.max(1, Math.round(r.h * cropState.baseH));
+    $('#cropInfo').textContent = '선택 영역 ' + pw + '×' + ph + 'px (기준 이미지 기준 · ' +
+      Math.round(r.w * 100) + '%×' + Math.round(r.h * 100) + '%)' +
+      (cropState.items.length > 1 ? ' — 나머지 ' + (cropState.items.length - 1) + '장에도 같은 비율로 적용' : '');
+  }
+  function cropDraw() {
+    if (!cropBaseImg || !cropState.dispW) return;
+    var ctx = cropCanvas.getContext('2d');
+    ctx.drawImage(cropBaseImg, 0, 0, cropState.dispW, cropState.dispH);
+    var r = cropState.rect;
+    var x = r.x * cropState.dispW, y = r.y * cropState.dispH;
+    var w = r.w * cropState.dispW, h = r.h * cropState.dispH;
+    ctx.save();
+    ctx.fillStyle = 'rgba(15,23,42,.5)';
+    ctx.fillRect(0, 0, cropState.dispW, y);
+    ctx.fillRect(0, y + h, cropState.dispW, cropState.dispH - y - h);
+    ctx.fillRect(0, y, x, h);
+    ctx.fillRect(x + w, y, cropState.dispW - x - w, h);
+    ctx.strokeStyle = '#3182f6';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#3182f6';
+    var HS = 5;
+    [[x, y], [x + w / 2, y], [x + w, y], [x, y + h / 2], [x + w, y + h / 2],
+     [x, y + h], [x + w / 2, y + h], [x + w, y + h]].forEach(function (pt) {
+      ctx.fillRect(pt[0] - HS, pt[1] - HS, HS * 2, HS * 2);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(pt[0] - HS, pt[1] - HS, HS * 2, HS * 2);
+    });
+    ctx.restore();
+    cropInfoLine();
+  }
+  function cropLoadBase() {
+    var it = cropState.items[cropState.baseIdx];
+    if (!it) return Promise.resolve();
+    var seq = ++cropState.seq;
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        if (seq !== cropState.seq) return resolve();
+        cropBaseImg = img;
+        cropState.baseW = img.naturalWidth || 1;
+        cropState.baseH = img.naturalHeight || 1;
+        var disp = Math.min(680, cropState.baseW);
+        cropState.dispW = disp;
+        cropState.dispH = Math.max(1, Math.round(disp * cropState.baseH / cropState.baseW));
+        cropCanvas.width = cropState.dispW;
+        cropCanvas.height = cropState.dispH;
+        cropDraw();
+        resolve();
+      };
+      img.onerror = function () {
+        toast((it.file.name || '이미지') + '를 읽지 못했어요.');
+        resolve();
+      };
+      img.src = it.url;
+    });
+  }
+  function cropAddImages(files) {
+    var added = 0;
+    Array.prototype.forEach.call(files || [], function (f) {
+      if (!/^image\//.test(f.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name || '')) return;
+      cropState.items.push({ file: f, url: URL.createObjectURL(f) });
+      added++;
+    });
+    if (!added) return 0;
+    cropReleaseResults();
+    $('#cropStat').textContent = '';
+    $('#cropBody').hidden = false;
+    cropRenderThumbs();
+    if (!cropBaseImg) cropLoadBase();
+    else cropInfoLine();
+    return added;
+  }
+  function cropClearAll() {
+    cropState.seq++;
+    cropState.items.forEach(function (it) { URL.revokeObjectURL(it.url); });
+    cropState.items = [];
+    cropReleaseResults();
+    cropBaseImg = null;
+    cropState.baseIdx = 0;
+    cropState.rect = { x: 0, y: 0, w: 1, h: 1 };
+    cropState.baseW = cropState.baseH = cropState.dispW = cropState.dispH = 0;
+    cropState.busy = false;
+    $('#cropThumbs').textContent = '';
+    $('#cropCount').textContent = '';
+    $('#cropStat').textContent = '';
+    $('#cropBody').hidden = true;
+  }
+
+  function cropMime(orig) {
+    var f = cropState.fmt;
+    if (f === 'png') return 'image/png';
+    if (f === 'jpeg') return 'image/jpeg';
+    if (f === 'webp') return supportsWebP ? 'image/webp' : 'image/jpeg';
+    if (orig === 'image/jpeg') return 'image/jpeg';
+    if (orig === 'image/webp') return supportsWebP ? 'image/webp' : 'image/png';
+    return 'image/png';
+  }
+  function cropRenderGrid() {
+    var ul = $('#cropGrid');
+    ul.textContent = '';
+    cropState.results.forEach(function (p) {
+      var li = document.createElement('li');
+      li.className = 'bg-batch-item';
+      var img = document.createElement('img');
+      img.className = 'bg-batch-thumb is-done';
+      img.src = p.url;
+      img.alt = p.name;
+      img.addEventListener('click', function () {
+        openLightbox(p.url, p.name + ' · ' + p.w + '×' + p.h + ' · ' + fmtBytes(p.blob.size));
+      });
+      var cap = document.createElement('p');
+      cap.textContent = p.w + '×' + p.h + ' · ' + fmtBytes(p.blob.size);
+      var save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn';
+      save.textContent = '저장';
+      save.addEventListener('click', function () { saveBlob(p.blob, p.name); });
+      li.appendChild(img);
+      li.appendChild(cap);
+      li.appendChild(save);
+      ul.appendChild(li);
+    });
+    $('#cropResCount').textContent = cropState.results.length ? cropState.results.length + '장' : '';
+  }
+  function cropApplyAll() {
+    if (!cropState.items.length || cropState.busy) return Promise.resolve();
+    var seq = ++cropState.seq;
+    cropState.busy = true;
+    cropReleaseResults();
+    var stat = $('#cropStat');
+    var r = { x: cropState.rect.x, y: cropState.rect.y, w: cropState.rect.w, h: cropState.rect.h };
+    var q = parseFloat($('#cropQ').value);
+    var total = cropState.items.length;
+    var chain = Promise.resolve();
+    cropState.items.forEach(function (it, idx) {
+      chain = chain.then(function () {
+        if (seq !== cropState.seq) return;
+        stat.textContent = (idx + 1) + ' / ' + total + ' 자르는 중…';
+        return decodeToSource(it.file).then(function (dec) {
+          var iw = srcW(dec.source) || 1, ih = srcH(dec.source) || 1;
+          var sx = Math.min(iw - 1, Math.round(r.x * iw));
+          var sy = Math.min(ih - 1, Math.round(r.y * ih));
+          var sw = Math.max(1, Math.min(iw - sx, Math.round(r.w * iw)));
+          var sh = Math.max(1, Math.min(ih - sy, Math.round(r.h * ih)));
+          var c = document.createElement('canvas');
+          c.width = sw; c.height = sh;
+          var x = c.getContext('2d');
+          var mime = cropMime(it.file.type);
+          if (mime === 'image/jpeg') { x.fillStyle = '#ffffff'; x.fillRect(0, 0, sw, sh); }
+          x.drawImage(dec.source, sx, sy, sw, sh, 0, 0, sw, sh);
+          if (dec.url) URL.revokeObjectURL(dec.url);
+          if (dec.source && typeof dec.source.close === 'function') { try { dec.source.close(); } catch (e) {} }
+          return encodeCanvas(c, mime, mime === 'image/png' ? undefined : q).then(function (b) {
+            if (!b || seq !== cropState.seq) return;
+            var ext = mime === 'image/png' ? 'png' : (mime === 'image/webp' ? 'webp' : 'jpg');
+            cropState.results.push({
+              blob: b, url: URL.createObjectURL(b), w: sw, h: sh,
+              name: baseName(it.file.name || ('image-' + (idx + 1))) + '-crop.' + ext
+            });
+          });
+        }).catch(function () {
+          toast((it.file.name || '이미지') + ' — 처리하지 못했어요.');
+        });
+      });
+    });
+    return chain.then(function () {
+      if (seq !== cropState.seq) return;
+      cropState.busy = false;
+      cropRenderGrid();
+      var n = cropState.results.length;
+      stat.textContent = n ? '✅ ' + n + '장 자르기 완료' : '';
+      $('#cropResults').hidden = n === 0;
+    });
+  }
+
+  /* 크롭 에디터 — GIF 탭 영상 크롭과 같은 '좁혀 나가기' 상호작용 (비율 좌표) */
+  (function () {
+    var mode = null, sx = 0, sy = 0, orig = null;
+    var EDGE = 14;
+    var CURSOR = {
+      n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+      ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', move: 'move'
+    };
+    function pos(e) {
+      var b = cropCanvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - b.left) * (cropState.dispW / Math.max(1, b.width)),
+        y: (e.clientY - b.top) * (cropState.dispH / Math.max(1, b.height))
+      };
+    }
+    function hit(p) {
+      var r = cropState.rect;
+      var x = r.x * cropState.dispW, y = r.y * cropState.dispH;
+      var w = r.w * cropState.dispW, h = r.h * cropState.dispH;
+      var L = Math.abs(p.x - x) <= EDGE, R = Math.abs(p.x - (x + w)) <= EDGE;
+      var T = Math.abs(p.y - y) <= EDGE, B = Math.abs(p.y - (y + h)) <= EDGE;
+      var inX = p.x > x - EDGE && p.x < x + w + EDGE;
+      var inY = p.y > y - EDGE && p.y < y + h + EDGE;
+      if (T && L) return 'nw';
+      if (T && R) return 'ne';
+      if (B && L) return 'sw';
+      if (B && R) return 'se';
+      if (T && inX) return 'n';
+      if (B && inX) return 's';
+      if (L && inY) return 'w';
+      if (R && inY) return 'e';
+      if (p.x > x && p.x < x + w && p.y > y && p.y < y + h) return 'move';
+      return null;
+    }
+    cropCanvas.addEventListener('pointerdown', function (e) {
+      if (!cropState.dispW || cropState.busy) return;
+      var p = pos(e);
+      var m = hit(p);
+      if (!m) return;
+      e.preventDefault();
+      try { cropCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+      mode = m;
+      sx = p.x; sy = p.y;
+      var r = cropState.rect;
+      orig = { x: r.x, y: r.y, w: r.w, h: r.h };
+    });
+    cropCanvas.addEventListener('pointermove', function (e) {
+      if (!cropState.dispW) return;
+      var p = pos(e);
+      if (!mode) {
+        var hv = cropState.busy ? null : hit(p);
+        cropCanvas.style.cursor = hv ? CURSOR[hv] : 'default';
+        return;
+      }
+      var dx = (p.x - sx) / cropState.dispW, dy = (p.y - sy) / cropState.dispH;
+      var MINW = 24 / cropState.dispW, MINH = 24 / cropState.dispH;
+      function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+      var c2 = { x: orig.x, y: orig.y, w: orig.w, h: orig.h };
+      if (mode === 'move') {
+        c2.x = clamp(orig.x + dx, 0, 1 - orig.w);
+        c2.y = clamp(orig.y + dy, 0, 1 - orig.h);
+      } else {
+        if (mode.indexOf('w') >= 0) {
+          var nx = clamp(orig.x + dx, 0, orig.x + orig.w - MINW);
+          c2.w = orig.w + (orig.x - nx);
+          c2.x = nx;
+        }
+        if (mode.indexOf('e') >= 0) c2.w = clamp(orig.w + dx, MINW, 1 - orig.x);
+        if (mode.indexOf('n') >= 0) {
+          var ny = clamp(orig.y + dy, 0, orig.y + orig.h - MINH);
+          c2.h = orig.h + (orig.y - ny);
+          c2.y = ny;
+        }
+        if (mode.indexOf('s') >= 0) c2.h = clamp(orig.h + dy, MINH, 1 - orig.y);
+      }
+      cropState.rect = c2;
+      cropDraw();
+    });
+    function end() {
+      if (!mode) return;
+      mode = null;
+      cropDraw();
+      cropReleaseResults();   /* 영역이 바뀌면 이전 결과는 낡음 */
+    }
+    cropCanvas.addEventListener('pointerup', end);
+    cropCanvas.addEventListener('pointercancel', end);
+  })();
+
+  $('#cropFile').addEventListener('change', function () {
+    if (this.files && this.files.length) cropAddImages(this.files);
+    this.value = '';
+  });
+  $('#cropDropzone').addEventListener('click', function () { $('#cropFile').click(); });
+  $('#cropDropzone').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#cropFile').click(); }
+  });
+  gifBindChips('#cropFmtChips', function (b) {
+    cropState.fmt = b.dataset.cropfmt;
+    cropReleaseResults();
+  }, function () { return cropState.busy; });
+  $('#cropQ').addEventListener('input', function () {
+    $('#cropQOut').textContent = Math.round(parseFloat(this.value) * 100);
+  });
+  $('#cropApply').addEventListener('click', cropApplyAll);
+  $('#cropReset').addEventListener('click', function () {
+    if (cropState.busy) return;
+    cropState.rect = { x: 0, y: 0, w: 1, h: 1 };
+    cropDraw();
+    cropReleaseResults();
+  });
+  $('#cropClear').addEventListener('click', cropClearAll);
+  $('#cropZip').addEventListener('click', function () {
+    if (!cropState.results.length) return;
+    makeZip(cropState.results.map(function (p) { return { name: p.name, blob: p.blob }; })).then(function (zip) {
+      saveBlob(zip, '일괄크롭-' + cropState.results.length + '장.zip');
+      toast('ZIP으로 ' + cropState.results.length + '장을 저장했어요.');
+    });
+  });
+  $('#cropSaveAll').addEventListener('click', function () {
+    if (!cropState.results.length) return;
+    toast(cropState.results.length + '장을 개별로 저장하고 있어요…');
+    sequentialDownload(cropState.results);
+  });
 
   /* ================= qr tab ================= */
   var qrLibReady = null;
@@ -12421,6 +12847,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     decodeB64Input: function () { return decodeB64Input(); },
     b64AnyEncode: function (f) { return b64EncodeAny(f); },
     get b64DecBlob() { return decBlob; },
+    cropAddImages: function (fs) { return cropAddImages(fs); },
+    cropApplyAll: function () { return cropApplyAll(); },
+    cropSetRect: function (x, y, w, h) { cropState.rect = { x: x, y: y, w: w, h: h }; cropDraw(); },
+    cropDraw: function () { return cropDraw(); },
+    get cropState() { return cropState; },
     qrRender: function () { return qrRender(); },
     qrFinalUrlStr: function () { return qrFinalUrlStr(); },
     qrPayload: function () { return qrPayload(); },
