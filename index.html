@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>이미지 다이어트 — 화질은 그대로, 용량만 가볍게</title>
-<meta name="description" content="서버 업로드 없이 브라우저에서만 동작하는 이미지 압축·리사이즈·Base64 변환 도구. 오프라인에서도 쓸 수 있어요.">
+<meta name="description" content="서버 업로드 없이 브라우저에서만 동작하는 이미지 도구 — 압축·리사이즈·분할·일괄 크롭·PDF·GIF·QR·배경 제거·SVG·Base64·메타데이터. 오프라인에서도 쓸 수 있어요.">
 <meta name="theme-color" content="#f2f4f6">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%233182f6'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='24' y='24' width='56' height='56' rx='10' opacity='.5'/%3E%3Crect x='58' y='58' width='46' height='46' rx='10'/%3E%3Cpath d='M40 40l24 24M64 46v18H46'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
@@ -4743,7 +4743,6 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   }
   function cropInfoLine() {
     var r = cropState.rect;
-    var px = Math.round(r.x * cropState.baseW), py = Math.round(r.y * cropState.baseH);
     var pw = Math.max(1, Math.round(r.w * cropState.baseW)), ph = Math.max(1, Math.round(r.h * cropState.baseH));
     $('#cropInfo').textContent = '선택 영역 ' + pw + '×' + ph + 'px (기준 이미지 기준 · ' +
       Math.round(r.w * 100) + '%×' + Math.round(r.h * 100) + '%)' +
@@ -5495,7 +5494,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var iw = img.naturalWidth, ih = img.naturalHeight;
       /* 사진 크기·초점이 제각각이라 여러 스케일로 재시도 */
       var sides = [1000, 600, 1600, Math.max(iw, ih)];
-      var found = null, lastErr = null;
+      var found = null;
       for (var i = 0; i < sides.length && !found; i++) {
         var k = Math.min(1, sides[i] / Math.max(iw, ih));
         var w = Math.max(1, Math.round(iw * k)), h = Math.max(1, Math.round(ih * k));
@@ -5506,7 +5505,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         var id = x.getImageData(0, 0, w, h);
         try {
           found = window.QRDecodeLib.decodeQR({ width: w, height: h, data: id.data });
-        } catch (e) { lastErr = e; }
+        } catch (e) {}
       }
       if (seq !== qrReadSeq) return;
       if (found) qrReadShow(found);
@@ -5789,11 +5788,17 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var text = b64In.value.trim();
     var seq = ++b64DecSeq;
     b64DecMsg.className = '';
+    /* 미리보기의 <audio>/<video>가 아직 blob URL을 읽는 중일 수 있으므로 먼저 로드를 끊고 나서 URL을 해제한다 */
+    var prevBox = $('#b64FilePrev');
+    Array.prototype.forEach.call(prevBox.querySelectorAll('audio,video'), function (m) {
+      m.removeAttribute('src');
+      try { m.load(); } catch (e) {}
+    });
+    prevBox.textContent = '';
     if (decUrl) { URL.revokeObjectURL(decUrl); decUrl = null; }
     decBlob = null;
     b64DecResult.hidden = true;
     $('#b64FileResult').hidden = true;
-    $('#b64FilePrev').textContent = '';
     resetB64Comp();
     if (!text) { b64DecMsg.textContent = ''; return; }
     try {
@@ -8795,11 +8800,11 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var w = queue[qi];
       if (depth[w] >= cut) { seen[w] = 0; continue; }
       area++;
-      var wx = w % ww, wy = (w / ww) | 0;
-      if (wx < minX) minX = wx;
-      if (wx > maxX) maxX = wx;
-      if (wy < minY) minY = wy;
-      if (wy > maxY) maxY = wy;
+      var qx = w % ww, qy = (w / ww) | 0;
+      if (qx < minX) minX = qx;
+      if (qx > maxX) maxX = qx;
+      if (qy < minY) minY = qy;
+      if (qy > maxY) maxY = qy;
     }
     if (area < 25) return null;
     exFillHoles(seen, ww, minX, minY, maxX, maxY); /* 색감 차이로 뚫린 내부를 메워 한 덩어리로 */
@@ -10035,7 +10040,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     var pre = samState.pre;
     var feeds = {
       input_points: new ort.Tensor('float32', new Float32Array([ox * pre.scale, oy * pre.scale]), [1, 1, 1, 2]),
-      input_labels: new ort.Tensor('int64', BigInt64Array.from([1n]), [1, 1, 1]),
+      input_labels: new ort.Tensor('int64', BigInt64Array.from([BigInt(1)]), [1, 1, 1]),
       image_embeddings: samState.emb,
       image_positional_embeddings: samState.posEmb
     };
@@ -11510,7 +11515,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       if (pr.id !== pid || pr.vt !== 64 || pr.raw.length < 12) continue;
       var dv = new DataView(pr.raw.buffer, pr.raw.byteOffset, pr.raw.byteLength);
       var ft = dv.getBigUint64(4, true);
-      var ms = Number(ft / 10000n) - 11644473600000;
+      var ms = Number(ft / BigInt(10000)) - 11644473600000;
       if (ms <= 0) return '';
       var d = new Date(ms);
       var z = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -11533,7 +11538,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       var out = new Uint8Array(12);
       var dv = new DataView(out.buffer);
       dv.setUint32(0, 64, true);
-      dv.setBigUint64(4, (BigInt(Math.round(ms)) + 11644473600000n) * 10000n, true);
+      dv.setBigUint64(4, (BigInt(Math.round(ms)) + BigInt(11644473600000)) * BigInt(10000), true);
       return out;
     };
     var head = ps.head.slice();

@@ -1,7 +1,7 @@
 {
   "name": "이미지 다이어트",
   "short_name": "이미지 다이어트",
-  "description": "화질은 그대로, 용량만 가볍게 — 서버 없는 오프라인 이미지 압축·배경 제거·SVG·Base64·메타데이터 도구",
+  "description": "화질은 그대로, 용량만 가볍게 — 서버 없는 오프라인 이미지 도구: 압축·분할·일괄 크롭·PDF·GIF·QR·배경 제거·SVG·Base64·메타데이터",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
