@@ -4789,9 +4789,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         cropBaseImg = img;
         cropState.baseW = img.naturalWidth || 1;
         cropState.baseH = img.naturalHeight || 1;
-        var disp = Math.min(680, cropState.baseW);
-        cropState.dispW = disp;
-        cropState.dispH = Math.max(1, Math.round(disp * cropState.baseH / cropState.baseW));
+        /* 에디터가 화면을 넘지 않게 가로 680·세로 520 상한 (세로로 긴 이미지 대비) */
+        var k = Math.min(1, 680 / cropState.baseW, 520 / cropState.baseH);
+        cropState.dispW = Math.max(1, Math.round(cropState.baseW * k));
+        cropState.dispH = Math.max(1, Math.round(cropState.baseH * k));
         cropCanvas.width = cropState.dispW;
         cropCanvas.height = cropState.dispH;
         cropDraw();
