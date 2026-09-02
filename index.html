@@ -732,6 +732,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4"/></svg>
       PDF
     </button>
+    <button class="tab" id="tabQr" role="tab" aria-selected="false" aria-controls="panel-qr" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><path d="M13.5 13.5h3v3h-3zM20 13.5v3M16.5 20H20M13.5 20h.01"/></svg>
+      QR 생성
+    </button>
     <div class="tab-more" id="tabMoreWrap">
     <button class="tab" id="tabMoreBtn" type="button" aria-haspopup="true" aria-expanded="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
@@ -745,10 +749,6 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
     <button class="tab" id="tabGif" role="tab" aria-selected="false" aria-controls="panel-gif" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M10 9.5v5l4.5-2.5z"/></svg>
       GIF
-    </button>
-    <button class="tab" id="tabQr" role="tab" aria-selected="false" aria-controls="panel-qr" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><path d="M13.5 13.5h3v3h-3zM20 13.5v3M16.5 20H20M13.5 20h.01"/></svg>
-      QR 생성
     </button>
     <button class="tab" id="tabBase64" role="tab" aria-selected="false" aria-controls="panel-base64" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6 4 12l5 6M15 6l5 6-5 6"/></svg>
@@ -1974,7 +1974,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
 
   /* '기타 기능' 드롭다운 — SVG·GIF·QR·Base64·메타데이터를 접어 넣는다 */
-  var MORE_KEYS = { svg: 1, gif: 1, qr: 1, base64: 1, meta: 1 };
+  var MORE_KEYS = { svg: 1, gif: 1, base64: 1, meta: 1 };
   var tabMoreBtn = $('#tabMoreBtn');
   var tabMoreMenu = $('#tabMoreMenu');
   function syncMoreTab() {
