@@ -716,10 +716,6 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M20 9h-4a1 1 0 0 1-1-1V4M4 15h4a1 1 0 0 1 1 1v4M15 20v-4a1 1 0 0 1 1-1h4"/></svg>
       압축하기
     </button>
-    <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><path d="M8 7.5 20 20M20 4 8 16.5"/></svg>
-      배경·요소
-    </button>
     <button class="tab" id="tabSplit" role="tab" aria-selected="false" aria-controls="panel-split" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M12 3.5v17M3.5 12h17"/></svg>
       이미지 분할
@@ -742,6 +738,10 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
       <span id="tabMoreLabel">기타 기능</span><span class="tm-caret" aria-hidden="true">▾</span>
     </button>
     <div class="tab-more-menu" id="tabMoreMenu" hidden>
+    <button class="tab" id="tabBg" role="tab" aria-selected="false" aria-controls="panel-bg" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><path d="M8 7.5 20 20M20 4 8 16.5"/></svg>
+      배경·요소
+    </button>
     <button class="tab" id="tabSvg" role="tab" aria-selected="false" aria-controls="panel-svg" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17c3-7 6-10 9-10s5 4 7 4"/><circle cx="4" cy="17" r="1.5"/><circle cx="20" cy="11" r="1.5"/></svg>
       SVG 변환
@@ -786,8 +786,8 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           </div>
         </div>
         <div class="field" id="fieldQuality">
-          <label class="field-label" for="quality">품질 <output id="qualityOut" for="quality">80</output>%</label>
-          <input type="range" id="quality" min="0.4" max="0.95" step="0.01">
+          <label class="field-label" for="quality">품질 <output id="qualityOut" for="quality">80</output>% <span class="sub">— 5%까지 낮출수록 용량이 확 줄어요</span></label>
+          <input type="range" id="quality" min="0.05" max="0.95" step="0.01">
         </div>
         <div class="field" id="fieldTarget" hidden>
           <label class="field-label" for="targetKB">목표 용량 <span class="sub">(KB)</span></label>
@@ -1119,7 +1119,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
           </div>
           <div class="field">
             <label class="field-label" for="cropQ">품질 <output id="cropQOut">85</output>% <span class="sub">— PNG는 무손실</span></label>
-            <input type="range" id="cropQ" min="0.5" max="0.95" step="0.01" value="0.85">
+            <input type="range" id="cropQ" min="0.05" max="0.95" step="0.01" value="0.85">
           </div>
         </div>
         <div class="btn-row">
@@ -1974,7 +1974,7 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
   });
 
   /* '기타 기능' 드롭다운 — SVG·GIF·QR·Base64·메타데이터를 접어 넣는다 */
-  var MORE_KEYS = { svg: 1, gif: 1, base64: 1, meta: 1 };
+  var MORE_KEYS = { bg: 1, svg: 1, gif: 1, base64: 1, meta: 1 };
   var tabMoreBtn = $('#tabMoreBtn');
   var tabMoreMenu = $('#tabMoreMenu');
   function syncMoreTab() {
@@ -2593,14 +2593,15 @@ input.split-name-num:focus { background: rgba(255, 255, 255, .28); outline: 2px 
         if (isStale()) return null;
         if (!b95) throw new Error('인코딩에 실패했어요.');
         if (b95.size <= targetBytes) return { blob: b95, w: w, h: h, quality: 0.95, missed: false };
-        var lo = 0.3, hi = 0.95, hit = null, hitQ = 0.3;
+        /* 목표 용량이 작아도 닿을 수 있게 품질 하한 0.05까지 탐색 */
+        var lo = 0.05, hi = 0.95, hit = null, hitQ = 0.05;
         var step = function (i) {
-          if (i >= 6) {
+          if (i >= 7) {
             if (hit) return { blob: hit, w: w, h: h, quality: hitQ, missed: false };
-            return encodeCanvas(canvas, fmt, 0.3).then(function (b) {
+            return encodeCanvas(canvas, fmt, 0.05).then(function (b) {
               if (isStale()) return null;
-              if (b && b.size <= targetBytes) return { blob: b, w: w, h: h, quality: 0.3, missed: false };
-              if (b && (!best || b.size < best.blob.size)) best = { blob: b, w: w, h: h, quality: 0.3 };
+              if (b && b.size <= targetBytes) return { blob: b, w: w, h: h, quality: 0.05, missed: false };
+              if (b && (!best || b.size < best.blob.size)) best = { blob: b, w: w, h: h, quality: 0.05 };
               return undefined;
             });
           }
