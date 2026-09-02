@@ -85,7 +85,9 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .tabs::-webkit-scrollbar { display: none; }
 /* 기타 기능 드롭다운 — .tabs가 overflow-x:auto라 잘리지 않게 fixed로 띄운다 */
-.tab-more { flex: none; }
+.tab-more { flex: none; margin-left: auto; }   /* 트리거는 탭바 맨 오른쪽으로 */
+/* display:flex가 hidden 속성의 UA display:none을 이기므로 명시적으로 눌러준다 */
+.tab-more-menu[hidden] { display: none; }
 .tab-more-menu {
   position: fixed; z-index: 60; min-width: 190px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
